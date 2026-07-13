@@ -3,154 +3,196 @@
 ## Project
 CAC (Channel-Activity-Customer) health-check center MVP.
 
-Current repo target: `lhm0323-git/channel_activity_customer`.
+Repo: `https://github.com/lhm0323-git/channel_activity_customer`
+Local root: `D:\Users\xray\.gemini\antigravity\scratch\Channel–Activity–Customer`
+App root: `cac-liff-app/`
+
+## Current Production URLs
+
+- Firebase Hosting: `https://channel-activity-customer.web.app`
+- Firebase project: `channel-activity-customer`
+- Firestore database: `(default)`, `asia-east1`, Firestore Native, Standard/free tier.
 
 ## Current Goal
-First deliverable is not a full smart health platform. It is:
 
-1. Public-facing LIFF-style package selection and booking MVP.
-2. Internal staff package/pricing tool preserved from the old React app.
-3. Admin same-day printable checklist view.
+Deliver the first usable CAC MVP:
 
-P2 queue routing, HIS integration, AI recommendations, and AI report translation are deferred.
+1. Public package selection and booking page.
+2. Internal package/pricing tool.
+3. Same-day booking/checklist view for nurses/case managers.
+4. Firestore persistence for bookings and eventually managed packages.
+5. LIFF integration next.
 
-## Important Files
+Deferred: HIS API, queue routing, station status tracking, AI recommendation, AI report translation.
 
-- `套餐code.txt`: original single-file React package/pricing app and source CSV data.
-- `CAC project.md`: prior discussion and project context.
-- `健檢中心三層數位系統 Implementation Plan v2.1（2026 下半年）.md`: current scoped implementation plan.
-- `cac-liff-app/`: current runnable Vite React MVP.
-- `cac-liff-app/src/App.jsx`: UI modes, booking modal, admin checklist view, old internal package tool.
-- `cac-liff-app/src/core.js`: CSV parser, pricing, public package filtering/highlights, booking payload, checklist logic.
-- `cac-liff-app/src/core.test.js`: regression tests for parser, pricing, booking, checklist, public package rules.
-- `cac-liff-app/src/firebase.js`: Firestore writes/reads with localStorage fallback.
-- `cac-liff-app/src/liff.js`: LIFF init and LINE profile handling.
+## Current Deployment State
 
-## How To Run
+Completed today:
 
-```bash
+- Firebase Web App created: `cac-liff-app`.
+- Hosting deployed and reachable at `https://channel-activity-customer.web.app`.
+- Firestore API enabled and `(default)` database created in `asia-east1`.
+- Firestore rules deployed.
+- Google Auth provider was enabled by user in Firebase Console.
+- A live Hosting hotfix was deployed directly to `dist` to fix garbled `????` labels in the top nav. Live bundle currently contains `員工登入` and no `????`.
+
+Important: source and live are not fully aligned right now. `src/App.jsx` was restored to a clean buildable source after an emergency hotfix attempt. The live site includes a patched bundle for `員工登入`, but source does not yet contain the clean staff-gating UI implementation. Do not run `npm run build && firebase deploy --only hosting` until staff gating is re-applied cleanly to source, or the live login/nav hotfix may be overwritten.
+
+Verified at end of session:
+
+```powershell
+npm test
+npm run build
+Invoke-WebRequest https://channel-activity-customer.web.app
+```
+
+Tests/build passed after restoring `src/App.jsx`; Hosting URL returned `200`.
+
+## Files Added/Changed Today
+
+Firebase/deploy config:
+
+- `cac-liff-app/firebase.json`: Hosting config and Firestore rules/index config.
+- `cac-liff-app/.firebaserc`: default project `channel-activity-customer`.
+- `cac-liff-app/firestore.rules`: MVP Firestore rules.
+- `cac-liff-app/firestore.indexes.json`: empty indexes config.
+- `cac-liff-app/.env.example`: Firebase/LIFF env template.
+- `cac-liff-app/package.json`: adds `deploy:hosting` script.
+- `cac-liff-app/.gitignore`: should ignore `node_modules`, `dist`, `.env`, `.env.local`, `.firebase/`.
+
+App logic:
+
+- `cac-liff-app/src/core.js`: public package classification, booking payload fields, checklist logic.
+- `cac-liff-app/src/core.test.js`: regression tests for public package rules and booking payload.
+- `cac-liff-app/src/firebase.js`: Firebase app init, Firestore booking/checklist helpers, Auth helper functions, managed package helper functions.
+- `cac-liff-app/src/liff.js`: LIFF message text fixed.
+
+## Firestore Rules Currently Deployed
+
+Collections:
+
+- `customers/{customerId}`
+  - public create allowed for booking flow.
+  - read allowed only when signed in.
+  - update/delete denied.
+- `bookings/{bookingId}`
+  - public create allowed for booking flow.
+  - read/update allowed only when signed in.
+  - delete denied.
+- `checklists/{bookingId}`
+  - public create allowed for booking flow.
+  - read/update allowed only when signed in.
+  - delete denied.
+- `managedPackages/{packageId}`
+  - public read allowed so public UI can load managed packages.
+  - create/update allowed only when signed in.
+  - delete denied; use soft delete.
+
+Security caveat: signed-in means any Google account unless allowlist/custom claims are added. Next hardening step is staff allowlist.
+
+## Data Persistence State
+
+Bookings:
+
+- Public booking writes to Firestore collections: `customers`, `bookings`, `checklists`.
+- `buildBookingPayload()` now includes `customerName`, `customerPhone`, and `idNumberMasked` in booking payload in source, so internal list/CSV can avoid joining `customers`.
+
+Packages:
+
+- Source has Firebase helper functions for `managedPackages`:
+  - `listManagedPackages()`
+  - `saveManagedPackage()`
+  - `deleteManagedPackage()` soft-deletes with `deleted: true`
+- Clean source wiring in `App.jsx` still needs to be re-applied. Current source internal package edits may still rely on localStorage. This is the next main implementation task.
+
+## Public Package Rules
+
+Current intended rules:
+
+- Public UI shows less detail than internal UI.
+- Single item prices are hidden from public UI.
+- Public cards show highlights first; `查看全部` expands full item list.
+- `甲狀腺` should be available under `一般` when it exists as an internal package.
+- `3500公教` and `4500公教` belong only to `公教`, not `一般`.
+- `7000婚前女` and `7200婚前男` belong to `婚前`, not `高階`.
+- High-end starts around `8000馬年` and above.
+- Enterprise/labor packages remain separate and should not be mixed into general public options until their data is ready.
+
+Highlight exclusions include low-attraction/basic items such as general exam, body fat, physician physical, IOP, UA, CBC/DC, liver/kidney basics, chest X-ray, lipids, fasting glucose, hepatitis antigen/antibody, and EKG.
+
+Gotcha: do not broadly match `/CT/i`; it misclassifies `Pulmonary Function Test` because `Function` contains `ct`. Use stricter CT/CTA matching.
+
+## Commands
+
+Local dev:
+
+```powershell
 cd cac-liff-app
 npm install
 npm run dev
 ```
 
-Local URL is usually `http://127.0.0.1:5173/`.
+Tests/build:
 
-## How To Test
-
-```bash
-cd cac-liff-app
+```powershell
 npm test
+npm run build
 ```
 
-`npm run build` works outside the Windows sandbox. Inside this agent sandbox it commonly fails with Vite `spawn EPERM`; that is an environment issue, not necessarily a code failure.
+Deploy Hosting after source is safe:
 
-## Current UI Modes
+```powershell
+npm run deploy:hosting
+```
 
-- `民眾方案`: simplified public package cards and booking entry.
-- `內部工具`: full internal package/pricing/quote workflow from the old app.
-- `當日清單`: date-filtered bookings and A4 print checklist.
+Deploy Firestore rules:
 
-## Public Package Rules Implemented
+```powershell
+firebase deploy --only firestore --project channel-activity-customer
+```
 
-Public UI intentionally shows less than internal UI.
+## LIFF Next Step
 
-Audience filter:
+LINE Developers:
 
-- `一般`: general packages only.
-- `高階`: high-end packages only, generally `8000馬年` and above or explicitly high-end names.
-- `公教`: public-servant packages only. `3500公教` and `4500公教` must not appear under `一般`.
-- `婚前`: premarital packages only. `7000婚前女` and `7200婚前男` must not appear under `高階` even if list price crosses the high-end threshold.
-- Enterprise group and labor packages are hidden from public UI for now.
+- Create LIFF app.
+- Endpoint URL: `https://channel-activity-customer.web.app`
+- Scope: at least `profile`; add `openid` later if ID token validation is needed.
+- Put LIFF ID into `cac-liff-app/.env.local` as `VITE_LIFF_ID=...`.
+- Rebuild and deploy Hosting only after source is aligned.
 
-Body filter currently keeps only:
+## Next Tasks For Tomorrow
 
-- `心血管`
-- `肺部`
-- `腦部`
-- `腸胃`
+1. Re-apply staff gating cleanly in `src/App.jsx` source:
+   - Top nav: public sees `民眾方案` + `員工登入` only.
+   - Signed-in staff sees `內部工具`, `當日清單`, and `登出`.
+   - Use `watchStaffAuth`, `signInStaff`, `signOutStaff` from `src/firebase.js`.
+   - Avoid editing generated `dist` directly except emergency hotfixes.
 
-Removed from public body filter: `基礎`, `抗老`, `全身`, `肝腹`, `甲狀腺`.
+2. Wire managed package persistence in source:
+   - Load `managedPackages` on app startup.
+   - Merge active managed packages into `userPackages/packageMeta`.
+   - Save internal package edits to Firestore.
+   - Soft-delete packages via `deleted: true`.
+   - Keep localStorage fallback only for local demo/offline.
 
-Hidden or non-public package columns:
+3. Internal booking list:
+   - Staff-only date filter reads Firestore `bookings`.
+   - Add CSV export from loaded bookings.
+   - Keep A4 checklist print.
 
-- Exact package name `甲狀腺` is hidden from public cards because it came from the CSV header but is not considered an internal package offering for public selection.
+4. Security hardening:
+   - Add staff allowlist or custom claims. Current rules trust any Google signed-in user.
+   - Consider separating public package reads from staff package writes.
 
-Public highlights exclude basic/low-attraction items:
+5. After source alignment:
+   - `npm test`
+   - `npm run build`
+   - `firebase deploy --only hosting,firestore --project channel-activity-customer`
+   - Verify live JS has no `????` and includes `員工登入`.
 
-- 一般檢查
-- 體脂肪檢測
-- 醫師理學
-- 氣壓式眼壓測定
-- 尿液常規檢查
-- 全血計數全套&白血球分類
-- 肝膽功能全套
-- 腎功能全套
-- 胸部X光
-- 血脂肪全套
-- 飯前血糖
-- B、C型肝炎抗原抗體
-- 靜態心電圖 / EKG
+## Do Not Forget
 
-Grouped public highlights:
-
-- Tumor markers -> `腫瘤標記篩檢`
-- Ultrasound -> `超音波檢查`
-- CT/CTA -> `CT/CTA 影像檢查`
-- MRI -> `MRI 影像檢查`
-- Endoscopy -> `腸胃內視鏡`
-- Cardio tests -> `心血管功能檢查`
-- Thyroid tests -> `甲狀腺檢查`
-- Hormone/nutrition -> `賀爾蒙/營養功能`
-- Bone density -> `骨質密度檢查`
-
-Important gotcha: do not use broad `/CT/i` matching. It misclassified `Pulmonary Function Test` because `Function` contains `ct`. Current logic uses stricter CT matching.
-
-## Public Detail Behavior
-
-On public cards:
-
-- Initial `包含項目 / 檢查意義` shows major display items only.
-- `查看全部` expands to all package items, like the previous version.
-- Public cards never show single-item prices.
-- Internal mode still shows full item/pricing details.
-
-## Booking And Checklist
-
-Booking modal collects:
-
-- name
-- birthday/id field
-- phone
-- channel
-- appointment date
-- notes
-
-Write path:
-
-- With Firebase env vars: Firestore `customers`, `bookings`, `checklists`.
-- Without Firebase env vars: localStorage fallback for demo/testing.
-
-Checklist generation:
-
-- `generateChecklist()` groups `selectedItems` by `STATION_MAP` in `src/core.js`.
-- `remark` items become warnings.
-- `outsource` items go to outsource area.
-
-## Known Deferred Work
-
-- Real LINE LIFF production setup.
-- Firebase project and `.env.local`.
-- Cloud Scheduler / Cloud Function D-1 LINE push notification.
-- Google Sheets or CSV export for health-manager transition workflow.
-- HIS API.
-- Queue routing and station completion tracking.
-- AI translation/recommendation.
-
-## Development Notes
-
-- Prefer changing `src/core.js` for package classification bugs; UI should consume normalized card data.
-- Keep public package logic covered in `src/core.test.js` before changing rules.
-- Do not expose enterprise/labor group packages in public UI until their separate package data is ready.
-- Do not add public packages that internal staff cannot select.
-- Avoid new dependencies unless clearly needed.
+- `.env.local` contains real Firebase config and should not be committed.
+- `dist/` and `.firebase/` should not be committed.
+- The live site currently has a bundle hotfix that is not represented by source. Fix source before the next normal deploy.

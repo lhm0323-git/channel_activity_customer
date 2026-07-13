@@ -1,4 +1,4 @@
-export async function initLiffProfile() {
+﻿export async function initLiffProfile() {
   const liffId = import.meta.env.VITE_LIFF_ID;
   if (!liffId) return { status: "SKIPPED", profile: null, message: "VITE_LIFF_ID 未設定，使用一般瀏覽器模式" };
 

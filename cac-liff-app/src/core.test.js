@@ -1,4 +1,4 @@
-﻿import assert from "node:assert/strict";
+import assert from "node:assert/strict";
 import {
   buildBookingPayload,
   buildChecklistPayload,
@@ -61,6 +61,8 @@ run("buildBookingPayload preserves selected item fields and manual final price",
   });
 
   assert.equal(result.customer.idNumberMasked, "A1***89");
+  assert.equal(result.booking.customerName, "王小明");
+  assert.equal(result.booking.customerPhone, "0912345678");
   assert.equal(result.booking.finalPrice, 999);
   assert.deepEqual(Object.keys(result.booking.selectedItems[0]), ["id", "name", "enName", "code", "category", "price", "remark", "outsource"]);
 });
@@ -157,13 +159,14 @@ run("public highlights exclude static EKG", () => {
   assert.deepEqual(highlights.map((item) => item.label), ["超音波檢查"]);
 });
 
-run("public package cards hide non-package thyroid column", () => {
+run("public package cards include thyroid package as general", () => {
   const items = [
     { id: 1, category: "甲狀腺功能檢驗", name: "TSH", enName: "TSH", price: 288 },
     { id: 2, category: "特殊功能檢查", name: "胃幽門螺旋桿菌", enName: "H.pylori", price: 450 },
   ];
   const cards = buildPublicPackageCards({ "甲狀腺": [1, 2], "3500基礎": [1] }, items);
-  assert.deepEqual(cards.map((card) => card.name), ["3500基礎"]);
+  assert.deepEqual(cards.map((card) => card.name), ["甲狀腺", "3500基礎"]);
+  assert.deepEqual(cards[0].tags.audience, ["一般"]);
 });
 run("public package cards keep civil servant packages out of general audience", () => {
   const items = [{ id: 1, category: "超音波", name: "腹部超音波", enName: "Abdomen ultrasound", price: 3500 }];
@@ -177,6 +180,23 @@ run("public package cards classify premarital packages only as premarital", () =
   const cards = buildPublicPackageCards({ "7000婚前女": [1] }, items);
   assert.deepEqual(cards[0].tags.audience, ["婚前"]);
   assert.equal(filterPublicPackageCards(cards, { audience: "高階", sex: "不限", bodyPart: "全部" }).length, 0);
+});
+run("public package cards use saved package metadata", () => {
+  const items = [{ id: 1, category: "影像醫學", name: "低劑量肺部電腦斷層", enName: "LowDose LungCT", price: 7200 }];
+  const cards = buildPublicPackageCards(
+    { "A公司團檢": [1] },
+    items,
+    { "A公司團檢": { audience: "公教", finalPrice: 8000 } }
+  );
+  assert.equal(cards[0].price, 8000);
+  assert.equal(cards[0].channel, "CORPORATE");
+  assert.deepEqual(cards[0].tags.audience, ["公教"]);
+});
+run("public package cards derive channel from audience", () => {
+  const items = [{ id: 1, category: "影像醫學", name: "低劑量肺部電腦斷層", enName: "LowDose LungCT", price: 7200 }];
+  const cards = buildPublicPackageCards({ "8000馬年": [1] }, items);
+  assert.deepEqual(cards[0].tags.audience, ["高階"]);
+  assert.equal(cards[0].channel, "HIGH_END");
 });
 
 

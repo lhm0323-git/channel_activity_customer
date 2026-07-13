@@ -1,0 +1,32 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    match /customers/{customerId} {
+      allow create: if request.resource.data.keys().hasAll(['name', 'phone', 'updatedAt']);
+      allow read: if signedIn();
+      allow update, delete: if false;
+    }
+
+    match /bookings/{bookingId} {
+      allow create: if request.resource.data.keys().hasAll(['customerId', 'channel', 'appointmentDate', 'packageName', 'selectedItems', 'status', 'createdAt']);
+      allow read, update: if signedIn();
+      allow delete: if false;
+    }
+
+    match /checklists/{bookingId} {
+      allow create: if request.resource.data.keys().hasAll(['bookingId', 'stationGroups', 'generatedAt']);
+      allow read, update: if signedIn();
+      allow delete: if false;
+    }
+
+    match /managedPackages/{packageId} {
+      allow read: if true;
+      allow create, update: if signedIn();
+      allow delete: if false;
+    }
+  }
+}

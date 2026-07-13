@@ -1,9 +1,15 @@
-﻿export const CHANNELS = [
+export const CHANNELS = [
   { value: "HIGH_END", label: "高階個人" },
   { value: "CORPORATE", label: "企業團體" },
   { value: "LABOR", label: "勞工體檢" },
   { value: "GENERAL", label: "一般預防" },
 ];
+
+export function audienceToChannel(audience) {
+  if (audience === "高階") return "HIGH_END";
+  if (audience === "公教") return "CORPORATE";
+  return "GENERAL";
+}
 
 export const STATION_MAP = {
   一般檢查: { station: "A站 一般檢查", order: 1, duration: 10 },
@@ -142,7 +148,7 @@ export function calculatePricing(items) {
 
 export const PUBLIC_AUDIENCES = ["全部", "一般", "高階", "公教", "婚前"];
 export const PUBLIC_SEXES = ["不限", "男", "女"];
-export const PUBLIC_BODY_PARTS = ["全部", "心血管", "肺部", "腦部", "腸胃"];
+export const PUBLIC_BODY_PARTS = ["全部", "心血管", "肺部", "腦部", "腸胃", "甲狀腺"];
 
 export const PUBLIC_EXCLUDED_HIGHLIGHT_NAMES = new Set([
   "一般檢查",
@@ -160,7 +166,7 @@ export const PUBLIC_EXCLUDED_HIGHLIGHT_NAMES = new Set([
 ]);
 
 function getPackageTier(packageName, listPrice) {
-  if (/企業|勞工/.test(packageName) || packageName === "甲狀腺") return "HIDDEN";
+  if (/企業|勞工/.test(packageName)) return "HIDDEN";
   if (/馬年|12000|12600|16000|23800|32000|47000|CT|MRI|癌篩|心肺|肺腦|全腹|抗老/.test(packageName) || listPrice >= 8000) return "HIGH_END";
   return "GENERAL";
 }
@@ -232,19 +238,23 @@ export function getPublicPackageDisplayItems(items) {
     .sort((a, b) => Number(b.price || 0) - Number(a.price || 0));
 }
 
-export function buildPublicPackageCards(packages, items) {
+export function buildPublicPackageCards(packages, items, packageMeta = {}) {
   return Object.entries(packages)
     .map(([name, ids]) => {
       const packageItems = items.filter((item) => ids.includes(item.id));
       const pricing = calculatePricing(packageItems);
-      const tags = inferPublicPackageTags(name, packageItems, pricing.listPrice);
+      const meta = packageMeta[name] || {};
+      const inferredTags = inferPublicPackageTags(name, packageItems, pricing.listPrice);
+      const tags = meta.audience ? { ...inferredTags, audience: [meta.audience] } : inferredTags;
+      const audience = tags.audience[0] || "一般";
       const categories = [...new Set(packageItems.map((item) => item.category).filter(Boolean))];
       return {
         name,
         itemIds: ids,
         items: packageItems,
-        price: pricing.suggestedPrice,
+        price: Number(meta.finalPrice) || pricing.suggestedPrice,
         listPrice: pricing.listPrice,
+        channel: audienceToChannel(audience),
         tags,
         categories,
         highlights: getPublicPackageHighlights(packageItems),
@@ -308,6 +318,9 @@ export function buildBookingPayload({ formData, lineProfile, packageName, select
     },
     booking: {
       customerId,
+      customerName: trimmedName,
+      customerPhone: trimmedPhone,
+      idNumberMasked: maskId(idNumber),
       lineUserId,
       lineDisplayName: lineProfile?.displayName || "",
       channel,
@@ -344,6 +357,12 @@ export function buildChecklistPayload(booking) {
     outsourceItems,
   };
 }
+
+
+
+
+
+
 
 
 
