@@ -11,6 +11,11 @@ export function audienceToChannel(audience) {
   return "GENERAL";
 }
 
+export function filterBookingsByChannel(bookings, channel = "ALL") {
+  if (!channel || channel === "ALL") return bookings;
+  return bookings.filter((booking) => booking.channel === channel);
+}
+
 export const STATION_MAP = {
   一般檢查: { station: "A站 一般檢查", order: 1, duration: 10 },
   理學檢查: { station: "A站 一般檢查", order: 1, duration: 15 },
@@ -185,9 +190,17 @@ export function inferPublicPackageTags(packageName, items = [], listPrice = 0) {
   if (/男|攝護腺|前列腺|PSA|PHI/.test(text) && sex !== "女") sex = "男";
 
   const bodyParts = new Set();
-  if (/心|冠狀|血管|EKG|ABI|PWV|Troponin|BNP/.test(text)) bodyParts.add("心血管");
-  if (/肺|胸|CXR|LowDose|Pulmonary/.test(text)) bodyParts.add("肺部");
-  if (/腦|Brain|頸/.test(text)) bodyParts.add("腦部");
+  const hasMeaningfulCardio = items.some((item) => {
+    const itemText = `${item.category || ""} ${item.name || ""} ${item.enName || ""}`;
+    return !/\u5fc3\u96fb\u5716|EKG|ECG/i.test(itemText) && /\u5fc3|\u51a0\u72c0|\u8840\u7ba1|Cardiac|Coronary|Troponin|BNP/i.test(itemText);
+  });
+  const hasMeaningfulLung = items.some((item) => {
+    const itemText = `${item.category || ""} ${item.name || ""} ${item.enName || ""}`;
+    return !/\u80f8\u90e8\s*X\s*\u5149|CXR|Chest\s*X-?ray/i.test(itemText) && /\u80ba|LowDose|Lung|Pulmonary/i.test(itemText);
+  });
+  if (hasMeaningfulCardio) bodyParts.add("\u5fc3\u8840\u7ba1");
+  if (hasMeaningfulLung) bodyParts.add("\u80ba\u90e8");
+  if (items.some((item) => /Brain|腦(?!斷層)/i.test(`${item.name || ""} ${item.enName || ""}`) && /MRI|CT|CTA|電腦斷層|磁振/i.test(`${item.name || ""} ${item.enName || ""}`))) bodyParts.add("腦部");
   if (/胃|腸|糞便|FIT|Panendoscopy|Colonoscopy/.test(text)) bodyParts.add("腸胃");
   if (/甲狀腺|Thyroid|TSH|Free T4/.test(text)) bodyParts.add("甲狀腺");
 
@@ -264,6 +277,66 @@ export function buildPublicPackageCards(packages, items, packageMeta = {}) {
     .filter((card) => card.tags.tier !== "HIDDEN");
 }
 
+
+export const PUBLIC_COMPARISON_ROWS = [
+  { key: "price", label: "\u50f9\u683c", labelEn: "Price" },
+  { key: "highlights", label: "\u4e3b\u8981\u4eae\u9ede", labelEn: "Highlights" },
+  { key: "imaging", label: "CT / MRI \u5f71\u50cf", labelEn: "CT / MRI imaging" },
+  { key: "ultrasound", label: "\u8d85\u97f3\u6ce2", labelEn: "Ultrasound" },
+  { key: "endoscopy", label: "\u80c3\u8178\u93e1", labelEn: "Endoscopy" },
+  { key: "cardio", label: "\u5fc3\u8840\u7ba1\u91cd\u9ede", labelEn: "Cardiovascular focus" },
+  { key: "thyroidHormone", label: "\u7532\u72c0\u817a / \u6297\u8001", labelEn: "Thyroid / anti-aging" },
+];
+
+const COMPARISON_PATTERNS = {
+  imaging: /MRI|CTA|LungCT|\bCT\b|Brain MRI|Calcium Score|\u96fb\u8166\u65b7\u5c64|\u78c1\u632f/i,
+  ultrasound: /ultrasound|\u8d85\u97f3\u6ce2/i,
+  endoscopy: /Panendoscopy|Colonoscopy|\u80c3\u93e1|\u8178\u93e1/i,
+  cardio: /Cardiac|Coronary|Calcium Score|Troponin|BNP|\u5fc3\u81df|\u5fc3\u8840\u7ba1|\u51a0\u72c0/i,
+  thyroidHormone: /Thyroid|TSH|Free T4|Vitamin|DHEA|Testosterone|Estradiol|IGF|PTH|Hormone|\u7532\u72c0\u817a|\u8377\u723e\u8499|\u6297\u8001/i,
+};
+
+function itemText(item) {
+  return `${item.category || ""} ${item.name || ""} ${item.enName || ""}`;
+}
+
+function shouldIncludeComparisonItem(item, key, pattern) {
+  const text = itemText(item);
+  if (key === "cardio" && /\u5fc3\u96fb\u5716|EKG|ECG|ABI|PWV/i.test(text)) return false;
+  return pattern.test(text);
+}
+
+function itemLabel(item, lang = "zh") {
+  return lang === "en" ? item.enName || item.name || "" : item.name || item.enName || "";
+}
+
+export function getPublicPackageComparisonValue(card, key, lang = "zh") {
+  if (key === "price") return `NT$ ${Number(card.price || 0).toLocaleString()}`;
+  if (key === "highlights") return (card.highlights || []).slice(0, 3).map((item) => item.label).join("\u3001") || "-";
+  const pattern = COMPARISON_PATTERNS[key];
+  if (!pattern) return "-";
+  const labels = [...new Set((card.items || []).filter((item) => shouldIncludeComparisonItem(item, key, pattern)).map((item) => itemLabel(item, lang)).filter(Boolean))];
+  if (!labels.length) return "-";
+  return labels.slice(0, 3).join("\u3001") + (labels.length > 3 ? ` +${labels.length - 3}` : "");
+}
+export function sortPublicComparisonCards(cards, sort, lang = "zh") {
+  if (!sort?.key) return cards;
+  const direction = sort.direction === "desc" ? -1 : 1;
+  const valueFor = (card) => {
+    if (sort.key === "package") return card.name || "";
+    if (sort.key === "price") return Number(card.price || 0);
+    const value = getPublicPackageComparisonValue(card, sort.key, lang);
+    return value === "-" ? "\uffff" : value;
+  };
+  return [...cards].sort((a, b) => {
+    const left = valueFor(a);
+    const right = valueFor(b);
+    const result = typeof left === "number" && typeof right === "number"
+      ? left - right
+      : String(left).localeCompare(String(right), lang === "en" ? "en" : "zh-Hant");
+    return result * direction;
+  });
+}
 export function filterPublicPackageCards(cards, filters) {
   return cards.filter((card) => {
     const audienceOk = !filters.audience || filters.audience === "全部" || card.tags.audience.includes(filters.audience);
@@ -293,6 +366,14 @@ export function maskId(value) {
   return `${text.slice(0, 2)}***${text.slice(-2)}`;
 }
 
+export function makeFirestoreSafeId(value) {
+  return String(value || "")
+    .trim()
+    .replace(/[\\/]/g, "-")
+    .replace(/[.#$[\]]/g, "_")
+    .slice(0, 120);
+}
+
 export function buildBookingPayload({ formData, lineProfile, packageName, selectedItems, listPrice, discountRate, finalPrice }) {
   const trimmedName = String(formData.name || "").trim();
   const trimmedPhone = String(formData.phone || "").trim();
@@ -306,7 +387,7 @@ export function buildBookingPayload({ formData, lineProfile, packageName, select
   if (!selectedItems.length) throw new Error("請先選擇至少一個檢查項目");
 
   const lineUserId = lineProfile?.userId || null;
-  const customerId = lineUserId || `${trimmedPhone}-${idNumber || trimmedName}`;
+  const customerId = makeFirestoreSafeId(lineUserId || `${trimmedPhone}-${idNumber || trimmedName}`);
 
   return {
     customer: {
@@ -374,3 +455,60 @@ export function buildChecklistPayload(booking) {
 
 
 
+
+export const BOOKING_CSV_HEADERS = [
+  "name",
+  "phone",
+  "idNumber",
+  "appointmentDate",
+  "channel",
+  "packageName",
+  "finalPrice",
+  "status",
+  "notes",
+];
+
+function csvCell(value) {
+  const text = String(value ?? "");
+  return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+export function exportBookingsCsv(bookings) {
+  const rows = bookings.map((booking) => [
+    booking.customerName || booking.name || "",
+    booking.customerPhone || booking.phone || "",
+    booking.idNumber || booking.idNumberMasked || "",
+    booking.appointmentDate || "",
+    booking.channel || "",
+    booking.packageName || "",
+    booking.finalPrice || "",
+    booking.status || "",
+    booking.notes || "",
+  ]);
+  return [BOOKING_CSV_HEADERS, ...rows].map((row) => row.map(csvCell).join(",")).join("\n");
+}
+
+export function parseBookingImportCsv(text) {
+  const rows = parseCSV(text).filter((row) => row.some((cell) => String(cell || "").trim()));
+  if (rows.length < 2) return [];
+  const headers = rows[0].map((header) => String(header || "").trim());
+  const indexOf = (name) => headers.indexOf(name);
+  return rows.slice(1).map((row, rowIndex) => {
+    const value = (name) => {
+      const index = indexOf(name);
+      return index >= 0 ? String(row[index] || "").trim() : "";
+    };
+    return {
+      rowNumber: rowIndex + 2,
+      name: value("name"),
+      phone: value("phone"),
+      idNumber: value("idNumber"),
+      appointmentDate: value("appointmentDate"),
+      channel: value("channel") || "GENERAL",
+      packageName: value("packageName"),
+      finalPrice: Number(value("finalPrice").replace(/,/g, "")) || 0,
+      status: value("status") || "BOOKED",
+      notes: value("notes"),
+    };
+  });
+}

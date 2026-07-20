@@ -5,27 +5,66 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function isAdmin() {
+      return signedIn() && request.auth.token.email == 'lhm0323@gmail.com';
+    }
+
+    function isStaff() {
+      return isAdmin() || (
+        signedIn() &&
+        request.auth.token.email is string &&
+        exists(/databases/$(database)/documents/staffUsers/$(request.auth.token.email))
+      );
+    }
+
+    function ownsResource() {
+      return signedIn() && resource.data.ownerUid == request.auth.uid;
+    }
+
+    function ownsNewResource() {
+      return signedIn() && request.resource.data.ownerUid == request.auth.uid;
+    }
+
     match /customers/{customerId} {
-      allow create: if request.resource.data.keys().hasAll(['name', 'phone', 'updatedAt']);
-      allow read: if signedIn();
-      allow update, delete: if false;
+      allow create, update: if ownsNewResource();
+      allow read: if isStaff() || ownsResource();
+      allow delete: if false;
     }
 
     match /bookings/{bookingId} {
-      allow create: if request.resource.data.keys().hasAll(['customerId', 'channel', 'appointmentDate', 'packageName', 'selectedItems', 'status', 'createdAt']);
-      allow read, update: if signedIn();
+      allow create: if ownsNewResource()
+        && request.resource.data.keys().hasAll(['ownerUid', 'customerId', 'channel', 'appointmentDate', 'packageName', 'selectedItems', 'status', 'createdAt']);
+      allow read: if isStaff() || ownsResource();
+      allow update: if isStaff();
+      allow delete: if false;
+    }
+
+    match /bookingChangeRequests/{requestId} {
+      allow create: if ownsNewResource()
+        && request.resource.data.status == 'pending'
+        && request.resource.data.keys().hasAll(['ownerUid', 'bookingId', 'requestedAppointmentDate', 'status', 'createdAt']);
+      allow read: if isStaff() || ownsResource();
+      allow update: if isStaff();
       allow delete: if false;
     }
 
     match /checklists/{bookingId} {
-      allow create: if request.resource.data.keys().hasAll(['bookingId', 'stationGroups', 'generatedAt']);
-      allow read, update: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.keys().hasAll(['bookingId', 'stationGroups', 'generatedAt'])
+        && get(/databases/$(database)/documents/bookings/$(bookingId)).data.ownerUid == request.auth.uid;
+      allow read, update: if isStaff();
       allow delete: if false;
     }
 
     match /managedPackages/{packageId} {
       allow read: if true;
-      allow create, update: if signedIn();
+      allow create, update: if isStaff();
+      allow delete: if false;
+    }
+
+    match /staffUsers/{email} {
+      allow read: if isStaff();
+      allow create, update: if isAdmin();
       allow delete: if false;
     }
   }

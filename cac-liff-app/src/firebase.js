@@ -3,9 +3,10 @@ import {
   addDoc,
   collection,
   doc,
+  getDoc,
   getDocs,
   getFirestore,
-  orderBy,
+  onSnapshot,
   query,
   serverTimestamp,
   setDoc,
@@ -16,9 +17,11 @@ import {
   GoogleAuthProvider,
   getAuth,
   onAuthStateChanged,
+  signInAnonymously,
   signInWithPopup,
   signOut,
 } from "firebase/auth";
+import { filterBookingsByChannel } from "./core.js";
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -50,6 +53,13 @@ function saveLocalBooking(payload) {
   return { bookingId, localOnly: true };
 }
 
+async function ensurePublicUser() {
+  if (!auth) return null;
+  if (auth.currentUser) return auth.currentUser;
+  const result = await signInAnonymously(auth);
+  return result.user;
+}
+
 export function watchStaffAuth(callback) {
   if (!auth) {
     callback(null);
@@ -59,7 +69,7 @@ export function watchStaffAuth(callback) {
 }
 
 export async function signInStaff() {
-  if (!auth) throw new Error("Firebase 尚未設定，無法登入內部工具");
+  if (!auth) throw new Error("Firebase 尚未設定，無法登入員工帳號");
   const result = await signInWithPopup(auth, provider);
   return result.user;
 }
@@ -71,15 +81,17 @@ export async function signOutStaff() {
 export async function saveBooking(payload) {
   if (!db) return saveLocalBooking(payload);
 
+  const user = await ensurePublicUser();
   const now = serverTimestamp();
   await setDoc(
     doc(db, "customers", payload.customer.customerId),
-    { ...payload.customer, createdAt: now, updatedAt: now },
+    { ...payload.customer, ownerUid: user.uid, createdAt: now, updatedAt: now },
     { merge: true }
   );
 
   const bookingRef = await addDoc(collection(db, "bookings"), {
     ...payload.booking,
+    ownerUid: user.uid,
     createdAt: now,
     updatedAt: now,
   });
@@ -106,17 +118,96 @@ export async function markChecklistPrinted(bookingId) {
   await updateDoc(doc(db, "checklists", bookingId), { printedAt: serverTimestamp() });
 }
 
-export async function listBookingsByDate(appointmentDate) {
+function bookingCreatedAtMs(booking) {
+  const value = booking.createdAt;
+  if (value?.toMillis) return value.toMillis();
+  return Date.parse(value || "") || 0;
+}
+
+function sortBookings(bookings) {
+  return [...bookings].sort((a, b) => bookingCreatedAtMs(a) - bookingCreatedAtMs(b));
+}
+
+export async function listBookingsByDate(appointmentDate, channel = "ALL") {
   if (!appointmentDate) return [];
   if (!db) {
-    return JSON.parse(localStorage.getItem("cac_local_bookings") || "[]").filter(
+    const bookings = JSON.parse(localStorage.getItem("cac_local_bookings") || "[]").filter(
       (booking) => booking.appointmentDate === appointmentDate
     );
+    return sortBookings(filterBookingsByChannel(bookings, channel));
   }
 
-  const q = query(collection(db, "bookings"), where("appointmentDate", "==", appointmentDate), orderBy("createdAt", "asc"));
+  const q = query(collection(db, "bookings"), where("appointmentDate", "==", appointmentDate));
   const snapshot = await getDocs(q);
-  return snapshot.docs.map((docSnap) => ({ bookingId: docSnap.id, ...docSnap.data() }));
+  const bookings = snapshot.docs.map((docSnap) => ({ bookingId: docSnap.id, ...docSnap.data() }));
+  return sortBookings(filterBookingsByChannel(bookings, channel));
+}
+
+export async function listMyBookings() {
+  if (!db) return JSON.parse(localStorage.getItem("cac_local_bookings") || "[]");
+  const user = await ensurePublicUser();
+  const q = query(collection(db, "bookings"), where("ownerUid", "==", user.uid));
+  const snapshot = await getDocs(q);
+  return sortBookings(snapshot.docs.map((docSnap) => ({ bookingId: docSnap.id, ...docSnap.data() })));
+}
+
+export async function requestBookingChange(change) {
+  if (!db) return { localOnly: true };
+  const user = await ensurePublicUser();
+  const bookingRef = doc(db, "bookings", change.bookingId);
+  const bookingSnap = await getDoc(bookingRef);
+  if (!bookingSnap.exists()) throw new Error("Booking not found");
+  const booking = bookingSnap.data();
+  if (booking.ownerUid !== user.uid) throw new Error("You can only change your own booking");
+  const requestRef = await addDoc(collection(db, "bookingChangeRequests"), {
+    ...change,
+    ownerUid: user.uid,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+  return { requestId: requestRef.id, localOnly: false };
+}
+
+export async function listPendingChangeRequests() {
+  if (!db) return [];
+  const q = query(collection(db, "bookingChangeRequests"), where("status", "==", "pending"));
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map((docSnap) => ({ requestId: docSnap.id, ...docSnap.data() }));
+}
+
+export function watchPendingChangeRequests(callback) {
+  if (!db) {
+    callback([]);
+    return () => {};
+  }
+  const q = query(collection(db, "bookingChangeRequests"), where("status", "==", "pending"));
+  return onSnapshot(q, (snapshot) => {
+    callback(snapshot.docs.map((docSnap) => ({ requestId: docSnap.id, ...docSnap.data() })));
+  });
+}
+
+export async function confirmBooking(bookingId) {
+  if (!db) return;
+  await updateDoc(doc(db, "bookings", bookingId), {
+    status: "CONFIRMED",
+    confirmedAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+}
+
+export async function approveChangeRequest(request) {
+  if (!db) return;
+  const now = serverTimestamp();
+  await updateDoc(doc(db, "bookings", request.bookingId), {
+    appointmentDate: request.requestedAppointmentDate,
+    status: "CONFIRMED",
+    updatedAt: now,
+  });
+  await updateDoc(doc(db, "bookingChangeRequests", request.requestId), {
+    status: "approved",
+    approvedAt: now,
+    updatedAt: now,
+  });
 }
 
 export async function listManagedPackages() {
@@ -125,12 +216,13 @@ export async function listManagedPackages() {
   return snapshot.docs.map((docSnap) => ({ docId: docSnap.id, ...docSnap.data() }));
 }
 
-export async function saveManagedPackage({ name, itemIds, audience, finalPrice }) {
+export async function saveManagedPackage({ name, itemIds, audience, bodyParts = [], finalPrice }) {
   if (!db) return { localOnly: true };
   await setDoc(doc(db, "managedPackages", packageDocId(name)), {
     name,
     itemIds,
     audience,
+    bodyParts,
     finalPrice: Number(finalPrice) || 0,
     deleted: false,
     updatedAt: serverTimestamp(),

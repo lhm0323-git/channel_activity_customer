@@ -1,4 +1,4 @@
-﻿import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
   Search,
   Plus,
@@ -32,21 +32,178 @@ import {
   PUBLIC_AUDIENCES,
   PUBLIC_BODY_PARTS,
   PUBLIC_SEXES,
+  PUBLIC_COMPARISON_ROWS,
   buildBookingPayload,
+  calculatePricing,
   buildPublicPackageCards,
   buildChecklistPayload,
+  exportBookingsCsv,
   filterPublicPackageCards,
   generateChecklist,
+  getPublicPackageComparisonValue,
+  sortPublicComparisonCards,
+  parseBookingImportCsv,
+  parseHealthCsv,
 } from "./core.js";
 import { initLiffProfile } from "./liff.js";
 import {
+  approveChangeRequest,
+  confirmBooking,
+  deleteManagedPackage,
   listBookingsByDate,
+  listManagedPackages,
+  listMyBookings,
   markChecklistPrinted,
   saveBooking,
+  requestBookingChange,
+  saveManagedPackage,
   saveChecklist,
+  signInStaff,
+  signOutStaff,
+  watchPendingChangeRequests,
+  watchStaffAuth,
 } from "./firebase.js";
 
-// 更新後的資料結構 (包含您提供的最新影像醫學資料)
+const STAFF_EMAILS = String(import.meta.env.VITE_STAFF_EMAILS || "")
+  .split(",")
+  .map((email) => email.trim().toLowerCase())
+  .filter(Boolean);
+
+function canUseStaffTools(user) {
+  if (!user?.email) return false;
+  if (STAFF_EMAILS.length === 0) return import.meta.env.DEV;
+  return STAFF_EMAILS.includes(user.email.toLowerCase());
+}
+
+const APP_TITLE = "\u5c4f\u57fa\u5065\u6aa2\u5957\u9910\u9810\u7d04";
+const TEXT = {
+  zh: {
+    langToggle: "English",
+    publicTab: "\u6c11\u773e\u65b9\u6848",
+    staffTab: "\u5167\u90e8\u5de5\u5177",
+    adminTab: "\u7576\u65e5\u6e05\u55ae",
+    staffLogin: "\u54e1\u5de5\u767b\u5165",
+    logout: "\u767b\u51fa",
+    publicTitle: "\u9078\u64c7\u9069\u5408\u7684\u5065\u6aa2\u65b9\u6848",
+    publicSubtitle: "\u4f9d\u8eab\u5206\u5225\u3001\u6027\u5225\u8207\u60f3\u4e86\u89e3\u7684\u6aa2\u67e5\u90e8\u4f4d\u7be9\u9078\u3002\u9019\u88e1\u53ea\u986f\u793a\u5957\u9910\u8cc7\u8a0a\uff0c\u4e0d\u63d0\u4f9b\u55ae\u9805\u52a0\u9078\u3002",
+    audience: "\u8eab\u5206\u5225",
+    sex: "\u6027\u5225",
+    bodyPart: "\u6aa2\u67e5\u90e8\u4f4d",
+    packagePrice: "\u5957\u9910\u7e3d\u50f9",
+    highlights: "\u4e3b\u8981\u9805\u76ee",
+    included: "\u5305\u542b\u9805\u76ee / \u6aa2\u67e5\u610f\u7fa9",
+    collapse: "\u6536\u5408\u9805\u76ee",
+    viewAllPrefix: "\u67e5\u770b\u5168\u90e8",
+    itemUnit: "\u9805",
+    choose: "\u9078\u64c7\u6b64\u65b9\u6848\u4e26\u9810\u7d04",
+    noPackages: "\u6c92\u6709\u7b26\u5408\u689d\u4ef6\u7684\u5957\u9910\uff0c\u8acb\u653e\u5bec\u7be9\u9078\u689d\u4ef6\u3002",
+    bookingTitle: "\u9001\u51fa\u5065\u6aa2\u9810\u7d04",
+    name: "\u59d3\u540d",
+    idNumber: "\u8eab\u5206\u8b49/\u8b77\u7167\u865f\u78bc",
+    idNumberHelp: "\u672c\u570b\u6c11\u773e\u586b\u8eab\u5206\u8b49\uff1b\u5916\u7c4d\u9867\u5ba2\u53ef\u586b\u8b77\u7167\u6216\u5c45\u7559\u8b49\u3002\u73fe\u5834\u4ecd\u6703\u4ee5\u5065\u4fdd\u5361\u6216\u8b49\u4ef6\u6838\u5c0d\u3002",
+    phone: "\u96fb\u8a71",
+    appointmentDate: "\u5e0c\u671b\u65e5\u671f",
+    notes: "\u5099\u8a3b",
+    submit: "\u78ba\u8a8d\u9001\u51fa",
+    closeBooking: "\u95dc\u9589\u9810\u7d04\u8996\u7a97",
+  },
+  en: {
+    langToggle: "\u4e2d\u6587",
+    publicTab: "Packages",
+    staffTab: "Staff tools",
+    adminTab: "Daily list",
+    staffLogin: "Staff login",
+    logout: "Logout",
+    publicTitle: "Choose a Health Check Package",
+    publicSubtitle: "Filter by audience, sex, and body area. Package information only; add-on items are hidden here.",
+    audience: "Audience",
+    sex: "Sex",
+    bodyPart: "Body area",
+    packagePrice: "Package price",
+    highlights: "Highlights",
+    included: "Included items / Purpose",
+    collapse: "Collapse items",
+    viewAllPrefix: "View all",
+    itemUnit: "items",
+    choose: "Choose this package and book",
+    noPackages: "No matching packages. Please broaden the filters.",
+    bookingTitle: "Submit Health Check Booking",
+    name: "Name",
+    idNumber: "ID / Passport number",
+    idNumberHelp: "Taiwan residents may enter national ID. Foreign guests may enter passport or ARC number; staff will verify on site.",
+    phone: "Phone",
+    appointmentDate: "Preferred date",
+    notes: "Notes",
+    submit: "Submit booking",
+    closeBooking: "Close booking dialog",
+  },
+};
+const OPTION_LABELS_EN = {
+  "\u5168\u90e8": "All",
+  "\u4e00\u822c": "General",
+  "\u9ad8\u968e": "Premium",
+  "\u516c\u6559": "Civil servant",
+  "\u5a5a\u524d": "Premarital",
+  "\u4e0d\u9650": "Any",
+  "\u7537": "Male",
+  "\u5973": "Female",
+  "\u5fc3\u8840\u7ba1": "Cardiovascular",
+  "\u80ba\u90e8": "Lung",
+  "\u8166\u90e8": "Brain",
+  "\u8178\u80c3": "GI",
+  "\u7532\u72c0\u817a": "Thyroid",
+  "\u5abd\u6027": "Women",
+};
+function optionLabel(value, lang) {
+  return lang === "en" ? OPTION_LABELS_EN[value] || value : value;
+}
+
+function inferPackageAudienceName(name) {
+  if (new RegExp("\\u516c\\u6559").test(name)) return "\u516c\u6559";
+  if (new RegExp("\\u5a5a\\u524d").test(name)) return "\u5a5a\u524d";
+  if (new RegExp("8000|12000|12600|16000|23800|32000|47000|\\u80ba|\\u8166|\\u5fc3\\u8840\\u7ba1").test(name)) return "\u9ad8\u968e";
+  return "\u4e00\u822c";
+}
+
+function normalizeTag(value) {
+  return String(value || "").replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+}
+
+function splitTags(value) {
+  return String(value || "")
+    .split(/[,\\uFF0C\\n]/)
+    .map((tag) => normalizeTag(tag).trim())
+    .filter(Boolean);
+}
+
+function normalizeCsvData(value) {
+  return String(value || "").replace(/B\s*型利[納鈉]利尿胜[肽?？]?/g, "N端B型利鈉胜肽前驅物");
+}
+function isUsableCsvData(value) {
+  try {
+    const parsed = parseHealthCsv(value || "");
+    const names = Object.keys(parsed.packages);
+    return parsed.items.length > 50 && names.length > 10 && names.includes("2700\u5c0f\u8cc7") && names.includes("3500\u57fa\u790e");
+  } catch {
+    return false;
+  }
+}
+const PUBLIC_VIEWS = new Set(["packages", "my-bookings", "prep", "checkin", "followup", "contact"]);
+
+function readPublicViewFromUrl() {
+  if (typeof window === "undefined") return "packages";
+  const params = new URLSearchParams(window.location.search);
+  const candidates = [params.get("view")];
+  const liffState = params.get("liff.state");
+  if (liffState) {
+    const stateQuery = liffState.includes("?") ? liffState.slice(liffState.indexOf("?") + 1) : liffState.replace(/^#/, "");
+    candidates.push(new URLSearchParams(stateQuery).get("view"));
+  }
+  const hashQuery = window.location.hash.startsWith("#?") ? window.location.hash.slice(2) : "";
+  if (hashQuery) candidates.push(new URLSearchParams(hashQuery).get("view"));
+  return candidates.find((view) => PUBLIC_VIEWS.has(view)) || "packages";
+}
+// CAC package source data
 const INITIAL_CSV_DATA = `分類,檢查項目(中),檢查項目(英),臨床意義 (可瞭解之症狀),自費價,院碼,委外單位,備註 (檢驗天數/限制/說明),2700小資,3500基礎,3500公教,4500公教,5800關懷,7000婚前女,7200婚前男,8000馬年,12000樂活,12600觀心,16000心肺,16000胃腸,23800肺胃腸,32000肺腦,32000公教-肺腦腸胃,32000公教-心肺,32000公教-肺+全腹癌篩(MRI顯影),32000公教-腦心肺(無顯影),47000肺腦心腸胃,肺癌篩(CT無顯影),全腹癌篩(CT顯影)+代謝,全腹癌篩(MR顯影),腦血管(MRI無顯影),腦頸血管(CT顯影),心肝代謝(CT無顯影),心血管+全腹癌篩+代謝(CT顯影),肺+全腹癌篩(CT顯影)+代謝,肺+全腹癌篩(MRI顯影),肺心肝腹(CT顯影),肺腦心肝腹(CT顯影),肺心肝(CT無顯影),腦心肝(MR&CT無顯影),腦心肝肺(MR&CT無顯影),腦心血管+全腹癌篩+代謝(CT顯影),抗老賀爾蒙營養(女),抗老賀爾蒙營養(男),甲狀腺
 一般檢查,一般檢查,General Examination,含身高、體重、血壓、脈搏、腰圍等身體基本評估,120,,,,v,v,v,v,v,v,v,v,v,v,v,v,v,v,v,v,v,v,v,v,v,v,v,v,v,v,v,v,v,v,v,v,v,v,,,
 理學檢查,體脂肪檢測,,評估肥胖程度與健康風險 ,180,999830,,,v,v,,,v,v,v,v,v,v,v,v,v,v,v,v,v,v,v,,,,,,,,,,,,,,,,,,
@@ -67,7 +224,7 @@ const INITIAL_CSV_DATA = `分類,檢查項目(中),檢查項目(英),臨床意�
 賀爾蒙營養功能檢驗,維生素D檢測,Vitamin D (25-OH),評估骨質疏鬆風險、鈣質吸收效率及免疫調節功能,660,614119,,,,,,,,,,v,v,,,,v,v,v,v,,,v,,v,v,,v,v,v,v,v,v,v,v,v,v,v,,,
 心血管功能檢驗,高敏感C反應蛋白,hs-CRP,評估血管內皮的發炎程度,330,613126,,,,,,,,,,,v,v,v,v,,,v,v,v,v,,,,,v,v,v,v,,,v,v,v,v,v,v,,,
 心血管功能檢驗,同半胱胺酸,Homocysteine,血液中的代謝毒素，是獨立的心血管疾病與中風風險因子,480,614117,,,,,,,,,,,,v,v,v,v,v,v,v,v,v,v,,,,v,v,,,,,,v,,v,v,v,,,
-心血管功能檢驗,B 型利納利尿胜肽,NT-proBNP,篩檢心臟衰竭及評估心臟負荷的早期指標,960,612150,,,,,,,,,,,,,,,,,,,,,,,,,,,v,v,,,v,v,v,v,v,v,,,
+心血管功能檢驗,N端B型利鈉胜肽前驅物,NT-proBNP,篩檢心臟衰竭及評估心臟負荷的早期指標,960,612150,,,,,,,,,,,,,,,,,,,,,,,,,,,v,v,,,v,v,v,v,v,v,,,
 心血管功能檢驗,高感度心肌鈣蛋白 I,hs Troponin I,評估心肌微小損傷,540,610346,,,,,,,,,,,,,,,,,,,,,,,,,,,v,v,,,v,v,v,v,v,v,,,
 腫瘤篩檢,肝癌標記-甲種胎兒蛋白,AFP,肝癌篩檢與治療監測參考 ,360,613001,,,,,v,v,,,,v,v,,v,v,v,v,v,v,v,v,v,v,v,v,,,,v,v,v,v,v,,,,v,,,
 腫瘤篩檢,胰臟癌標記 ,CA-199,胰臟癌、膽管癌篩檢參考 ,480,613046,,,,,v,,,,,v,v,,v,v,v,v,v,v,v,v,v,v,v,v,,,,v,v,v,v,v,,,,v,,,
@@ -212,7 +369,7 @@ const App = () => {
   const [csvData, setCsvData] = useState(() => {
     if (typeof window !== "undefined") {
       const saved = localStorage.getItem("health_planner_csv_v3");
-      return saved || INITIAL_CSV_DATA;
+      return isUsableCsvData(saved) ? saved : INITIAL_CSV_DATA;
     }
     return INITIAL_CSV_DATA;
   });
@@ -247,6 +404,10 @@ const App = () => {
 
   const [parsedItems, setParsedItems] = useState([]);
   const [packages, setPackages] = useState({});
+  const [packageMeta, setPackageMeta] = useState({});
+  const [packageAudience, setPackageAudience] = useState("\u4e00\u822c");
+  const [packageBodyParts, setPackageBodyParts] = useState("");
+  const [packageFilter, setPackageFilter] = useState("ALL");
   const [showCsvInput, setShowCsvInput] = useState(false);
 
   // 排序與篩選狀態
@@ -271,9 +432,21 @@ const App = () => {
   const [liffMessage, setLiffMessage] = useState("一般瀏覽器模式");
   const [showBookingModal, setShowBookingModal] = useState(false);
   const [bookingStatus, setBookingStatus] = useState("");
+  const [myBookings, setMyBookings] = useState([]);
+  const [myBookingStatus, setMyBookingStatus] = useState("");
+  const [changeDates, setChangeDates] = useState({});
+  const [changeNotes, setChangeNotes] = useState({});
   const [mode, setMode] = useState("public");
+  const [publicView, setPublicView] = useState(readPublicViewFromUrl);
+  const [lang, setLang] = useState("zh");
+  const [staffUser, setStaffUser] = useState(null);
+  const [staffStatus, setStaffStatus] = useState("");
+  const t = TEXT[lang];
   const [publicFilters, setPublicFilters] = useState({ audience: "全部", sex: "不限", bodyPart: "全部" });
+  const [publicPackageLayout, setPublicPackageLayout] = useState("cards");
+  const [comparisonSort, setComparisonSort] = useState({ key: "price", direction: "asc" });
   const [expandedPackageName, setExpandedPackageName] = useState(null);
+  const [comparisonDetailCard, setComparisonDetailCard] = useState(null);
   const [bookingForm, setBookingForm] = useState({
     name: "",
     idNumber: "",
@@ -283,9 +456,34 @@ const App = () => {
     notes: "",
   });
   const [adminDate, setAdminDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [adminChannel, setAdminChannel] = useState("ALL");
   const [adminBookings, setAdminBookings] = useState([]);
+  const [selectedAdminBookingIds, setSelectedAdminBookingIds] = useState([]);
+  const [pendingChanges, setPendingChanges] = useState([]);
   const [adminStatus, setAdminStatus] = useState("");
 
+  useEffect(() => {
+    const syncView = () => {
+      const view = readPublicViewFromUrl();
+      setPublicView(view);
+      if (PUBLIC_VIEWS.has(view)) setMode("public");
+    };
+    syncView();
+    window.addEventListener("popstate", syncView);
+    return () => window.removeEventListener("popstate", syncView);
+  }, []);
+
+  const openPublicView = (view) => {
+    setMode("public");
+    setPublicView(view);
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.set("view", view);
+      url.searchParams.delete("code");
+      url.searchParams.delete("state");
+      window.history.pushState({}, "", url);
+    }
+  };
   // 初始化載入 Tailwind
   useEffect(() => {
     if (!document.getElementById("tailwind-cdn")) {
@@ -295,6 +493,54 @@ const App = () => {
       document.head.appendChild(script);
     }
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    listManagedPackages().then((managed) => {
+      if (cancelled) return;
+      const active = {};
+      const deleted = {};
+      const meta = {};
+      managed.forEach((pkg) => {
+        if (!pkg.name) return;
+        if (pkg.deleted) {
+          deleted[pkg.name] = pkg.itemIds || [];
+          return;
+        }
+        active[pkg.name] = pkg.itemIds || [];
+        meta[pkg.name] = {
+          audience: normalizeTag(pkg.audience || inferPackageAudienceName(pkg.name)),
+          bodyParts: Array.isArray(pkg.bodyParts) ? pkg.bodyParts.map(normalizeTag) : [],
+          finalPrice: Number(pkg.finalPrice) || 0,
+        };
+      });
+      if (Object.keys(active).length) setUserPackages((current) => ({ ...current, ...active }));
+      if (Object.keys(deleted).length) setDeletedPackages((current) => ({ ...current, ...deleted }));
+      setPackageMeta((current) => ({ ...current, ...meta }));
+    }).catch((error) => console.warn("Managed package load failed", error));
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    return watchStaffAuth((user) => {
+      if (!canUseStaffTools(user)) {
+        setStaffUser(null);
+        if (user) setStaffStatus("\u6b64 Google \u5e33\u865f\u672a\u6388\u6b0a\u4f7f\u7528\u5167\u90e8\u5de5\u5177");
+        setMode("public");
+        return;
+      }
+      setStaffUser(user);
+      setStaffStatus(user ? `\u5df2\u767b\u5165\uff1a${user.email}` : "");
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!staffUser) {
+      setPendingChanges([]);
+      return undefined;
+    }
+    return watchPendingChangeRequests(setPendingChanges);
+  }, [staffUser]);
 
   useEffect(() => {
     let cancelled = false;
@@ -320,7 +566,7 @@ const App = () => {
     let inQuotes = false;
 
     // 統一換行符號，避免 CR LF 問題
-    const normalizedText = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+    const normalizedText = text.replace(/\\r\\n/g, "\\n").replace(/\\r/g, "\\n");
 
     for (let i = 0; i < normalizedText.length; i++) {
       const char = normalizedText[i];
@@ -339,7 +585,7 @@ const App = () => {
         // 欄位結束 (只有在非引號中才算)
         currentRow.push(currentField.trim());
         currentField = "";
-      } else if (char === "\n" && !inQuotes) {
+      } else if (char === "\\n" && !inQuotes) {
         // 列結束 (只有在非引號中才算)
         currentRow.push(currentField.trim());
         rows.push(currentRow);
@@ -362,119 +608,25 @@ const App = () => {
   // 解析 CSV
   useEffect(() => {
     try {
+      const normalizedCsvData = normalizeCsvData(csvData);
+      if (normalizedCsvData !== csvData) {
+        setCsvData(normalizedCsvData);
+        return;
+      }
+
       if (typeof window !== "undefined") {
-        localStorage.setItem("health_planner_csv_v3", csvData);
+        localStorage.setItem("health_planner_csv_v3", normalizedCsvData);
       }
 
-      if (!csvData) {
+      if (!normalizedCsvData) {
         setParsedItems([]);
         setPackages({});
         return;
       }
 
-      // 使用新的解析器
-      const rows = parseCSV(csvData);
-
-      if (rows.length === 0) {
-        setParsedItems([]);
-        setPackages({});
-        return;
-      }
-
-      const headers = rows[0]; // 第一列是標題
-
-      const fixedColumnNames = [
-        "分類",
-        "檢查項目(中)",
-        "檢查項目(英)",
-        "臨床意義 (可瞭解之症狀)",
-        "自費價",
-        "院碼",
-        "委外單位",
-        "備註 (檢驗天數/限制/說明)",
-      ];
-
-      const packageNames = headers.filter(
-        (h) =>
-          h &&
-          !fixedColumnNames.includes(h) &&
-          !h.includes("備註") &&
-          !h.includes("院碼")
-      );
-
-      const idxCategory = headers.indexOf("分類");
-      const idxName = headers.indexOf("檢查項目(中)");
-      const idxEnName = headers.indexOf("檢查項目(英)");
-      const idxClinical = headers.indexOf("臨床意義 (可瞭解之症狀)");
-      const idxPrice = headers.indexOf("自費價");
-      const idxCode = headers.findIndex((h) => h.includes("院碼"));
-      const idxOutsource = headers.findIndex((h) => h.includes("委外"));
-      const idxRemark = headers.findIndex((h) => h.includes("備註"));
-
-      const newItems = [];
-      const csvDerivedPackages = {};
-
-      packageNames.forEach((name) => {
-        csvDerivedPackages[name] = [];
-      });
-
-      for (let i = 1; i < rows.length; i++) {
-        const cols = rows[i];
-        if (!cols || cols.length === 0) continue; // 跳過空行
-
-        // 確保欄位數量足夠，至少要有名稱
-        if (idxName === -1 || !cols[idxName]) continue;
-
-        const id = i;
-        const category = idxCategory !== -1 ? cols[idxCategory] : "";
-        const name = cols[idxName];
-        const enName = idxEnName !== -1 ? cols[idxEnName] : "";
-        const clinical = idxClinical !== -1 ? cols[idxClinical] : "";
-        const priceStr = idxPrice !== -1 ? cols[idxPrice] : "0";
-        const price = parseInt(priceStr.replace(/,/g, "")) || 0;
-
-        const code = idxCode > -1 ? cols[idxCode] : "";
-        const outsource = idxOutsource > -1 ? cols[idxOutsource] : "";
-        const remark = idxRemark > -1 ? cols[idxRemark] : "";
-
-        if (!name) continue;
-
-        const item = {
-          id,
-          category,
-          name,
-          enName,
-          clinical,
-          price,
-          code,
-          outsource,
-          remark,
-        };
-        newItems.push(item);
-
-        packageNames.forEach((pkgName) => {
-          const pkgIndex = headers.indexOf(pkgName);
-          if (pkgIndex !== -1 && pkgIndex < cols.length) {
-            const val = cols[pkgIndex];
-            if (val && val.trim().length > 0) {
-              csvDerivedPackages[pkgName].push(id);
-            }
-          }
-        });
-      }
-
-      setParsedItems(newItems);
-
-      const combinedPackages = { ...csvDerivedPackages, ...userPackages };
-
-      const activePackages = Object.keys(combinedPackages)
-        .filter((key) => !deletedPackages.hasOwnProperty(key))
-        .reduce((obj, key) => {
-          obj[key] = combinedPackages[key];
-          return obj;
-        }, {});
-
-      setPackages(activePackages);
+      const parsed = parseHealthCsv(normalizedCsvData, userPackages, deletedPackages);
+      setParsedItems(parsed.items);
+      setPackages(parsed.packages);
     } catch (e) {
       console.error("CSV Parse Error", e);
     }
@@ -563,12 +715,27 @@ const App = () => {
   }, [parsedItems, searchTerm, sortConfig, activeCategory]);
 
   const publicPackageCards = useMemo(() => {
-    return buildPublicPackageCards(packages, parsedItems);
-  }, [packages, parsedItems]);
+    return buildPublicPackageCards(packages, parsedItems, packageMeta);
+  }, [packages, parsedItems, packageMeta]);
+
+  const availableAudiences = useMemo(() => {
+    const values = new Set(PUBLIC_AUDIENCES);
+    publicPackageCards.forEach((card) => (card.tags.audience || []).forEach((tag) => values.add(tag)));
+    splitTags(packageAudience).forEach((tag) => values.add(tag));
+    return [...values];
+  }, [publicPackageCards, packageAudience]);
+
+  const availableBodyParts = useMemo(() => {
+    const values = new Set(PUBLIC_BODY_PARTS);
+    publicPackageCards.forEach((card) => (card.tags.bodyParts || []).forEach((tag) => values.add(tag)));
+    splitTags(packageBodyParts).forEach((tag) => values.add(tag));
+    return [...values];
+  }, [publicPackageCards, packageBodyParts]);
 
   const visiblePublicPackageCards = useMemo(() => {
     return filterPublicPackageCards(publicPackageCards, publicFilters);
   }, [publicPackageCards, publicFilters]);
+
   const selectedItems = useMemo(() => {
     return parsedItems.filter((item) => selectedIds.includes(item.id));
   }, [parsedItems, selectedIds]);
@@ -600,8 +767,9 @@ const App = () => {
   }, [rawPrice]);
 
   useEffect(() => {
-    setFinalPrice(calculatedSuggestedPrice);
-  }, [calculatedSuggestedPrice]);
+    const managedPrice = Number(packageMeta[packageName]?.finalPrice) || 0;
+    setFinalPrice(managedPrice || calculatedSuggestedPrice);
+  }, [calculatedSuggestedPrice, packageMeta]);
 
   // 比較模式資料計算 (防呆版)
   const comparisonData = useMemo(() => {
@@ -674,6 +842,10 @@ const App = () => {
     if (ids) {
       setSelectedIds(ids);
       setPackageName(name);
+      const meta = packageMeta[name] || {};
+      setPackageAudience(normalizeTag(meta.audience || inferPackageAudienceName(name)));
+      setPackageBodyParts(Array.isArray(meta.bodyParts) ? meta.bodyParts.map(normalizeTag).join(", ") : "");
+      if (meta.finalPrice) setFinalPrice(meta.finalPrice);
     }
   };
 
@@ -697,7 +869,7 @@ const App = () => {
     );
   };
 
-  const savePackage = () => {
+  const savePackage = async () => {
     if (!packageName.trim()) {
       alert("請輸入套餐名稱");
       return;
@@ -713,12 +885,16 @@ const App = () => {
       );
     }
 
+    const bodyParts = splitTags(packageBodyParts);
     const newUserPackages = { ...userPackages, [packageName]: selectedIds };
     setUserPackages(newUserPackages);
+    setPackageMeta((current) => ({ ...current, [packageName]: { audience: packageAudience.trim(), bodyParts, finalPrice: Number(finalPrice) || 0 } }));
     localStorage.setItem(
       "health_planner_user_packages_v3",
       JSON.stringify(newUserPackages)
     );
+
+    await saveManagedPackage({ name: packageName, itemIds: selectedIds, audience: packageAudience.trim(), bodyParts, finalPrice });
 
     setSavedMessage(`「${packageName}」已儲存`);
     setTimeout(() => setSavedMessage(""), 3000);
@@ -739,6 +915,7 @@ const App = () => {
         setPackageName("新版自選健檢套餐");
         setSelectedIds([]);
       }
+      deleteManagedPackage(name, packageContent).catch((error) => console.warn("Delete managed package failed", error));
       setCompareList((prev) => prev.filter((n) => n !== name));
     }
   };
@@ -791,7 +968,7 @@ ${selectedItems
         item.name
       } - NT$ ${item.price}`
   )
-  .join("\n")}
+  .join("\\n")}
 
 ------------------------------------------
 費用結算：
@@ -918,6 +1095,41 @@ ${selectedItems
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#039;");
 
+  const staffMode = mode === "staff" || mode === "admin";
+
+  const handleStaffLogin = async () => {
+    try {
+      setStaffStatus("\u767b\u5165\u4e2d...");
+      const user = await signInStaff();
+      if (!canUseStaffTools(user)) {
+        await signOutStaff();
+        setStaffStatus("\u6b64 Google \u5e33\u865f\u672a\u6388\u6b0a\u4f7f\u7528\u5167\u90e8\u5de5\u5177");
+        setMode("public");
+        return;
+      }
+      setStaffUser(user);
+      setStaffStatus(`\u5df2\u767b\u5165\uff1a${user.email}`);
+      setMode("staff");
+    } catch (error) {
+      setStaffStatus(`\u767b\u5165\u5931\u6557\uff1a${error.message}`);
+    }
+  };
+
+  const handleStaffLogout = async () => {
+    await signOutStaff();
+    setStaffUser(null);
+    setStaffStatus("");
+    setMode("public");
+  };
+
+  const setStaffMode = (nextMode) => {
+    if (!staffUser) {
+      setStaffStatus("\u8acb\u5148\u767b\u5165\u54e1\u5de5\u5e33\u865f");
+      return;
+    }
+    setMode(nextMode);
+  };
+
   const handleSubmitBooking = async () => {
     try {
       setBookingStatus("寫入預約中...");
@@ -941,17 +1153,166 @@ ${selectedItems
     }
   };
 
+
+  const handleLoadMyBookings = async () => {
+    try {
+      setMyBookingStatus("\u8b80\u53d6\u4e2d...");
+      const bookings = await listMyBookings();
+      setMyBookings(bookings);
+      setMyBookingStatus(`\u5df2\u8f09\u5165 ${bookings.length} \u7b46\u9810\u7d04`);
+    } catch (error) {
+      setMyBookingStatus(`\u8b80\u53d6\u5931\u6557\uff1a${error.message}`);
+    }
+  };
+
+  const handleRequestBookingChange = async (booking) => {
+    try {
+      const change = buildChangeRequestPayload({
+        booking,
+        requestedAppointmentDate: changeDates[booking.bookingId],
+        notes: changeNotes[booking.bookingId],
+      });
+      const result = await requestBookingChange(change);
+      setMyBookingStatus(result.localOnly ? "\u5df2\u66ab\u5b58\u6539\u671f\u7533\u8acb" : "\u5df2\u9001\u51fa\u6539\u671f\u7533\u8acb\uff0c\u8acb\u7b49\u5019\u5065\u6aa2\u4e2d\u5fc3\u78ba\u8a8d");
+    } catch (error) {
+      setMyBookingStatus(`\u9001\u51fa\u5931\u6557\uff1a${error.message}`);
+    }
+  };
+
+  const statusLabel = (status) => ({ BOOKED: "待確認", CONFIRMED: "已確認", RESCHEDULED: "已改期", CANCELLED: "已取消" }[status] || status || "待確認");
+
+  const handleConfirmBooking = async (booking) => {
+    try {
+      await confirmBooking(booking.bookingId);
+      setAdminStatus("已確認預約");
+      handleLoadAdminBookings();
+    } catch (error) {
+      setAdminStatus(`確認失敗：${error.message}`);
+    }
+  };
+
+  const handleApproveChangeRequest = async (request) => {
+    try {
+      await approveChangeRequest(request);
+      setAdminStatus("\u5df2\u6838\u51c6\u6539\u671f");
+      if (adminDate === request.currentAppointmentDate || adminDate === request.requestedAppointmentDate) {
+        handleLoadAdminBookings();
+      }
+    } catch (error) {
+      setAdminStatus(`\u6838\u51c6\u5931\u6557\uff1a${error.message}`);
+    }
+  };
+
   const handleLoadAdminBookings = async () => {
     try {
       setAdminStatus("讀取中...");
-      const bookings = await listBookingsByDate(adminDate);
+      const bookings = await listBookingsByDate(adminDate, adminChannel);
       setAdminBookings(bookings);
+      setSelectedAdminBookingIds([]);
       setAdminStatus(`已載入 ${bookings.length} 筆預約`);
     } catch (error) {
       setAdminStatus(`讀取失敗：${error.message}`);
     }
   };
 
+  const selectedAdminBookings = adminBookings.filter((booking) => selectedAdminBookingIds.includes(booking.bookingId));
+  const allAdminBookingsSelected = adminBookings.length > 0 && selectedAdminBookingIds.length === adminBookings.length;
+
+  const toggleAdminBookingSelection = (bookingId) => {
+    setSelectedAdminBookingIds((current) => current.includes(bookingId) ? current.filter((id) => id !== bookingId) : [...current, bookingId]);
+  };
+
+  const toggleAllAdminBookings = () => {
+    setSelectedAdminBookingIds(allAdminBookingsSelected ? [] : adminBookings.map((booking) => booking.bookingId).filter(Boolean));
+  };
+
+  const handlePrintSelectedBookings = () => {
+    if (!selectedAdminBookings.length) {
+      setAdminStatus("\u8acb\u5148\u52fe\u9078\u8981\u5217\u5370\u7684\u5ba2\u6236");
+      return;
+    }
+    printBookings(selectedAdminBookings);
+  };
+
+  const downloadCsv = async (filename, csvText) => {
+    const blob = new Blob(["\ufeff", csvText], { type: "text/csv;charset=utf-8" });
+    if (window.showSaveFilePicker) {
+      const handle = await window.showSaveFilePicker({
+        suggestedName: filename,
+        types: [{ description: "CSV", accept: { "text/csv": [".csv"] } }],
+      });
+      const writable = await handle.createWritable();
+      await writable.write(blob);
+      await writable.close();
+      return "picked";
+    }
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(url);
+    return "downloaded";
+  };
+
+  const handleExportAdminBookings = async () => {
+    const target = selectedAdminBookings.length ? selectedAdminBookings : adminBookings;
+    if (!target.length) {
+      setAdminStatus("\u6c92\u6709\u53ef\u532f\u51fa\u7684\u9810\u7d04");
+      return;
+    }
+    try {
+      const mode = await downloadCsv(`bookings-${adminDate || "all"}.csv`, exportBookingsCsv(target));
+      setAdminStatus(mode === "picked" ? `\u5df2\u5132\u5b58 ${target.length} \u7b46 CSV` : `\u5df2\u532f\u51fa ${target.length} \u7b46 CSV\uff08\u8acb\u67e5\u770b\u4e0b\u8f09\u8cc7\u6599\u593e\uff09`);
+    } catch (error) {
+      if (error?.name !== "AbortError") setAdminStatus(`CSV \u532f\u51fa\u5931\u6557\uff1a${error.message}`);
+    }
+  };
+
+  const handleImportBookingCsv = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    try {
+      setAdminStatus("CSV \u532f\u5165\u4e2d...");
+      const rows = parseBookingImportCsv(await file.text());
+      let imported = 0;
+      const skipped = [];
+      for (const row of rows) {
+        const ids = packages[row.packageName];
+        if (!row.name || !row.phone || !row.appointmentDate || !row.packageName || !ids?.length) {
+          skipped.push(row.rowNumber);
+          continue;
+        }
+        const rowItems = parsedItems.filter((item) => ids.includes(item.id));
+        const pricing = calculatePricing(rowItems);
+        const payload = buildBookingPayload({
+          formData: {
+            name: row.name,
+            phone: row.phone,
+            idNumber: row.idNumber,
+            channel: row.channel,
+            appointmentDate: row.appointmentDate,
+            notes: row.notes,
+          },
+          lineProfile: null,
+          packageName: row.packageName,
+          selectedItems: rowItems,
+          listPrice: pricing.listPrice,
+          discountRate: pricing.discountRate,
+          finalPrice: row.finalPrice || Number(packageMeta[row.packageName]?.finalPrice) || pricing.suggestedPrice,
+        });
+        payload.booking.status = row.status;
+        const result = await saveBooking(payload);
+        await saveChecklist(result.bookingId, buildChecklistPayload({ ...payload.booking, bookingId: result.bookingId }));
+        imported += 1;
+      }
+      setAdminStatus(`CSV \u532f\u5165\u5b8c\u6210\uff1a${imported} \u7b46${skipped.length ? `\uff0c\u8df3\u904e\u7b2c ${skipped.join(", ")} \u5217` : ""}`);
+      if (adminDate) handleLoadAdminBookings();
+    } catch (error) {
+      setAdminStatus(`CSV \u532f\u5165\u5931\u6557\uff1a${error.message}`);
+    }
+  };
   const buildChecklistHtml = (bookings) => {
     const pages = bookings.map((booking) => {
       const checklist = buildChecklistPayload(booking);
@@ -1052,7 +1413,7 @@ ${selectedItems
         <p className="text-xs text-slate-500 mt-1">勾選方塊以進行比較</p>
       </div>
       <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar">
-        {Object.keys(packages).map((name) => {
+        {Object.keys(packages).filter((name) => packageFilter === "ALL" || (packageMeta[name]?.audience || inferPackageAudienceName(name)) === packageFilter).map((name) => {
           const isComparing = compareList.includes(name);
           const isActive = packageName === name && compareList.length === 0;
 
@@ -1078,7 +1439,8 @@ ${selectedItems
                 onClick={() => applyPreset(name)}
                 className="flex-1 text-left truncate pl-1 py-1"
               >
-                {name}
+                <span className="block truncate">{name}</span>
+                <span className={`mt-1 inline-block rounded px-1.5 py-0.5 text-[10px] ${isActive ? "bg-white/20 text-white" : "bg-slate-100 text-slate-500"}`}>{packageMeta[name]?.audience || inferPackageAudienceName(name)}</span>
               </button>
 
               <div className="flex items-center">
@@ -1493,6 +1855,14 @@ ${selectedItems
                   onChange={(e) => setPackageName(e.target.value)}
                 />
               </div>
+              <label className="w-28 text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+                {"\u901a\u8def\u6a19\u7c64"}
+                <input placeholder="一般, 高階, A企業" className="w-full mt-1 px-2 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-700" value={packageAudience} onChange={(e) => setPackageAudience(e.target.value)} />
+              </label>
+              <label className="w-36 text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+                {"\u90e8\u4f4d\u6a19\u7c64"}
+                <input placeholder="心血管, 企業專案" className="w-full mt-1 px-2 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-700" value={packageBodyParts} onChange={(e) => setPackageBodyParts(e.target.value)} />
+              </label>
               <button
                 onClick={savePackage}
                 className="px-4 py-2 bg-indigo-100 text-indigo-700 rounded-lg text-xs font-bold h-[38px] flex items-center gap-1"
@@ -1633,102 +2003,276 @@ ${selectedItems
     );
   };
 
+  const PublicInfoPanel = ({ view }) => {
+    const contactMapUrl = "https://www.google.com/maps/search/?api=1&query=%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%A4%A7%E9%80%A3%E8%B7%AF66%E8%99%9F%E6%81%A9%E6%85%88%E5%A4%A7%E6%A8%932%E6%A8%93";
+    const content = {
+      prep: {
+        title: "來檢須知",
+        lead: "檢查前一天請依套餐內容確認禁食、採檢與用藥注意事項。",
+        items: ["多數抽血與腹部超音波需禁食 8 小時", "請攜帶身分證件、健保卡與既往病歷/用藥資料", "需留尿、糞便或特殊檢體者，依中心通知準備", "女性請避開生理期；懷孕或疑似懷孕請先告知"],
+      },
+      checkin: {
+        title: "報到 QR / 當日流程",
+        lead: "預約完成後，後續會在這裡整合報到 QR code 與當日檢查動線。",
+        items: ["目前請先依預約成功資訊與中心通知報到", "報到時出示 LINE 預約資料或身分證件", "現場人員會依套餐產生個人檢查清單", "QR code 報到功能會接在下一階段"],
+      },
+      followup: {
+        title: "報告查詢 / 異常追蹤",
+        lead: "報告完成與異常追蹤會以健檢中心通知為準。",
+        items: ["若有重大異常，個管師會協助後續說明與轉介", "日後可整合報告完成通知、追蹤提醒與回診安排", "目前若需查詢進度，請直接聯絡健檢中心"],
+      },
+      contact: {
+        title: "聯絡我們 / 交通",
+        lead: "屏基健檢中心聯絡與交通資訊。",
+        items: ["電話：08-7369955-18", "地址：屏東市大連路66號恩慈大樓2樓", "建議來檢前確認預約日期、報到時間與注意事項", "企業團檢或特殊需求請直接來電洽詢"],
+      },
+    }[view] || {};
+    return (
+      <div className="bg-white border border-slate-200 rounded-lg p-5">
+        <h1 className="text-xl font-black text-slate-900">{content.title}</h1>
+        <p className="mt-2 text-sm text-slate-600">{content.lead}</p>
+        <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {(content.items || []).map((item) => <div key={item} className="rounded-md border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700">{item}</div>)}
+        </div>
+        {view === "contact" ? (
+          <a href={contactMapUrl} target="_blank" rel="noreferrer" className="mt-4 inline-flex w-full items-center justify-center rounded-md bg-emerald-600 px-4 py-3 text-sm font-black text-white shadow-sm sm:w-auto">開啟 Google Maps 導航</a>
+        ) : null}
+      </div>
+    );
+  };
+
+  const MyBookingsPanel = () => (    <div className="bg-white border border-slate-200 rounded-lg p-4 lg:p-5">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <h2 className="text-base font-black text-slate-900">我的預約</h2>
+          <p className="mt-1 text-xs text-slate-500">此裝置可查詢自己建立的預約，改期需由健檢中心確認。</p>
+        </div>
+        <button onClick={handleLoadMyBookings} className="rounded-md bg-slate-900 px-4 py-2 text-sm font-bold text-white">{lang === "en" ? "Find my bookings" : "查詢我的預約"}</button>
+      </div>
+      {myBookingStatus && <div className="mt-3 text-xs text-slate-500">{myBookingStatus}</div>}
+      {myBookings.length > 0 && (
+        <div className="mt-4 space-y-3">
+          {myBookings.map((booking) => (
+            <div key={booking.bookingId} className="rounded-md border border-slate-200 p-3 text-sm">
+              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
+                <div>
+                  <div className="font-bold text-slate-900">{booking.packageName}</div>
+                  <div className="text-slate-600">{booking.appointmentDate} / {statusLabel(booking.status)}</div>
+                  <div className="text-xs text-slate-400">{booking.bookingId}</div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-[150px_1fr_auto] gap-2 w-full sm:w-auto">
+                  <input type="date" className="rounded-md border border-slate-300 px-3 py-2 text-sm" value={changeDates[booking.bookingId] || ""} onChange={(e) => setChangeDates((current) => ({ ...current, [booking.bookingId]: e.target.value }))} />
+                  <input className="rounded-md border border-slate-300 px-3 py-2 text-sm" placeholder="改期原因/備註" value={changeNotes[booking.bookingId] || ""} onChange={(e) => setChangeNotes((current) => ({ ...current, [booking.bookingId]: e.target.value }))} />
+                  <button onClick={() => handleRequestBookingChange(booking)} className="rounded-md bg-emerald-600 px-3 py-2 text-sm font-bold text-white">送出改期</button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
+  const showComparisonCard = (card) => {
+    setComparisonDetailCard(card);
+  };
+
+  const toggleComparisonSort = (key) => {
+    setComparisonSort((current) => ({ key, direction: current.key === key && current.direction === "asc" ? "desc" : "asc" }));
+  };
+
+  const sortMark = (key) => comparisonSort.key === key ? (comparisonSort.direction === "asc" ? " \u2191" : " \u2193") : "";
+
+  const PackageComparison = ({ cards, compact = false }) => {
+    const sortedCards = sortPublicComparisonCards(cards, comparisonSort, lang);
+    return (
+      <div className="rounded-lg border border-slate-200 bg-white overflow-hidden">
+        <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
+          <div>
+            <h2 className="text-base font-black text-slate-900">{lang === "en" ? "Package comparison" : "\u5957\u9910\u6bd4\u8f03\u7e3d\u8868"}</h2>
+            <p className="text-xs text-slate-500">{lang === "en" ? "Each package is one row; tap headers to sort" : "\u6bcf\u500b\u5957\u9910\u4e00\u5217\uff0c\u9ede\u6b04\u4f4d\u53ef\u6392\u5e8f"}</p>
+          </div>
+        </div>
+        <div className="max-h-[70vh] overflow-auto">
+          <table className="min-w-[980px] border-collapse text-sm">
+            <thead>
+              <tr className="bg-slate-50">
+                <th className="sticky left-0 top-0 z-20 w-36 bg-slate-50 px-3 py-3 text-left text-xs font-black text-slate-600"><button className="text-left font-black" onClick={() => toggleComparisonSort("package")}>{lang === "en" ? "Package" : "\u5957\u9910"}{sortMark("package")}</button></th>
+                {PUBLIC_COMPARISON_ROWS.map((row) => (
+                  <th key={row.key} className="sticky top-0 z-10 min-w-[150px] bg-slate-50 px-3 py-3 text-left text-xs font-black text-slate-600"><button className="text-left font-black" onClick={() => toggleComparisonSort(row.key)}>{lang === "en" ? row.labelEn : row.label}{sortMark(row.key)}</button></th>
+                ))}
+                <th className="sticky top-0 z-10 w-28 bg-slate-50 px-3 py-3 text-left text-xs font-black text-slate-600">{lang === "en" ? "Action" : "\u64cd\u4f5c"}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sortedCards.map((card) => (
+                <tr key={card.name} className="border-t border-slate-100">
+                  <th className="sticky left-0 z-10 bg-white px-3 py-3 text-left align-top">
+                    <button className="font-black text-slate-900 underline decoration-slate-300 underline-offset-4" onClick={() => showComparisonCard(card)}>{card.name}</button>
+                  </th>
+                  {PUBLIC_COMPARISON_ROWS.map((row) => (
+                    <td key={`${card.name}-${row.key}`} className="min-w-[150px] px-3 py-3 align-top text-slate-700 leading-relaxed">
+                      {getPublicPackageComparisonValue(card, row.key, lang)}
+                    </td>
+                  ))}
+                  <td className="w-28 px-3 py-3 align-top">
+                    <button className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-700" onClick={() => showComparisonCard(card)}>{lang === "en" ? "Details" : "\u8a73\u7d30"}</button>
+                    <button className="mt-2 rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white" onClick={() => selectPublicPackage(card)}>{lang === "en" ? "Book" : "\u9810\u7d04"}</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  };
   const PublicPackageView = () => (
     <main className="flex-1 overflow-y-auto bg-slate-50">
       <section className="mx-auto w-full max-w-6xl px-4 py-6 lg:px-6 space-y-5">
-        <div className="bg-white border border-slate-200 rounded-lg p-4 lg:p-5">
-          <h1 className="text-xl lg:text-2xl font-black text-slate-900">選擇適合的健檢方案</h1>
-          <p className="mt-2 text-sm text-slate-600">依身分別、性別與想了解的檢查部位篩選。這裡只顯示套餐資訊，不提供單項加選。</p>
-          <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <label className="text-xs font-bold text-slate-600">
-              身分別
-              <select className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal" value={publicFilters.audience} onChange={(e) => setPublicFilter("audience", e.target.value)}>
-                {PUBLIC_AUDIENCES.map((value) => <option key={value} value={value}>{value}</option>)}
-              </select>
-            </label>
-            <label className="text-xs font-bold text-slate-600">
-              性別
-              <select className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal" value={publicFilters.sex} onChange={(e) => setPublicFilter("sex", e.target.value)}>
-                {PUBLIC_SEXES.map((value) => <option key={value} value={value}>{value}</option>)}
-              </select>
-            </label>
-            <label className="text-xs font-bold text-slate-600">
-              檢查部位
-              <select className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal" value={publicFilters.bodyPart} onChange={(e) => setPublicFilter("bodyPart", e.target.value)}>
-                {PUBLIC_BODY_PARTS.map((value) => <option key={value} value={value}>{value}</option>)}
-              </select>
-            </label>
-          </div>
-        </div>
+        {publicView === "packages" ? (
+          <>
+            <div className="bg-white border border-slate-200 rounded-lg p-4 lg:p-5">
+              <h1 className="text-xl lg:text-2xl font-black text-slate-900">{t.publicTitle}</h1>
+              <p className="mt-2 text-sm text-slate-600">{t.publicSubtitle}</p>
+              <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <label className="text-xs font-bold text-slate-600">
+                  {t.audience}
+                  <select className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal" value={publicFilters.audience} onChange={(e) => setPublicFilter("audience", e.target.value)}>
+                    {availableAudiences.map((value) => <option key={value} value={value}>{optionLabel(value, lang)}</option>)}
+                  </select>
+                </label>
+                <label className="text-xs font-bold text-slate-600">
+                  {t.sex}
+                  <select className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal" value={publicFilters.sex} onChange={(e) => setPublicFilter("sex", e.target.value)}>
+                    {PUBLIC_SEXES.map((value) => <option key={value} value={value}>{optionLabel(value, lang)}</option>)}
+                  </select>
+                </label>
+                <label className="text-xs font-bold text-slate-600">
+                  {t.bodyPart}
+                  <select className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal" value={publicFilters.bodyPart} onChange={(e) => setPublicFilter("bodyPart", e.target.value)}>
+                    {availableBodyParts.map((value) => <option key={value} value={value}>{optionLabel(value, lang)}</option>)}
+                  </select>
+                </label>
+              </div>
+            </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {visiblePublicPackageCards.map((card) => {
-            const expanded = expandedPackageName === card.name;
-            const shownItems = expanded ? card.items : card.displayItems.slice(0, 8);
-            return (
-              <article key={card.name} className="bg-white border border-slate-200 rounded-lg p-4 lg:p-5 flex flex-col gap-4">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <h2 className="text-lg font-black text-slate-900">{card.name}</h2>
-                    <div className="mt-2 flex flex-wrap gap-1.5">
-                      {card.tags.audience.slice(0, 3).map((tag) => <span key={tag} className="rounded bg-slate-100 px-2 py-1 text-[11px] font-bold text-slate-600">{tag}</span>)}
-                      {card.tags.sex !== "不限" && <span className="rounded bg-slate-100 px-2 py-1 text-[11px] font-bold text-slate-600">{card.tags.sex}</span>}
-                      {card.tags.bodyParts.slice(0, 4).map((tag) => <span key={tag} className="rounded bg-emerald-50 px-2 py-1 text-[11px] font-bold text-emerald-700">{tag}</span>)}
-                    </div>
-                  </div>
-                  <div className="text-right flex-shrink-0">
-                    <div className="text-xs text-slate-500">套餐總價</div>
-                    <div className="text-xl font-black font-mono text-slate-900">NT$ {card.price.toLocaleString()}</div>
-                  </div>
-                </div>
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div className="inline-flex rounded-md border border-slate-200 bg-white p-1 text-sm font-bold">
+                <button className={`rounded px-3 py-2 ${publicPackageLayout === "cards" ? "bg-slate-900 text-white" : "text-slate-600"}`} onClick={() => setPublicPackageLayout("cards")}>{"\u5361\u7247\u6aa2\u8996"}</button>
+                <button className={`rounded px-3 py-2 ${publicPackageLayout === "table" ? "bg-slate-900 text-white" : "text-slate-600"}`} onClick={() => setPublicPackageLayout("table")}>{"\u6bd4\u8f03\u7e3d\u8868"}</button>
+              </div>
+            </div>
 
-                <div className="text-sm text-slate-600">
-                  <div className="font-bold text-slate-800 mb-1">主要項目</div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {card.highlights.map((item) => <span key={item.id} className="rounded border border-slate-200 px-2 py-1 text-xs text-slate-600">{item.label}</span>)}
-                  </div>
-                </div>
+            {publicPackageLayout === "table" ? <PackageComparison cards={visiblePublicPackageCards} /> : null}
 
-                <div className="border-t border-slate-100 pt-3">
-                  <div className="text-xs font-bold text-slate-500 mb-2">包含項目 / 檢查意義</div>
-                  <div className="space-y-2">
-                    {shownItems.map((item) => (
-                      <div key={item.id} className="grid grid-cols-1 sm:grid-cols-[160px_1fr] gap-1 sm:gap-3 text-sm">
-                        <div className="font-bold text-slate-800">{item.name}</div>
-                        <div className="text-slate-600 leading-relaxed">{item.clinical || item.enName || item.category}</div>
+            <div className={`${publicPackageLayout === "table" ? "hidden" : "grid"} grid-cols-1 lg:grid-cols-2 gap-4`}>
+              {visiblePublicPackageCards.map((card) => {
+                const expanded = expandedPackageName === card.name;
+                const shownItems = expanded ? card.items : card.displayItems.slice(0, 8);
+                return (
+                  <article key={card.name} className="bg-white border border-slate-200 rounded-lg p-4 lg:p-5 flex flex-col gap-4">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <h2 className="text-lg font-black text-slate-900">{card.name}</h2>
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {card.tags.audience.slice(0, 3).map((tag) => <span key={tag} className="rounded bg-slate-100 px-2 py-1 text-[11px] font-bold text-slate-600">{tag}</span>)}
+                          {card.tags.sex !== "不限" && <span className="rounded bg-slate-100 px-2 py-1 text-[11px] font-bold text-slate-600">{card.tags.sex}</span>}
+                          {card.tags.bodyParts.slice(0, 4).map((tag) => <span key={tag} className="rounded bg-emerald-50 px-2 py-1 text-[11px] font-bold text-emerald-700">{tag}</span>)}
+                        </div>
                       </div>
-                    ))}
-                  </div>
-                  {card.items.length > card.displayItems.length && (
-                    <button className="mt-3 text-xs font-bold text-slate-700 underline" onClick={() => setExpandedPackageName(expanded ? null : card.name)}>
-                      {expanded ? "收合項目" : `查看全部 ${card.items.length} 項`}
+                      <div className="text-right flex-shrink-0">
+                        <div className="text-xs text-slate-500">{t.packagePrice}</div>
+                        <div className="text-xl font-black font-mono text-slate-900">NT$ {card.price.toLocaleString()}</div>
+                      </div>
+                    </div>
+                    <div className="text-sm text-slate-600">
+                      <div className="font-bold text-slate-800 mb-1">{t.highlights}</div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {card.highlights.map((item) => <span key={item.id} className="rounded border border-slate-200 px-2 py-1 text-xs text-slate-600">{item.label}</span>)}
+                      </div>
+                    </div>
+
+                    <div className="border-t border-slate-100 pt-3">
+                      <div className="text-xs font-bold text-slate-500 mb-2">{t.included}</div>
+                      <div className="space-y-2">
+                        {shownItems.map((item) => (
+                          <div key={item.id} className="grid grid-cols-1 sm:grid-cols-[160px_1fr] gap-1 sm:gap-3 text-sm">
+                            <div className="font-bold text-slate-800">{lang === "en" && item.enName ? item.enName : item.name}</div>
+                            <div className="text-slate-600 leading-relaxed">{item.clinical || (lang === "en" ? item.category : item.enName || item.category)}</div>
+                          </div>
+                        ))}
+                      </div>
+                      {card.items.length > card.displayItems.length && (
+                        <button className="mt-3 text-xs font-bold text-slate-700 underline" onClick={() => setExpandedPackageName(expanded ? null : card.name)}>
+                          {expanded ? t.collapse : `${t.viewAllPrefix} ${card.items.length} ${t.itemUnit}`}
+                        </button>
+                      )}
+                    </div>
+
+                    <button onClick={() => selectPublicPackage(card)} className="mt-auto w-full rounded-md bg-emerald-600 px-4 py-3 text-sm font-bold text-white hover:bg-emerald-700">
+                      {t.choose}
                     </button>
-                  )}
-                </div>
+                  </article>
+                );
+              })}
+            </div>
 
-                <button onClick={() => selectPublicPackage(card)} className="mt-auto w-full rounded-md bg-emerald-600 px-4 py-3 text-sm font-bold text-white hover:bg-emerald-700">
-                  選擇此方案並預約
-                </button>
-              </article>
-            );
-          })}
-        </div>
-
-        {visiblePublicPackageCards.length === 0 && (
-          <div className="rounded-lg border border-slate-200 bg-white p-8 text-center text-sm text-slate-500">沒有符合條件的套餐，請放寬篩選條件。</div>
+            {visiblePublicPackageCards.length === 0 && (
+              <div className="rounded-lg border border-slate-200 bg-white p-8 text-center text-sm text-slate-500">{t.noPackages}</div>
+            )}
+          </>
+        ) : publicView === "my-bookings" ? (
+          <MyBookingsPanel />
+        ) : (
+          <PublicInfoPanel view={publicView} />
         )}
       </section>
     </main>
   );
+  const PackageDetailModal = ({ card }) => card ? (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setComparisonDetailCard(null)}>
+      <div className="w-full max-w-3xl max-h-[90vh] overflow-hidden rounded-lg border border-slate-200 bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-start justify-between gap-4 border-b border-slate-100 p-4">
+          <div>
+            <h2 className="text-lg font-black text-slate-900">{card.name}</h2>
+            <div className="mt-1 text-sm font-mono font-black text-slate-900">NT$ {Number(card.price || 0).toLocaleString()}</div>
+          </div>
+          <button className="rounded-md bg-slate-100 p-2 text-slate-500" onClick={() => setComparisonDetailCard(null)} aria-label={lang === "en" ? "Close package details" : "\u95dc\u9589\u5957\u9910\u8a73\u7d30"}>
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="max-h-[65vh] overflow-y-auto p-4">
+          <div className="mb-3 flex flex-wrap gap-1.5">
+            {card.tags.audience.slice(0, 3).map((tag) => <span key={tag} className="rounded bg-slate-100 px-2 py-1 text-[11px] font-bold text-slate-600">{tag}</span>)}
+            {card.tags.sex !== "\u4e0d\u9650" && <span className="rounded bg-slate-100 px-2 py-1 text-[11px] font-bold text-slate-600">{card.tags.sex}</span>}
+            {card.tags.bodyParts.slice(0, 5).map((tag) => <span key={tag} className="rounded bg-emerald-50 px-2 py-1 text-[11px] font-bold text-emerald-700">{tag}</span>)}
+          </div>
+          <div className="space-y-2">
+            {card.items.map((item) => (
+              <div key={item.id} className="grid grid-cols-1 gap-1 border-b border-slate-100 py-2 text-sm sm:grid-cols-[180px_1fr] sm:gap-4">
+                <div className="font-bold text-slate-900">{lang === "en" && item.enName ? item.enName : item.name}</div>
+                <div className="leading-relaxed text-slate-600">{item.clinical || (lang === "en" ? item.category : item.enName || item.category)}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 border-t border-slate-100 p-4">
+          <button className="rounded-md border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700" onClick={() => setComparisonDetailCard(null)}>{lang === "en" ? "Close" : "\u95dc\u9589"}</button>
+          <button className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-bold text-white" onClick={() => { setComparisonDetailCard(null); selectPublicPackage(card); }}>{lang === "en" ? "Book this package" : "\u9810\u7d04\u6b64\u5957\u9910"}</button>
+        </div>
+      </div>
+    </div>
+  ) : null;
   const BookingModal = () => (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div className="w-full max-w-lg bg-white rounded-lg shadow-xl border border-slate-200 p-5 space-y-4">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h2 className="text-lg font-bold text-slate-900">送出健檢預約</h2>
+            <h2 className="text-lg font-bold text-slate-900">{t.bookingTitle}</h2>
             <p className="text-xs text-slate-500 mt-1">{liffMessage}</p>
           </div>
-          <button className="p-2 rounded-md bg-slate-100 text-slate-500" onClick={() => setShowBookingModal(false)} aria-label="關閉預約視窗">
+          <button className="p-2 rounded-md bg-slate-100 text-slate-500" onClick={() => setShowBookingModal(false)} aria-label={t.closeBooking}>
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -1740,19 +2284,20 @@ ${selectedItems
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <label className="text-xs font-bold text-slate-600">
-            姓名
+            {t.name}
             <input className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-normal" value={bookingForm.name} onChange={(e) => setBookingField("name", e.target.value)} />
           </label>
           <label className="text-xs font-bold text-slate-600">
-            生日/身分識別
-            <input className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-normal" value={bookingForm.idNumber} onChange={(e) => setBookingField("idNumber", e.target.value)} />
+            {t.idNumber}
+            <input className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-normal" placeholder="A123456789 / Passport / ARC" value={bookingForm.idNumber} onChange={(e) => setBookingField("idNumber", e.target.value)} />
+            <span className="mt-1 block text-[11px] font-normal leading-4 text-slate-500">{t.idNumberHelp}</span>
           </label>
           <label className="text-xs font-bold text-slate-600">
-            電話
+            {t.phone}
             <input className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-normal" value={bookingForm.phone} onChange={(e) => setBookingField("phone", e.target.value)} />
           </label>
           <label className="text-xs font-bold text-slate-600">
-            希望日期
+            {t.appointmentDate}
             <input type="date" className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-normal" value={bookingForm.appointmentDate} onChange={(e) => setBookingField("appointmentDate", e.target.value)} />
           </label>
           <label className="text-xs font-bold text-slate-600 sm:col-span-2">
@@ -1764,13 +2309,13 @@ ${selectedItems
             </select>
           </label>
           <label className="text-xs font-bold text-slate-600 sm:col-span-2">
-            備註
+            {t.notes}
             <textarea className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-normal" rows="3" value={bookingForm.notes} onChange={(e) => setBookingField("notes", e.target.value)} />
           </label>
         </div>
 
         <button onClick={handleSubmitBooking} className="w-full py-3 rounded-md bg-emerald-600 text-white text-sm font-bold hover:bg-emerald-700">
-          確認送出
+          {t.submit}
         </button>
       </div>
     </div>
@@ -1783,28 +2328,63 @@ ${selectedItems
           健檢日期
           <input type="date" className="block mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm font-normal" value={adminDate} onChange={(e) => setAdminDate(e.target.value)} />
         </label>
+        <label className="text-xs font-bold text-slate-600">
+          通路
+          <select className="block mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm font-normal" value={adminChannel} onChange={(e) => setAdminChannel(e.target.value)}>
+            <option value="ALL">全部通路</option>
+            {CHANNELS.map((channel) => (
+              <option key={channel.value} value={channel.value}>{channel.label}</option>
+            ))}
+          </select>
+        </label>
+
         <button onClick={handleLoadAdminBookings} className="px-4 py-2 rounded-md bg-slate-900 text-white text-sm font-bold">讀取</button>
-        <button onClick={() => printBookings(adminBookings)} className="px-4 py-2 rounded-md bg-emerald-600 text-white text-sm font-bold">批次列印</button>
-        <span className="text-xs text-slate-500">{adminStatus}</span>
+        <button onClick={handlePrintSelectedBookings} disabled={!selectedAdminBookings.length} className="px-4 py-2 rounded-md bg-emerald-600 text-white text-sm font-bold disabled:opacity-40">列印勾選</button>
+        <button onClick={handleExportAdminBookings} disabled={!adminBookings.length} className="px-4 py-2 rounded-md bg-white border border-slate-300 text-slate-700 text-sm font-bold disabled:opacity-40">{"\u532f\u51fa CSV"}</button>
+        <label className="px-4 py-2 rounded-md bg-white border border-slate-300 text-slate-700 text-sm font-bold cursor-pointer">
+          {"\u532f\u5165 CSV"}
+          <input type="file" accept=".csv,text/csv" className="hidden" onChange={handleImportBookingCsv} />
+        </label>        <span className="text-xs text-slate-500">{adminStatus}</span>
       </div>
+      <div className="bg-white border border-amber-200 rounded-lg overflow-hidden">
+        <div className="bg-amber-50 px-4 py-2 text-sm font-black text-amber-900">改期待處理 ({pendingChanges.length})</div>
+        {pendingChanges.length ? pendingChanges.map((request) => (
+          <div key={request.requestId} className="grid grid-cols-12 items-center gap-2 px-4 py-3 border-t border-amber-100 text-sm">
+            <div className="col-span-2 font-bold text-slate-800">{request.customerName || "\u672a\u547d\u540d"}</div>
+            <div className="col-span-3 text-slate-600 truncate">{request.packageName}</div>
+            <div className="col-span-2 text-slate-600">{request.currentAppointmentDate}</div>
+            <div className="col-span-2 font-bold text-emerald-700">{request.requestedAppointmentDate}</div>
+            <div className="col-span-2 text-slate-500 truncate">{request.notes}</div>
+            <div className="col-span-1 text-right"><button onClick={() => handleApproveChangeRequest(request)} className="text-xs px-2 py-1 rounded bg-emerald-600 text-white">核准</button></div>
+          </div>
+        )) : (
+          <div className="p-4 text-sm text-slate-400">目前沒有改期申請</div>
+        )}
+      </div>
+
 
       <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
         <div className="grid grid-cols-12 bg-slate-100 text-xs font-bold text-slate-600 px-4 py-2">
+          <div className="col-span-1"><input type="checkbox" checked={allAdminBookingsSelected} onChange={toggleAllAdminBookings} aria-label="Select all bookings" /></div>
           <div className="col-span-2">姓名/Customer</div>
-          <div className="col-span-2">Channel</div>
-          <div className="col-span-3">套餐</div>
-          <div className="col-span-2">項目數</div>
+          <div className="col-span-2">電話</div>
+          <div className="col-span-1">Channel</div>
+          <div className="col-span-2">套餐</div>
+          <div className="col-span-1">狀態</div>
           <div className="col-span-2">金額</div>
           <div className="col-span-1 text-right">操作</div>
         </div>
         {adminBookings.length ? adminBookings.map((booking) => (
           <div key={booking.bookingId} className="grid grid-cols-12 items-center px-4 py-3 border-t border-slate-100 text-sm">
+            <div className="col-span-1"><input type="checkbox" checked={selectedAdminBookingIds.includes(booking.bookingId)} onChange={() => toggleAdminBookingSelection(booking.bookingId)} aria-label={`Select ${booking.customerName || booking.name || booking.customerId}`} /></div>
             <div className="col-span-2 font-bold text-slate-800">{booking.customerName || booking.name || booking.customerId}</div>
-            <div className="col-span-2 text-slate-600">{booking.channel}</div>
-            <div className="col-span-3 text-slate-600 truncate">{booking.packageName}</div>
-            <div className="col-span-2 text-slate-600">{(booking.selectedItems || []).length} 項</div>
+            <div className="col-span-2 text-slate-600">{booking.customerPhone || booking.phone || "-"}</div>
+            <div className="col-span-1 text-slate-600">{booking.channel}</div>
+            <div className="col-span-2 text-slate-600 truncate">{booking.packageName}</div>
+            <div className="col-span-1 text-slate-600">{statusLabel(booking.status)}</div>
             <div className="col-span-2 font-mono text-slate-700">NT$ {Number(booking.finalPrice || 0).toLocaleString()}</div>
-            <div className="col-span-1 text-right">
+            <div className="col-span-1 text-right space-y-1">
+              {booking.status === "CONFIRMED" ? null : <button onClick={() => handleConfirmBooking(booking)} className="text-xs px-2 py-1 rounded bg-emerald-600 text-white">確認</button>}
               <button onClick={() => printBookings([booking])} className="text-xs px-2 py-1 rounded bg-slate-900 text-white">列印</button>
             </div>
           </div>
@@ -1910,40 +2490,54 @@ ${selectedItems
         </div>
       )}
 
-      {showBookingModal && <BookingModal />}
+      {comparisonDetailCard && <PackageDetailModal card={comparisonDetailCard} />}
+      {showBookingModal && BookingModal()}
 
       <div className="flex-none border-b border-slate-200 bg-white px-4 py-3 lg:px-6 flex items-center justify-between gap-3">
         <div>
-          <div className="text-sm font-black text-slate-900">CAC 健檢套餐預約</div>
+          <div className="text-sm font-black text-slate-900">{APP_TITLE}</div>
           <div className="text-xs text-slate-500">{liffMessage}</div>
         </div>
-        <div className="flex rounded-md border border-slate-200 overflow-hidden text-xs font-bold">
-          <button onClick={() => setMode("public")} className={`px-3 py-2 ${mode === "public" ? "bg-slate-900 text-white" : "bg-white text-slate-600"}`}>民眾方案</button>
-          <button onClick={() => setMode("staff")} className={`px-3 py-2 ${mode === "staff" ? "bg-slate-900 text-white" : "bg-white text-slate-600"}`}>內部工具</button>
-          <button onClick={() => setMode("admin")} className={`px-3 py-2 ${mode === "admin" ? "bg-slate-900 text-white" : "bg-white text-slate-600"}`}>當日清單</button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setLang(lang === "zh" ? "en" : "zh")} aria-label="Switch language" className="rounded-md bg-white px-3 py-2 text-xs font-bold text-slate-600 border border-slate-200">{t.langToggle}</button>
+          {staffStatus && <span className="hidden md:inline text-xs text-slate-500 max-w-[260px] truncate">{staffStatus}</span>}
+          <div className="flex rounded-md border border-slate-200 overflow-hidden text-xs font-bold">
+            <button onClick={() => openPublicView("packages")} className={`px-3 py-2 ${mode === "public" ? "bg-slate-900 text-white" : "bg-white text-slate-600"}`}>{t.publicTab}</button>
+            {staffUser && (
+              <>
+                <button onClick={() => setStaffMode("staff")} className={`px-3 py-2 ${mode === "staff" ? "bg-slate-900 text-white" : "bg-white text-slate-600"}`}>{t.staffTab}</button>
+                <button onClick={() => setStaffMode("admin")} className={`px-3 py-2 ${mode === "admin" ? "bg-slate-900 text-white" : "bg-white text-slate-600"}`}>{t.adminTab}</button>
+              </>
+            )}
+          </div>
+          {staffUser ? (
+            <button onClick={handleStaffLogout} className="rounded-md bg-white px-3 py-2 text-xs font-bold text-slate-600 border border-slate-200">{t.logout}</button>
+          ) : (
+            <button onClick={handleStaffLogin} className="rounded-md bg-slate-900 px-3 py-2 text-xs font-bold text-white">{t.staffLogin}</button>
+          )}
         </div>
       </div>
 
-      {mode === "admin" ? <AdminView /> : mode === "public" ? <PublicPackageView /> : <>
+      {staffMode && !staffUser ? PublicPackageView() : mode === "admin" ? AdminView() : mode === "public" ? PublicPackageView() : <>
       {/* Desktop Layout (Hidden on Mobile) */}
       <div className="hidden lg:grid h-full max-w-[1920px] mx-auto w-full grid-cols-12 gap-6 p-6 items-stretch">
         <div className="col-span-2 h-full min-h-0">
-          <PackagesView />
+          {PackagesView()}
         </div>
 
         {compareList.length > 0 ? (
           // 比較模式：使用 10 欄寬 (2 + 10)
           <div className="col-span-10 h-full min-h-0">
-            <CalcView />
+            {CalcView({})}
           </div>
         ) : (
           // 一般規劃模式：使用 6 + 4 分割
           <>
             <div className="col-span-6 h-full min-h-0">
-              <ItemsView />
+              {ItemsView()}
             </div>
             <div className="col-span-4 h-full min-h-0">
-              <CalcView />
+              {CalcView({})}
             </div>
           </>
         )}
@@ -1958,7 +2552,7 @@ ${selectedItems
             Step 1: 選擇套餐
           </h3>
           <div className="h-[240px] border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-            <PackagesView />
+            {PackagesView()}
           </div>
         </div>
 
@@ -1968,7 +2562,7 @@ ${selectedItems
             <Calculator className="w-4 h-4" />
             Step 2: 費用與明細
           </h3>
-          <CalcView isMobile={true} />
+          {CalcView({ isMobile: true })}
         </div>
 
         {/* 3. Items Selection Section (Fixed Height + Scroll) */}
@@ -1978,7 +2572,7 @@ ${selectedItems
             Step 3: 加選項目
           </h3>
           <div className="h-[500px] border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-            <ItemsView />
+            {ItemsView()}
           </div>
         </div>
       </div>
@@ -1998,6 +2592,11 @@ ${selectedItems
 };
 
 export default App;
+
+
+
+
+
 
 
 
