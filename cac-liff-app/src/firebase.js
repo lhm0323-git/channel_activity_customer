@@ -128,6 +128,21 @@ function sortBookings(bookings) {
   return [...bookings].sort((a, b) => bookingCreatedAtMs(a) - bookingCreatedAtMs(b));
 }
 
+export async function listBookingsByRange(startDate, endDate, channel = "ALL") {
+  if (!startDate || !endDate) return [];
+  if (!db) {
+    const bookings = JSON.parse(localStorage.getItem("cac_local_bookings") || "[]").filter(
+      (booking) => booking.appointmentDate >= startDate && booking.appointmentDate <= endDate
+    );
+    return sortBookings(filterBookingsByChannel(bookings, channel));
+  }
+
+  const q = query(collection(db, "bookings"), where("appointmentDate", ">=", startDate), where("appointmentDate", "<=", endDate));
+  const snapshot = await getDocs(q);
+  const bookings = snapshot.docs.map((docSnap) => ({ bookingId: docSnap.id, ...docSnap.data() }));
+  return sortBookings(filterBookingsByChannel(bookings, channel));
+}
+
 export async function listBookingsByDate(appointmentDate, channel = "ALL") {
   if (!appointmentDate) return [];
   if (!db) {
@@ -186,6 +201,33 @@ export function watchPendingChangeRequests(callback) {
   });
 }
 
+export async function updateBooking(bookingId, fields) {
+  if (!db) return { localOnly: true };
+  await updateDoc(doc(db, "bookings", bookingId), {
+    ...fields,
+    updatedAt: serverTimestamp(),
+  });
+  return { localOnly: false };
+}
+
+export async function cancelBooking(bookingId) {
+  if (!db) {
+    const saved = JSON.parse(localStorage.getItem("cac_local_bookings") || "[]");
+    const next = saved.map((booking) =>
+      booking.bookingId === bookingId
+        ? { ...booking, status: "CANCELLED", cancelledAt: new Date().toISOString(), updatedAt: new Date().toISOString() }
+        : booking
+    );
+    localStorage.setItem("cac_local_bookings", JSON.stringify(next));
+    return { localOnly: true };
+  }
+  await updateDoc(doc(db, "bookings", bookingId), {
+    status: "CANCELLED",
+    cancelledAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+  return { localOnly: false };
+}
 export async function confirmBooking(bookingId) {
   if (!db) return;
   await updateDoc(doc(db, "bookings", bookingId), {
@@ -228,6 +270,31 @@ export async function saveManagedPackage({ name, itemIds, audience, bodyParts = 
     updatedAt: serverTimestamp(),
   }, { merge: true });
   return { localOnly: false };
+}
+
+export async function getStaffUser(email) {
+  if (!db || !email) return null;
+  const cleanEmail = String(email).trim().toLowerCase();
+  const snap = await getDoc(doc(db, "staffUsers", cleanEmail));
+  return snap.exists() ? { email: cleanEmail, ...snap.data() } : null;
+}
+
+export async function listStaffUsers() {
+  if (!db) return [];
+  const snapshot = await getDocs(collection(db, "staffUsers"));
+  return snapshot.docs.map((docSnap) => ({ email: docSnap.id, ...docSnap.data() }));
+}
+
+export async function saveStaffUser(email) {
+  if (!db) return { localOnly: true };
+  const cleanEmail = String(email || "").trim().toLowerCase();
+  if (!cleanEmail || !cleanEmail.includes("@")) throw new Error("Invalid email");
+  await setDoc(doc(db, "staffUsers", cleanEmail), {
+    email: cleanEmail,
+    active: true,
+    updatedAt: serverTimestamp(),
+  }, { merge: true });
+  return { email: cleanEmail, localOnly: false };
 }
 
 export async function deleteManagedPackage(name, itemIds = []) {

@@ -377,6 +377,7 @@ export function makeFirestoreSafeId(value) {
 export function buildBookingPayload({ formData, lineProfile, packageName, selectedItems, listPrice, discountRate, finalPrice }) {
   const trimmedName = String(formData.name || "").trim();
   const trimmedPhone = String(formData.phone || "").trim();
+  const trimmedEmail = String(formData.email || "").trim();
   const appointmentDate = String(formData.appointmentDate || "").trim();
   const idNumber = String(formData.idNumber || "").trim();
   const channel = String(formData.channel || "GENERAL").trim();
@@ -394,6 +395,7 @@ export function buildBookingPayload({ formData, lineProfile, packageName, select
       customerId,
       name: trimmedName,
       phone: trimmedPhone,
+      email: trimmedEmail,
       lineUserId,
       idNumberMasked: maskId(idNumber),
     },
@@ -401,6 +403,7 @@ export function buildBookingPayload({ formData, lineProfile, packageName, select
       customerId,
       customerName: trimmedName,
       customerPhone: trimmedPhone,
+      customerEmail: trimmedEmail,
       idNumberMasked: maskId(idNumber),
       lineUserId,
       lineDisplayName: lineProfile?.displayName || "",
@@ -459,6 +462,7 @@ export function buildChecklistPayload(booking) {
 export const BOOKING_CSV_HEADERS = [
   "name",
   "phone",
+  "email",
   "idNumber",
   "appointmentDate",
   "channel",
@@ -477,6 +481,7 @@ export function exportBookingsCsv(bookings) {
   const rows = bookings.map((booking) => [
     booking.customerName || booking.name || "",
     booking.customerPhone || booking.phone || "",
+    booking.customerEmail || booking.email || "",
     booking.idNumber || booking.idNumberMasked || "",
     booking.appointmentDate || "",
     booking.channel || "",
@@ -502,6 +507,7 @@ export function parseBookingImportCsv(text) {
       rowNumber: rowIndex + 2,
       name: value("name"),
       phone: value("phone"),
+      email: value("email"),
       idNumber: value("idNumber"),
       appointmentDate: value("appointmentDate"),
       channel: value("channel") || "GENERAL",

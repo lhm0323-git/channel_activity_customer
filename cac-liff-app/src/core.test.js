@@ -52,6 +52,7 @@ run("buildBookingPayload preserves selected item fields and manual final price",
     formData: {
       name: "王小明",
       phone: "0912345678",
+      email: "test@example.com",
       idNumber: "A123456789",
       channel: "GENERAL",
       appointmentDate: "2026-08-01",
@@ -70,6 +71,8 @@ run("buildBookingPayload preserves selected item fields and manual final price",
   assert.equal(result.customer.idNumberMasked, "A1***89");
   assert.equal(result.booking.customerName, "王小明");
   assert.equal(result.booking.customerPhone, "0912345678");
+  assert.equal(result.customer.email, "test@example.com");
+  assert.equal(result.booking.customerEmail, "test@example.com");
   assert.equal(result.booking.finalPrice, 999);
   assert.deepEqual(Object.keys(result.booking.selectedItems[0]), ["id", "name", "enName", "code", "category", "price", "remark", "outsource"]);
 });
@@ -288,6 +291,7 @@ run("booking CSV export/import round trips core fields", () => {
     {
       customerName: "Alice, HR",
       customerPhone: "0912345678",
+      customerEmail: "alice@example.com",
       appointmentDate: "2026-07-20",
       channel: "CORPORATE",
       packageName: "A Corp Package",
@@ -299,6 +303,7 @@ run("booking CSV export/import round trips core fields", () => {
   const rows = parseBookingImportCsv(csv);
   assert.equal(rows.length, 1);
   assert.equal(rows[0].name, "Alice, HR");
+  assert.equal(rows[0].email, "alice@example.com");
   assert.equal(rows[0].appointmentDate, "2026-07-20");
   assert.equal(rows[0].packageName, "A Corp Package");
   assert.equal(rows[0].finalPrice, 8000);

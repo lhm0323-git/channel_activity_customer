@@ -48,18 +48,23 @@ import {
 import { initLiffProfile } from "./liff.js";
 import {
   approveChangeRequest,
+  cancelBooking,
   confirmBooking,
   deleteManagedPackage,
-  listBookingsByDate,
+  getStaffUser,
+  listBookingsByRange,
   listManagedPackages,
   listMyBookings,
+  listStaffUsers,
   markChecklistPrinted,
   saveBooking,
   requestBookingChange,
   saveManagedPackage,
   saveChecklist,
+  saveStaffUser,
   signInStaff,
   signOutStaff,
+  updateBooking,
   watchPendingChangeRequests,
   watchStaffAuth,
 } from "./firebase.js";
@@ -75,13 +80,22 @@ function canUseStaffTools(user) {
   return STAFF_EMAILS.includes(user.email.toLowerCase());
 }
 
+const ADMIN_EMAIL = "lhm0323@gmail.com";
+const CHANNEL_LABELS_EN = { HIGH_END: "Premium", CORPORATE: "Corporate", LABOR: "Labor", GENERAL: "General" };
+
+function channelLabel(value, lang = "zh") {
+  if (!value || value === "ALL") return "-";
+  if (lang === "en") return CHANNEL_LABELS_EN[value] || value;
+  return CHANNELS.find((channel) => channel.value === value)?.label || value;
+}
+
 const APP_TITLE = "\u5c4f\u57fa\u5065\u6aa2\u5957\u9910\u9810\u7d04";
 const TEXT = {
   zh: {
     langToggle: "English",
     publicTab: "\u6c11\u773e\u65b9\u6848",
-    staffTab: "\u5167\u90e8\u5de5\u5177",
-    adminTab: "\u7576\u65e5\u6e05\u55ae",
+    staffTab: "\u5957\u9910\u5de5\u5177",
+    adminTab: "\u9810\u7d04\u6e05\u55ae",
     staffLogin: "\u54e1\u5de5\u767b\u5165",
     logout: "\u767b\u51fa",
     publicTitle: "\u9078\u64c7\u9069\u5408\u7684\u5065\u6aa2\u65b9\u6848",
@@ -102,16 +116,55 @@ const TEXT = {
     idNumber: "\u8eab\u5206\u8b49/\u8b77\u7167\u865f\u78bc",
     idNumberHelp: "\u672c\u570b\u6c11\u773e\u586b\u8eab\u5206\u8b49\uff1b\u5916\u7c4d\u9867\u5ba2\u53ef\u586b\u8b77\u7167\u6216\u5c45\u7559\u8b49\u3002\u73fe\u5834\u4ecd\u6703\u4ee5\u5065\u4fdd\u5361\u6216\u8b49\u4ef6\u6838\u5c0d\u3002",
     phone: "\u96fb\u8a71",
+    email: "Email",
     appointmentDate: "\u5e0c\u671b\u65e5\u671f",
     notes: "\u5099\u8a3b",
     submit: "\u78ba\u8a8d\u9001\u51fa",
     closeBooking: "\u95dc\u9589\u9810\u7d04\u8996\u7a97",
+    deletedRecent: "\u6700\u8fd1\u522a\u9664",
+    showDeleted: "\u986f\u793a",
+    adminStartDate: "\u5065\u6aa2\u65e5\u671f",
+    startDate: "\u8d77\u65e5",
+    endDate: "\u8fc4\u65e5",
+    adminChannel: "\u901a\u8def",
+    allChannels: "\u5168\u90e8\u901a\u8def",
+    load: "\u8b80\u53d6",
+    printSelected: "\u5217\u5370\u5df2\u9078",
+    exportCsv: "\u532f\u51fa CSV",
+    importCsv: "\u532f\u5165 CSV",
+    pendingChanges: "\u6539\u671f\u5f85\u8655\u7406",
+    noPendingChanges: "\u76ee\u524d\u6c92\u6709\u6539\u671f\u7533\u8acb",
+    unnamed: "\u672a\u547d\u540d",
+    approve: "\u6838\u51c6",
+    customer: "\u59d3\u540d",
+    selectAllBookings: "\u9078\u53d6\u5168\u90e8\u9810\u7d04",
+    package: "\u5957\u9910",
+    status: "\u72c0\u614b",
+    amount: "\u91d1\u984d",
+    operation: "\u64cd\u4f5c",
+    notice: "\u901a\u77e5",
+    editBooking: "\u7de8\u8f2f\u9810\u7d04",
+    saveChanges: "\u5132\u5b58\u4fee\u6539",
+    confirm: "\u78ba\u8a8d",
+    print: "\u5217\u5370",
+    details: "\u8a73\u7d30",
+    bookingDetails: "\u9810\u7d04\u8a73\u60c5",
+    selectedItems: "\u6aa2\u67e5\u9805\u76ee",
+    staffAccounts: "\u54e1\u5de5\u5e33\u865f",
+    addStaff: "\u65b0\u589e\u54e1\u5de5",
+    staffEmailPlaceholder: "\u8f38\u5165 Gmail",
+    noStaffAccounts: "\u5c1a\u672a\u65b0\u589e\u54e1\u5de5\u5e33\u865f",
+    noBookings: "\u5c1a\u7121\u8cc7\u6599",
+    booked: "\u5f85\u78ba\u8a8d",
+    confirmed: "\u5df2\u78ba\u8a8d",
+    rescheduled: "\u5df2\u6539\u671f",
+    cancelled: "\u5df2\u53d6\u6d88",
   },
   en: {
     langToggle: "\u4e2d\u6587",
     publicTab: "Packages",
-    staffTab: "Staff tools",
-    adminTab: "Daily list",
+    staffTab: "Package tools",
+    adminTab: "Bookings",
     staffLogin: "Staff login",
     logout: "Logout",
     publicTitle: "Choose a Health Check Package",
@@ -132,13 +185,51 @@ const TEXT = {
     idNumber: "ID / Passport number",
     idNumberHelp: "Taiwan residents may enter national ID. Foreign guests may enter passport or ARC number; staff will verify on site.",
     phone: "Phone",
+    email: "Email",
     appointmentDate: "Preferred date",
     notes: "Notes",
     submit: "Submit booking",
     closeBooking: "Close booking dialog",
+    deletedRecent: "Recently deleted",
+    showDeleted: "Show",
+    adminStartDate: "Checkup date",
+    startDate: "From",
+    endDate: "To",
+    adminChannel: "Channel",
+    allChannels: "All channels",
+    load: "Load",
+    printSelected: "Print selected",
+    exportCsv: "Export CSV",
+    importCsv: "Import CSV",
+    pendingChanges: "Pending reschedules",
+    noPendingChanges: "No pending reschedule requests",
+    unnamed: "Unnamed",
+    approve: "Approve",
+    customer: "Customer",
+    selectAllBookings: "Select all bookings",
+    package: "Package",
+    status: "Status",
+    amount: "Amount",
+    operation: "Actions",
+    notice: "Notice",
+    editBooking: "Edit booking",
+    saveChanges: "Save changes",
+    confirm: "Confirm",
+    print: "Print",
+    details: "Details",
+    bookingDetails: "Booking details",
+    selectedItems: "Selected items",
+    staffAccounts: "Staff accounts",
+    addStaff: "Add staff",
+    staffEmailPlaceholder: "Enter Gmail",
+    noStaffAccounts: "No staff accounts yet",
+    noBookings: "No bookings",
+    booked: "Pending",
+    confirmed: "Confirmed",
+    rescheduled: "Rescheduled",
+    cancelled: "Cancelled",
   },
-};
-const OPTION_LABELS_EN = {
+};const OPTION_LABELS_EN = {
   "\u5168\u90e8": "All",
   "\u4e00\u822c": "General",
   "\u9ad8\u968e": "Premium",
@@ -451,16 +542,34 @@ const App = () => {
     name: "",
     idNumber: "",
     phone: "",
+    email: "",
     channel: "GENERAL",
     appointmentDate: "",
     notes: "",
   });
-  const [adminDate, setAdminDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [adminStartDate, setAdminStartDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [adminEndDate, setAdminEndDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [adminChannel, setAdminChannel] = useState("ALL");
   const [adminBookings, setAdminBookings] = useState([]);
+  const [adminSort, setAdminSort] = useState({ key: "createdAt", direction: "asc" });
+  const [adminDetailBooking, setAdminDetailBooking] = useState(null);
   const [selectedAdminBookingIds, setSelectedAdminBookingIds] = useState([]);
   const [pendingChanges, setPendingChanges] = useState([]);
   const [adminStatus, setAdminStatus] = useState("");
+  const [staffAccounts, setStaffAccounts] = useState([]);
+  const [newStaffEmail, setNewStaffEmail] = useState("");
+  const [staffManageStatus, setStaffManageStatus] = useState("");
+  const [deletedPackageLimit, setDeletedPackageLimit] = useState(() => {
+    if (typeof window === "undefined") return 5;
+    return Number(localStorage.getItem("health_planner_deleted_limit_v3")) || 5;
+  });
+  const deletedPackageNames = Object.keys(deletedPackages);
+  const visibleDeletedPackageNames = deletedPackageNames.slice(-deletedPackageLimit).reverse();
+  const updateDeletedPackageLimit = (value) => {
+    const next = Number(value) || 5;
+    setDeletedPackageLimit(next);
+    localStorage.setItem("health_planner_deleted_limit_v3", String(next));
+  };
 
   useEffect(() => {
     const syncView = () => {
@@ -522,16 +631,31 @@ const App = () => {
   }, []);
 
   useEffect(() => {
-    return watchStaffAuth((user) => {
-      if (!canUseStaffTools(user)) {
-        setStaffUser(null);
-        if (user) setStaffStatus("\u6b64 Google \u5e33\u865f\u672a\u6388\u6b0a\u4f7f\u7528\u5167\u90e8\u5de5\u5177");
-        setMode("public");
-        return;
-      }
-      setStaffUser(user);
-      setStaffStatus(user ? `\u5df2\u767b\u5165\uff1a${user.email}` : "");
+    let active = true;
+    const unsubscribe = watchStaffAuth((user) => {
+      (async () => {
+        if (!user?.email) {
+          if (!active) return;
+          setStaffUser(null);
+          setStaffStatus("");
+          return;
+        }
+        const allowed = canUseStaffTools(user) || Boolean(await getStaffUser(user.email));
+        if (!active) return;
+        if (!allowed) {
+          setStaffUser(null);
+          setStaffStatus("\u6b64 Google \u5e33\u865f\u672a\u6388\u6b0a\u4f7f\u7528\u5167\u90e8\u5de5\u5177");
+          setMode("public");
+          return;
+        }
+        setStaffUser(user);
+        setStaffStatus(`\u5df2\u767b\u5165\uff1a${user.email}`);
+      })();
     });
+    return () => {
+      active = false;
+      unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
@@ -1101,7 +1225,8 @@ ${selectedItems
     try {
       setStaffStatus("\u767b\u5165\u4e2d...");
       const user = await signInStaff();
-      if (!canUseStaffTools(user)) {
+      const allowed = canUseStaffTools(user) || Boolean(await getStaffUser(user.email));
+      if (!allowed) {
         await signOutStaff();
         setStaffStatus("\u6b64 Google \u5e33\u865f\u672a\u6388\u6b0a\u4f7f\u7528\u5167\u90e8\u5de5\u5177");
         setMode("public");
@@ -1147,7 +1272,8 @@ ${selectedItems
       await saveChecklist(result.bookingId, buildChecklistPayload(bookingForChecklist));
       setBookingStatus(result.localOnly ? `已暫存本機預約：${result.bookingId}` : `預約已建立：${result.bookingId}`);
       setShowBookingModal(false);
-      setAdminDate(payload.booking.appointmentDate);
+      setAdminStartDate(payload.booking.appointmentDate);
+      setAdminEndDate(payload.booking.appointmentDate);
     } catch (error) {
       setBookingStatus(error.message);
     }
@@ -1166,54 +1292,119 @@ ${selectedItems
   };
 
   const handleRequestBookingChange = async (booking) => {
+    const requestedAppointmentDate = changeDates[booking.bookingId];
+    if (!requestedAppointmentDate) {
+      setMyBookingStatus(lang === "en" ? "Please choose a new date" : "\u8acb\u5148\u9078\u64c7\u65b0\u7684\u5e0c\u671b\u65e5\u671f");
+      return;
+    }
     try {
-      const change = buildChangeRequestPayload({
-        booking,
-        requestedAppointmentDate: changeDates[booking.bookingId],
-        notes: changeNotes[booking.bookingId],
+      const result = await requestBookingChange({
+        bookingId: booking.bookingId,
+        customerName: booking.customerName || booking.name || "",
+        packageName: booking.packageName || "",
+        currentAppointmentDate: booking.appointmentDate || "",
+        requestedAppointmentDate,
+        notes: changeNotes[booking.bookingId] || "",
+        status: "pending",
       });
-      const result = await requestBookingChange(change);
       setMyBookingStatus(result.localOnly ? "\u5df2\u66ab\u5b58\u6539\u671f\u7533\u8acb" : "\u5df2\u9001\u51fa\u6539\u671f\u7533\u8acb\uff0c\u8acb\u7b49\u5019\u5065\u6aa2\u4e2d\u5fc3\u78ba\u8a8d");
     } catch (error) {
-      setMyBookingStatus(`\u9001\u51fa\u5931\u6557\uff1a${error.message}`);
+      setMyBookingStatus(lang === "en" ? `Send failed: ${error.message}` : `\u9001\u51fa\u5931\u6557\uff1a${error.message}`);
     }
   };
 
-  const statusLabel = (status) => ({ BOOKED: "待確認", CONFIRMED: "已確認", RESCHEDULED: "已改期", CANCELLED: "已取消" }[status] || status || "待確認");
+  const handleCancelMyBooking = async (booking) => {
+    if (booking.status === "CANCELLED") return;
+    const ok = window.confirm(lang === "en" ? "Cancel this booking?" : "\u78ba\u5b9a\u53d6\u6d88\u9019\u7b46\u9810\u7d04\uff1f");
+    if (!ok) return;
+    try {
+      const result = await cancelBooking(booking.bookingId);
+      setMyBookingStatus(result.localOnly ? "\u5df2\u53d6\u6d88\u672c\u6a5f\u66ab\u5b58\u9810\u7d04" : "\u5df2\u53d6\u6d88\u9810\u7d04");
+      handleLoadMyBookings();
+    } catch (error) {
+      setMyBookingStatus(lang === "en" ? `Cancel failed: ${error.message}` : `\u53d6\u6d88\u5931\u6557\uff1a${error.message}`);
+    }
+  };
+  const statusLabel = (status) => ({ BOOKED: t.booked, CONFIRMED: t.confirmed, RESCHEDULED: t.rescheduled, CANCELLED: t.cancelled }[status] || status || t.booked);
+  const noticeLabel = (booking) => {
+    if (booking.d1AcknowledgedAt) return lang === "en" ? "Acknowledged" : "\u5df2\u56de\u8986";
+    if (booking.d1NoticeSentAt) return lang === "en" ? "Sent" : "\u5df2\u767c\u9001";
+    if (booking.d1NoticeStatus === "FAILED") return lang === "en" ? "Failed" : "\u767c\u9001\u5931\u6557";
+    return lang === "en" ? "Pending" : "\u5f85\u767c\u9001";
+  };
 
   const handleConfirmBooking = async (booking) => {
     try {
       await confirmBooking(booking.bookingId);
-      setAdminStatus("已確認預約");
+      setAdminStatus(t.confirmed);
       handleLoadAdminBookings();
     } catch (error) {
-      setAdminStatus(`確認失敗：${error.message}`);
+      setAdminStatus(`${t.confirm} failed: ${error.message}`);
     }
   };
 
+  const handleCancelAdminBooking = async (booking) => {
+    if (booking.status === "CANCELLED") return;
+    const ok = window.confirm(lang === "en" ? "Cancel this booking?" : "\u78ba\u5b9a\u53d6\u6d88\u9019\u7b46\u9810\u7d04\uff1f");
+    if (!ok) return;
+    try {
+      await cancelBooking(booking.bookingId);
+      setAdminStatus(lang === "en" ? "Booking cancelled" : "\u9810\u7d04\u5df2\u53d6\u6d88");
+      setAdminDetailBooking(null);
+      handleLoadAdminBookings();
+    } catch (error) {
+      setAdminStatus(lang === "en" ? `Cancel failed: ${error.message}` : `\u53d6\u6d88\u5931\u6557\uff1a${error.message}`);
+    }
+  };
   const handleApproveChangeRequest = async (request) => {
     try {
       await approveChangeRequest(request);
-      setAdminStatus("\u5df2\u6838\u51c6\u6539\u671f");
-      if (adminDate === request.currentAppointmentDate || adminDate === request.requestedAppointmentDate) {
+      setAdminStatus(lang === "en" ? "Reschedule approved" : "\u5df2\u6838\u51c6\u6539\u671f");
+      if (adminStartDate === request.currentAppointmentDate || adminStartDate === request.requestedAppointmentDate) {
         handleLoadAdminBookings();
       }
     } catch (error) {
-      setAdminStatus(`\u6838\u51c6\u5931\u6557\uff1a${error.message}`);
+      setAdminStatus(lang === "en" ? `Approve failed: ${error.message}` : `\u6838\u51c6\u5931\u6557\uff1a${error.message}`);
     }
   };
 
   const handleLoadAdminBookings = async () => {
     try {
-      setAdminStatus("讀取中...");
-      const bookings = await listBookingsByDate(adminDate, adminChannel);
+      setAdminStatus(lang === "en" ? "Loading..." : "\u8b80\u53d6\u4e2d...");
+      const bookings = await listBookingsByRange(adminStartDate, adminEndDate, adminChannel);
       setAdminBookings(bookings);
       setSelectedAdminBookingIds([]);
-      setAdminStatus(`已載入 ${bookings.length} 筆預約`);
+      setAdminStatus(lang === "en" ? `Loaded ${bookings.length} bookings` : `\u5df2\u8f09\u5165 ${bookings.length} \u7b46\u9810\u7d04`);
     } catch (error) {
-      setAdminStatus(`讀取失敗：${error.message}`);
+      setAdminStatus(lang === "en" ? `Load failed: ${error.message}` : `\u8b80\u53d6\u5931\u6557\uff1a${error.message}`);
     }
   };
+
+  const adminSortValue = (booking, key) => {
+    if (key === "date") return booking.appointmentDate || "";
+    if (key === "customer") return booking.customerName || booking.name || booking.customerId || "";
+    if (key === "phone") return booking.customerPhone || booking.phone || "";
+    if (key === "channel") return channelLabel(booking.channel, lang);
+    if (key === "package") return booking.packageName || "";
+    if (key === "status") return statusLabel(booking.status);
+    if (key === "notice") return noticeLabel(booking);
+    if (key === "amount") return Number(booking.finalPrice || 0);
+    return booking.createdAt?.toMillis?.() || Date.parse(booking.createdAt || "") || 0;
+  };
+
+  const sortedAdminBookings = useMemo(() => {
+    const direction = adminSort.direction === "desc" ? -1 : 1;
+    return [...adminBookings].sort((a, b) => {
+      const valueA = adminSortValue(a, adminSort.key);
+      const valueB = adminSortValue(b, adminSort.key);
+      if (valueA < valueB) return -1 * direction;
+      if (valueA > valueB) return 1 * direction;
+      return 0;
+    });
+  }, [adminBookings, adminSort, lang]);
+
+  const toggleAdminSort = (key) => setAdminSort((current) => current.key === key ? { key, direction: current.direction === "asc" ? "desc" : "asc" } : { key, direction: "asc" });
+  const adminSortMark = (key) => adminSort.key === key ? (adminSort.direction === "asc" ? " ?" : " ?") : "";
 
   const selectedAdminBookings = adminBookings.filter((booking) => selectedAdminBookingIds.includes(booking.bookingId));
   const allAdminBookingsSelected = adminBookings.length > 0 && selectedAdminBookingIds.length === adminBookings.length;
@@ -1226,9 +1417,64 @@ ${selectedItems
     setSelectedAdminBookingIds(allAdminBookingsSelected ? [] : adminBookings.map((booking) => booking.bookingId).filter(Boolean));
   };
 
+  const isAdminUser = staffUser?.email?.toLowerCase() === ADMIN_EMAIL;
+
+  useEffect(() => {
+    if (!isAdminUser) return;
+    listStaffUsers()
+      .then(setStaffAccounts)
+      .catch((error) => setStaffManageStatus(lang === "en" ? `Load staff failed: ${error.message}` : `\u8b80\u53d6\u54e1\u5de5\u5931\u6557\uff1a${error.message}`));
+  }, [isAdminUser, lang]);
+
+  const handleAddStaffUser = async () => {
+    try {
+      const result = await saveStaffUser(newStaffEmail);
+      setNewStaffEmail("");
+      setStaffManageStatus(lang === "en" ? `Added ${result.email}` : `\u5df2\u65b0\u589e\uff1a${result.email}`);
+      setStaffAccounts(await listStaffUsers());
+    } catch (error) {
+      setStaffManageStatus(lang === "en" ? `Add failed: ${error.message}` : `\u65b0\u589e\u5931\u6557\uff1a${error.message}`);
+    }
+  };
+
+  const handleSaveAdminBooking = async () => {
+    if (!adminDetailBooking?.bookingId) return;
+    try {
+      let fields = {
+        customerName: adminDetailBooking.customerName || adminDetailBooking.name || "",
+        customerPhone: adminDetailBooking.customerPhone || adminDetailBooking.phone || "",
+        customerEmail: adminDetailBooking.customerEmail || adminDetailBooking.email || "",
+        appointmentDate: adminDetailBooking.appointmentDate || "",
+        channel: adminDetailBooking.channel || "GENERAL",
+        packageName: adminDetailBooking.packageName || "",
+        status: adminDetailBooking.status || "BOOKED",
+        notes: adminDetailBooking.notes || "",
+        finalPrice: Number(adminDetailBooking.finalPrice || 0),
+      };
+      const packageIds = packages[fields.packageName];
+      if (packageIds?.length) {
+        const rowItems = parsedItems.filter((item) => packageIds.includes(item.id));
+        const pricing = calculatePricing(rowItems);
+        fields = {
+          ...fields,
+          selectedItems: rowItems.map(({ id, name, enName, code, category, price, remark, outsource }) => ({ id, name, enName, code, category, price, remark, outsource })),
+          listPrice: pricing.listPrice,
+          discountRate: pricing.discountRate,
+          finalPrice: Number(fields.finalPrice || packageMeta[fields.packageName]?.finalPrice || pricing.suggestedPrice),
+        };
+      }
+      await updateBooking(adminDetailBooking.bookingId, fields);
+      setAdminStatus(lang === "en" ? "Booking updated" : "\u9810\u7d04\u5df2\u66f4\u65b0");
+      setAdminDetailBooking(null);
+      handleLoadAdminBookings();
+    } catch (error) {
+      setAdminStatus(lang === "en" ? `Update failed: ${error.message}` : `\u66f4\u65b0\u5931\u6557\uff1a${error.message}`);
+    }
+  };
+
   const handlePrintSelectedBookings = () => {
     if (!selectedAdminBookings.length) {
-      setAdminStatus("\u8acb\u5148\u52fe\u9078\u8981\u5217\u5370\u7684\u5ba2\u6236");
+      setAdminStatus(lang === "en" ? "Select customers to print first" : "\u8acb\u5148\u52fe\u9078\u8981\u5217\u5370\u7684\u5ba2\u6236");
       return;
     }
     printBookings(selectedAdminBookings);
@@ -1258,14 +1504,14 @@ ${selectedItems
   const handleExportAdminBookings = async () => {
     const target = selectedAdminBookings.length ? selectedAdminBookings : adminBookings;
     if (!target.length) {
-      setAdminStatus("\u6c92\u6709\u53ef\u532f\u51fa\u7684\u9810\u7d04");
+      setAdminStatus(lang === "en" ? "No bookings to export" : "\u6c92\u6709\u53ef\u532f\u51fa\u7684\u9810\u7d04");
       return;
     }
     try {
-      const mode = await downloadCsv(`bookings-${adminDate || "all"}.csv`, exportBookingsCsv(target));
-      setAdminStatus(mode === "picked" ? `\u5df2\u5132\u5b58 ${target.length} \u7b46 CSV` : `\u5df2\u532f\u51fa ${target.length} \u7b46 CSV\uff08\u8acb\u67e5\u770b\u4e0b\u8f09\u8cc7\u6599\u593e\uff09`);
+      const mode = await downloadCsv(`bookings-${adminStartDate || "all"}-${adminEndDate || "all"}.csv`, exportBookingsCsv(target));
+      setAdminStatus(lang === "en" ? (mode === "picked" ? `Saved ${target.length} CSV rows` : `Exported ${target.length} CSV rows (check Downloads)`) : (mode === "picked" ? `\u5df2\u5132\u5b58 ${target.length} \u7b46 CSV` : `\u5df2\u532f\u51fa ${target.length} \u7b46 CSV\uff08\u8acb\u67e5\u770b\u4e0b\u8f09\u8cc7\u6599\u593e\uff09`));
     } catch (error) {
-      if (error?.name !== "AbortError") setAdminStatus(`CSV \u532f\u51fa\u5931\u6557\uff1a${error.message}`);
+      if (error?.name !== "AbortError") setAdminStatus(lang === "en" ? `CSV export failed: ${error.message}` : `CSV \u532f\u51fa\u5931\u6557\uff1a${error.message}`);
     }
   };
 
@@ -1274,7 +1520,7 @@ ${selectedItems
     event.target.value = "";
     if (!file) return;
     try {
-      setAdminStatus("CSV \u532f\u5165\u4e2d...");
+      setAdminStatus(lang === "en" ? "Importing CSV..." : "CSV \u532f\u5165\u4e2d...");
       const rows = parseBookingImportCsv(await file.text());
       let imported = 0;
       const skipped = [];
@@ -1290,6 +1536,7 @@ ${selectedItems
           formData: {
             name: row.name,
             phone: row.phone,
+            email: row.email,
             idNumber: row.idNumber,
             channel: row.channel,
             appointmentDate: row.appointmentDate,
@@ -1307,10 +1554,10 @@ ${selectedItems
         await saveChecklist(result.bookingId, buildChecklistPayload({ ...payload.booking, bookingId: result.bookingId }));
         imported += 1;
       }
-      setAdminStatus(`CSV \u532f\u5165\u5b8c\u6210\uff1a${imported} \u7b46${skipped.length ? `\uff0c\u8df3\u904e\u7b2c ${skipped.join(", ")} \u5217` : ""}`);
-      if (adminDate) handleLoadAdminBookings();
+      setAdminStatus(lang === "en" ? `CSV import complete: ${imported} rows${skipped.length ? `, skipped rows ${skipped.join(", ")}` : ""}` : `CSV \u532f\u5165\u5b8c\u6210\uff1a${imported} \u7b46${skipped.length ? `\uff0c\u8df3\u904e\u7b2c ${skipped.join(", ")} \u5217` : ""}`);
+      if (adminStartDate && adminEndDate) handleLoadAdminBookings();
     } catch (error) {
-      setAdminStatus(`CSV \u532f\u5165\u5931\u6557\uff1a${error.message}`);
+      setAdminStatus(lang === "en" ? `CSV import failed: ${error.message}` : `CSV \u532f\u5165\u5931\u6557\uff1a${error.message}`);
     }
   };
   const buildChecklistHtml = (bookings) => {
@@ -1381,7 +1628,7 @@ ${selectedItems
 
   const printBookings = async (bookings) => {
     if (!bookings.length) {
-      setAdminStatus("沒有可列印的預約");
+      setAdminStatus(lang === "en" ? "No bookings to print" : "\u6c92\u6709\u53ef\u5217\u5370\u7684\u9810\u7d04");
       return;
     }
     const printWindow = window.open("", "_blank");
@@ -1464,14 +1711,24 @@ ${selectedItems
         })}
       </div>
 
-      {Object.keys(deletedPackages).length > 0 && (
+      {deletedPackageNames.length > 0 && (
         <div className="border-t border-slate-200 bg-slate-50 p-3 max-h-[150px] overflow-y-auto custom-scrollbar flex-none">
-          <h4 className="text-xs lg:text-[10px] font-bold text-slate-400 uppercase mb-2 flex items-center gap-1">
-            <Trash2 className="w-4 h-4 lg:w-3 lg:h-3" /> 最近刪除 (
-            {Object.keys(deletedPackages).length})
-          </h4>
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <h4 className="text-xs lg:text-[10px] font-bold text-slate-400 uppercase flex items-center gap-1">
+              <Trash2 className="w-4 h-4 lg:w-3 lg:h-3" /> {t.deletedRecent} ({deletedPackageNames.length})
+            </h4>
+            <label className="flex items-center gap-1 text-[10px] font-bold text-slate-400">
+              {t.showDeleted}
+              <select className="rounded border border-slate-200 bg-white px-1 py-0.5 text-[10px]" value={deletedPackageLimit} onChange={(e) => updateDeletedPackageLimit(e.target.value)}>
+                <option value="5">5</option>
+                <option value="10">10</option>
+                <option value="20">20</option>
+                <option value="9999">{lang === "en" ? "All" : "\u5168\u90e8"}</option>
+              </select>
+            </label>
+          </div>
           <div className="space-y-2 lg:space-y-1">
-            {Object.keys(deletedPackages).map((name) => (
+            {visibleDeletedPackageNames.map((name) => (
               <div
                 key={name}
                 className="flex items-center justify-between px-2 py-2 lg:py-1.5 bg-white border border-slate-200 rounded text-sm lg:text-xs text-slate-500"
@@ -2041,30 +2298,29 @@ ${selectedItems
     );
   };
 
-  const MyBookingsPanel = () => (    <div className="bg-white border border-slate-200 rounded-lg p-4 lg:p-5">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+  const MyBookingsPanel = () => (
+    <div className="bg-white border border-slate-200 rounded-lg p-4 lg:p-5">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-base font-black text-slate-900">我的預約</h2>
-          <p className="mt-1 text-xs text-slate-500">此裝置可查詢自己建立的預約，改期需由健檢中心確認。</p>
+          <h2 className="text-base font-black text-slate-900">{lang === "en" ? "My bookings" : "\u6211\u7684\u9810\u7d04"}</h2>
+          <p className="mt-1 text-xs text-slate-500">{lang === "en" ? "Check, reschedule, or cancel your bookings." : "\u67e5\u8a62\u3001\u6539\u671f\u6216\u53d6\u6d88\u5df2\u5efa\u7acb\u7684\u9810\u7d04\u3002"}</p>
         </div>
-        <button onClick={handleLoadMyBookings} className="rounded-md bg-slate-900 px-4 py-2 text-sm font-bold text-white">{lang === "en" ? "Find my bookings" : "查詢我的預約"}</button>
+        <button onClick={handleLoadMyBookings} className="rounded-md bg-slate-900 px-4 py-3 text-sm font-bold text-white">{lang === "en" ? "Find my bookings" : "\u67e5\u8a62\u6211\u7684\u9810\u7d04"}</button>
       </div>
       {myBookingStatus && <div className="mt-3 text-xs text-slate-500">{myBookingStatus}</div>}
       {myBookings.length > 0 && (
         <div className="mt-4 space-y-3">
           {myBookings.map((booking) => (
             <div key={booking.bookingId} className="rounded-md border border-slate-200 p-3 text-sm">
-              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
-                <div>
-                  <div className="font-bold text-slate-900">{booking.packageName}</div>
-                  <div className="text-slate-600">{booking.appointmentDate} / {statusLabel(booking.status)}</div>
-                  <div className="text-xs text-slate-400">{booking.bookingId}</div>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-[150px_1fr_auto] gap-2 w-full sm:w-auto">
-                  <input type="date" className="rounded-md border border-slate-300 px-3 py-2 text-sm" value={changeDates[booking.bookingId] || ""} onChange={(e) => setChangeDates((current) => ({ ...current, [booking.bookingId]: e.target.value }))} />
-                  <input className="rounded-md border border-slate-300 px-3 py-2 text-sm" placeholder="改期原因/備註" value={changeNotes[booking.bookingId] || ""} onChange={(e) => setChangeNotes((current) => ({ ...current, [booking.bookingId]: e.target.value }))} />
-                  <button onClick={() => handleRequestBookingChange(booking)} className="rounded-md bg-emerald-600 px-3 py-2 text-sm font-bold text-white">送出改期</button>
-                </div>
+              <div className="font-bold text-slate-900">{booking.packageName}</div>
+              <div className="mt-1 text-slate-600">{booking.appointmentDate} / {statusLabel(booking.status)}</div>
+              <div className="mt-3 grid grid-cols-1 gap-2">
+                <input type="date" className="w-full min-w-0 rounded-md border border-slate-300 px-3 py-3 text-base" value={changeDates[booking.bookingId] || ""} onChange={(e) => setChangeDates((current) => ({ ...current, [booking.bookingId]: e.target.value }))} />
+                <input className="w-full min-w-0 rounded-md border border-slate-300 px-3 py-3 text-base" placeholder={lang === "en" ? "Reason / note" : "\u6539\u671f\u539f\u56e0 / \u5099\u8a3b"} value={changeNotes[booking.bookingId] || ""} onChange={(e) => setChangeNotes((current) => ({ ...current, [booking.bookingId]: e.target.value }))} />
+                <button onClick={() => handleRequestBookingChange(booking)} disabled={booking.status === "CANCELLED"} className="w-full rounded-md bg-emerald-600 px-3 py-3 text-sm font-bold text-white disabled:opacity-40">{lang === "en" ? "Request reschedule" : "\u9001\u51fa\u6539\u671f"}</button>
+                {booking.status !== "CANCELLED" && (
+                  <button onClick={() => handleCancelMyBooking(booking)} className="w-full rounded-md bg-rose-600 px-3 py-3 text-sm font-bold text-white">{lang === "en" ? "Cancel booking" : "\u53d6\u6d88\u9810\u7d04"}</button>
+                )}
               </div>
             </div>
           ))}
@@ -2259,137 +2515,153 @@ ${selectedItems
         </div>
         <div className="flex justify-end gap-2 border-t border-slate-100 p-4">
           <button className="rounded-md border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700" onClick={() => setComparisonDetailCard(null)}>{lang === "en" ? "Close" : "\u95dc\u9589"}</button>
-          <button className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-bold text-white" onClick={() => { setComparisonDetailCard(null); selectPublicPackage(card); }}>{lang === "en" ? "Book this package" : "\u9810\u7d04\u6b64\u5957\u9910"}</button>
+          <button className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-bold text-white" onClick={() => selectPublicPackage(card)}>{t.choose}</button>
         </div>
       </div>
     </div>
   ) : null;
-  const BookingModal = () => (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-lg bg-white rounded-lg shadow-xl border border-slate-200 p-5 space-y-4">
-        <div className="flex items-start justify-between gap-4">
+
+  const AdminBookingDetailModal = () => adminDetailBooking ? (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setAdminDetailBooking(null)}>
+      <div className="w-full max-w-3xl max-h-[90vh] overflow-hidden rounded-lg border border-slate-200 bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-start justify-between gap-4 border-b border-slate-100 p-4">
           <div>
-            <h2 className="text-lg font-bold text-slate-900">{t.bookingTitle}</h2>
-            <p className="text-xs text-slate-500 mt-1">{liffMessage}</p>
+            <h2 className="text-lg font-black text-slate-900">{t.editBooking}</h2>
+            <p className="mt-1 text-sm text-slate-500">{adminDetailBooking.bookingId}</p>
           </div>
-          <button className="p-2 rounded-md bg-slate-100 text-slate-500" onClick={() => setShowBookingModal(false)} aria-label={t.closeBooking}>
-            <X className="w-4 h-4" />
+          <button className="rounded-md bg-slate-100 p-2 text-slate-500" onClick={() => setAdminDetailBooking(null)} aria-label={t.closeBooking}>
+            <X className="h-4 w-4" />
           </button>
         </div>
-
-        <div className="bg-slate-50 border border-slate-200 rounded-md p-3 text-xs text-slate-600">
-          <div className="font-bold text-slate-800">{packageName}</div>
-          <div>{selectedItems.length} 項 / NT$ {Number(finalPrice || 0).toLocaleString()}</div>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <label className="text-xs font-bold text-slate-600">
-            {t.name}
-            <input className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-normal" value={bookingForm.name} onChange={(e) => setBookingField("name", e.target.value)} />
-          </label>
-          <label className="text-xs font-bold text-slate-600">
-            {t.idNumber}
-            <input className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-normal" placeholder="A123456789 / Passport / ARC" value={bookingForm.idNumber} onChange={(e) => setBookingField("idNumber", e.target.value)} />
-            <span className="mt-1 block text-[11px] font-normal leading-4 text-slate-500">{t.idNumberHelp}</span>
-          </label>
-          <label className="text-xs font-bold text-slate-600">
-            {t.phone}
-            <input className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-normal" value={bookingForm.phone} onChange={(e) => setBookingField("phone", e.target.value)} />
-          </label>
-          <label className="text-xs font-bold text-slate-600">
-            {t.appointmentDate}
-            <input type="date" className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-normal" value={bookingForm.appointmentDate} onChange={(e) => setBookingField("appointmentDate", e.target.value)} />
-          </label>
-          <label className="text-xs font-bold text-slate-600 sm:col-span-2">
-            Channel
-            <select className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-normal" value={bookingForm.channel} onChange={(e) => setBookingField("channel", e.target.value)}>
-              {CHANNELS.map((channel) => (
-                <option key={channel.value} value={channel.value}>{channel.label}</option>
+        <div className="max-h-[70vh] overflow-y-auto p-4 space-y-4 text-sm">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <label className="text-xs font-bold text-slate-600">{t.appointmentDate}<input type="date" className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-normal" value={adminDetailBooking.appointmentDate || ""} onChange={(e) => setAdminDetailBooking({ ...adminDetailBooking, appointmentDate: e.target.value })} /></label>
+            <label className="text-xs font-bold text-slate-600">{t.customer}<input className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-normal" value={adminDetailBooking.customerName || adminDetailBooking.name || ""} onChange={(e) => setAdminDetailBooking({ ...adminDetailBooking, customerName: e.target.value })} /></label>
+            <label className="text-xs font-bold text-slate-600">{t.phone}<input className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-normal" value={adminDetailBooking.customerPhone || adminDetailBooking.phone || ""} onChange={(e) => setAdminDetailBooking({ ...adminDetailBooking, customerPhone: e.target.value })} /></label>
+            <label className="text-xs font-bold text-slate-600">{t.email}<input type="email" className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-normal" value={adminDetailBooking.customerEmail || adminDetailBooking.email || ""} onChange={(e) => setAdminDetailBooking({ ...adminDetailBooking, customerEmail: e.target.value })} /></label>
+            <label className="text-xs font-bold text-slate-600">{t.adminChannel}<select className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-normal" value={adminDetailBooking.channel || "GENERAL"} onChange={(e) => setAdminDetailBooking({ ...adminDetailBooking, channel: e.target.value })}>{CHANNELS.map((channel) => <option key={channel.value} value={channel.value}>{channelLabel(channel.value, lang)}</option>)}</select></label>
+            <label className="text-xs font-bold text-slate-600">{t.package}<select className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-normal" value={adminDetailBooking.packageName || ""} onChange={(e) => setAdminDetailBooking({ ...adminDetailBooking, packageName: e.target.value, finalPrice: packageMeta[e.target.value]?.finalPrice || adminDetailBooking.finalPrice })}>{adminDetailBooking.packageName && !packages[adminDetailBooking.packageName] ? <option value={adminDetailBooking.packageName}>{adminDetailBooking.packageName}</option> : null}{Object.keys(packages).map((name) => <option key={name} value={name}>{name}</option>)}</select></label>
+            <label className="text-xs font-bold text-slate-600">{t.status}<select className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-normal" value={adminDetailBooking.status || "BOOKED"} onChange={(e) => setAdminDetailBooking({ ...adminDetailBooking, status: e.target.value })}><option value="BOOKED">{t.booked}</option><option value="CONFIRMED">{t.confirmed}</option><option value="RESCHEDULED">{t.rescheduled}</option><option value="CANCELLED">{t.cancelled}</option></select></label>
+            <label className="text-xs font-bold text-slate-600">{t.amount}<input type="number" className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-normal" value={adminDetailBooking.finalPrice || 0} onChange={(e) => setAdminDetailBooking({ ...adminDetailBooking, finalPrice: e.target.value })} /></label>
+          </div>
+          <label className="block text-xs font-bold text-slate-600">{t.notes}<textarea className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-normal" rows="3" value={adminDetailBooking.notes || ""} onChange={(e) => setAdminDetailBooking({ ...adminDetailBooking, notes: e.target.value })} /></label>
+          <div>
+            <div className="mb-2 text-xs font-bold text-slate-400">{t.notice}: {noticeLabel(adminDetailBooking)}</div>
+            <div className="mb-2 text-xs font-bold text-slate-400">{t.selectedItems} ({(adminDetailBooking.selectedItems || []).length})</div>
+            <div className="max-h-48 overflow-y-auto rounded border border-slate-100">
+              {(adminDetailBooking.selectedItems || []).map((item) => (
+                <div key={item.id || item.code || item.name} className="grid grid-cols-[80px_1fr] gap-2 border-b border-slate-100 px-3 py-2">
+                  <div className="font-mono text-slate-500">{item.code || "-"}</div>
+                  <div><span className="font-bold text-slate-800">{lang === "en" && item.enName ? item.enName : item.name}</span><span className="ml-2 text-slate-400">{item.category}</span></div>
+                </div>
               ))}
-            </select>
-          </label>
-          <label className="text-xs font-bold text-slate-600 sm:col-span-2">
-            {t.notes}
-            <textarea className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-normal" rows="3" value={bookingForm.notes} onChange={(e) => setBookingField("notes", e.target.value)} />
-          </label>
+            </div>
+          </div>
         </div>
-
-        <button onClick={handleSubmitBooking} className="w-full py-3 rounded-md bg-emerald-600 text-white text-sm font-bold hover:bg-emerald-700">
-          {t.submit}
-        </button>
+        <div className="flex justify-end gap-2 border-t border-slate-100 p-4">
+          {adminDetailBooking.status !== "CANCELLED" && (
+            <button className="rounded-md bg-rose-600 px-4 py-2 text-sm font-bold text-white" onClick={() => handleCancelAdminBooking(adminDetailBooking)}>{lang === "en" ? "Cancel booking" : "\u53d6\u6d88\u9810\u7d04"}</button>
+          )}
+          <button className="rounded-md border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700" onClick={() => setAdminDetailBooking(null)}>{lang === "en" ? "Close" : "\u95dc\u9589"}</button>
+          <button className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-bold text-white" onClick={handleSaveAdminBooking}>{t.saveChanges}</button>
+        </div>
       </div>
     </div>
-  );
+  ) : null;
 
   const AdminView = () => (
-    <div className="hidden lg:flex h-full max-w-[1280px] mx-auto w-full flex-col gap-4 p-6">
-      <div className="bg-white border border-slate-200 rounded-lg p-4 flex items-end gap-3">
+    <div className="hidden lg:flex h-[calc(100vh-73px)] min-h-0 max-w-[1280px] mx-auto w-full flex-col gap-4 p-6 overflow-hidden">
+      <div className="flex-none bg-white border border-slate-200 rounded-lg p-4 flex items-end gap-3">
         <label className="text-xs font-bold text-slate-600">
-          健檢日期
-          <input type="date" className="block mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm font-normal" value={adminDate} onChange={(e) => setAdminDate(e.target.value)} />
+          {t.startDate}
+          <input type="date" className="block mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm font-normal" value={adminStartDate} onChange={(e) => setAdminStartDate(e.target.value)} />
         </label>
         <label className="text-xs font-bold text-slate-600">
-          通路
+          {t.endDate}
+          <input type="date" className="block mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm font-normal" value={adminEndDate} onChange={(e) => setAdminEndDate(e.target.value)} />
+        </label>
+        <label className="text-xs font-bold text-slate-600">
+          {t.adminChannel}
           <select className="block mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm font-normal" value={adminChannel} onChange={(e) => setAdminChannel(e.target.value)}>
-            <option value="ALL">全部通路</option>
+            <option value="ALL">{t.allChannels}</option>
             {CHANNELS.map((channel) => (
               <option key={channel.value} value={channel.value}>{channel.label}</option>
             ))}
           </select>
         </label>
 
-        <button onClick={handleLoadAdminBookings} className="px-4 py-2 rounded-md bg-slate-900 text-white text-sm font-bold">讀取</button>
-        <button onClick={handlePrintSelectedBookings} disabled={!selectedAdminBookings.length} className="px-4 py-2 rounded-md bg-emerald-600 text-white text-sm font-bold disabled:opacity-40">列印勾選</button>
-        <button onClick={handleExportAdminBookings} disabled={!adminBookings.length} className="px-4 py-2 rounded-md bg-white border border-slate-300 text-slate-700 text-sm font-bold disabled:opacity-40">{"\u532f\u51fa CSV"}</button>
+        <button onClick={handleLoadAdminBookings} className="px-4 py-2 rounded-md bg-slate-900 text-white text-sm font-bold">{t.load}</button>
+        <button onClick={handlePrintSelectedBookings} disabled={!selectedAdminBookings.length} className="px-4 py-2 rounded-md bg-emerald-600 text-white text-sm font-bold disabled:opacity-40">{t.printSelected}</button>
+        <button onClick={handleExportAdminBookings} disabled={!adminBookings.length} className="px-4 py-2 rounded-md bg-white border border-slate-300 text-slate-700 text-sm font-bold disabled:opacity-40">{t.exportCsv}</button>
         <label className="px-4 py-2 rounded-md bg-white border border-slate-300 text-slate-700 text-sm font-bold cursor-pointer">
-          {"\u532f\u5165 CSV"}
+          {t.importCsv}
           <input type="file" accept=".csv,text/csv" className="hidden" onChange={handleImportBookingCsv} />
-        </label>        <span className="text-xs text-slate-500">{adminStatus}</span>
+        </label>
+        <span className="text-xs text-slate-500">{adminStatus}</span>
       </div>
-      <div className="bg-white border border-amber-200 rounded-lg overflow-hidden">
-        <div className="bg-amber-50 px-4 py-2 text-sm font-black text-amber-900">改期待處理 ({pendingChanges.length})</div>
+      {isAdminUser && (
+        <div className="flex-none bg-white border border-slate-200 rounded-lg p-4 flex flex-wrap items-end gap-3">
+          <label className="text-xs font-bold text-slate-600">
+            {t.staffAccounts}
+            <input type="email" className="block mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm font-normal" placeholder={t.staffEmailPlaceholder} value={newStaffEmail} onChange={(e) => setNewStaffEmail(e.target.value)} />
+          </label>
+          <button onClick={handleAddStaffUser} className="px-4 py-2 rounded-md bg-slate-900 text-white text-sm font-bold">{t.addStaff}</button>
+          <div className="flex flex-wrap gap-2 text-xs text-slate-600">
+            {staffAccounts.length ? staffAccounts.map((staff) => <span key={staff.email} className="rounded bg-slate-100 px-2 py-1 font-bold">{staff.email}</span>) : <span className="text-slate-400">{t.noStaffAccounts}</span>}
+          </div>
+          {staffManageStatus && <span className="text-xs text-slate-500">{staffManageStatus}</span>}
+        </div>
+      )}
+
+      <div className="flex-none bg-white border border-amber-200 rounded-lg overflow-hidden">
+        <div className="bg-amber-50 px-4 py-2 text-sm font-black text-amber-900">{t.pendingChanges} ({pendingChanges.length})</div>
         {pendingChanges.length ? pendingChanges.map((request) => (
           <div key={request.requestId} className="grid grid-cols-12 items-center gap-2 px-4 py-3 border-t border-amber-100 text-sm">
-            <div className="col-span-2 font-bold text-slate-800">{request.customerName || "\u672a\u547d\u540d"}</div>
+            <div className="col-span-2 font-bold text-slate-800">{request.customerName || t.unnamed}</div>
             <div className="col-span-3 text-slate-600 truncate">{request.packageName}</div>
             <div className="col-span-2 text-slate-600">{request.currentAppointmentDate}</div>
             <div className="col-span-2 font-bold text-emerald-700">{request.requestedAppointmentDate}</div>
             <div className="col-span-2 text-slate-500 truncate">{request.notes}</div>
-            <div className="col-span-1 text-right"><button onClick={() => handleApproveChangeRequest(request)} className="text-xs px-2 py-1 rounded bg-emerald-600 text-white">核准</button></div>
+            <div className="col-span-1 text-right"><button onClick={() => handleApproveChangeRequest(request)} className="text-xs px-2 py-1 rounded bg-emerald-600 text-white">{t.approve}</button></div>
           </div>
         )) : (
-          <div className="p-4 text-sm text-slate-400">目前沒有改期申請</div>
+          <div className="p-4 text-sm text-slate-400">{t.noPendingChanges}</div>
         )}
       </div>
 
-
-      <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
-        <div className="grid grid-cols-12 bg-slate-100 text-xs font-bold text-slate-600 px-4 py-2">
-          <div className="col-span-1"><input type="checkbox" checked={allAdminBookingsSelected} onChange={toggleAllAdminBookings} aria-label="Select all bookings" /></div>
-          <div className="col-span-2">姓名/Customer</div>
-          <div className="col-span-2">電話</div>
-          <div className="col-span-1">Channel</div>
-          <div className="col-span-2">套餐</div>
-          <div className="col-span-1">狀態</div>
-          <div className="col-span-2">金額</div>
-          <div className="col-span-1 text-right">操作</div>
+      <div className="bg-white border border-slate-200 rounded-lg flex-1 min-h-0 overflow-y-auto">
+        <div className="sticky top-0 z-10 grid grid-cols-12 bg-slate-100 text-xs font-bold text-slate-600 px-4 py-2">
+          <div className="col-span-1"><input type="checkbox" checked={allAdminBookingsSelected} onChange={toggleAllAdminBookings} aria-label={t.selectAllBookings} /></div>
+          <div className="col-span-1"><button className="font-bold" onClick={() => toggleAdminSort("date")}>{t.appointmentDate}{adminSortMark("date")}</button></div>
+          <div className="col-span-2"><button className="font-bold" onClick={() => toggleAdminSort("customer")}>{t.customer}{adminSortMark("customer")}</button></div>
+          <div className="col-span-1"><button className="font-bold" onClick={() => toggleAdminSort("phone")}>{t.phone}{adminSortMark("phone")}</button></div>
+          <div className="col-span-1"><button className="font-bold" onClick={() => toggleAdminSort("channel")}>{t.adminChannel}{adminSortMark("channel")}</button></div>
+          <div className="col-span-2"><button className="font-bold" onClick={() => toggleAdminSort("package")}>{t.package}{adminSortMark("package")}</button></div>
+          <div className="col-span-1"><button className="font-bold" onClick={() => toggleAdminSort("status")}>{t.status}{adminSortMark("status")}</button></div>
+          <div className="col-span-1"><button className="font-bold" onClick={() => toggleAdminSort("notice")}>{t.notice}{adminSortMark("notice")}</button></div>
+          <div className="col-span-1"><button className="font-bold" onClick={() => toggleAdminSort("amount")}>{t.amount}{adminSortMark("amount")}</button></div>
+          <div className="col-span-1 text-right">{t.operation}</div>
         </div>
-        {adminBookings.length ? adminBookings.map((booking) => (
-          <div key={booking.bookingId} className="grid grid-cols-12 items-center px-4 py-3 border-t border-slate-100 text-sm">
-            <div className="col-span-1"><input type="checkbox" checked={selectedAdminBookingIds.includes(booking.bookingId)} onChange={() => toggleAdminBookingSelection(booking.bookingId)} aria-label={`Select ${booking.customerName || booking.name || booking.customerId}`} /></div>
+        {sortedAdminBookings.length ? sortedAdminBookings.map((booking) => (
+          <div key={booking.bookingId} onClick={() => setAdminDetailBooking(booking)} className="grid grid-cols-12 items-center px-4 py-3 border-t border-slate-100 text-sm cursor-pointer hover:bg-slate-50">
+            <div className="col-span-1"><input type="checkbox" checked={selectedAdminBookingIds.includes(booking.bookingId)} onClick={(e) => e.stopPropagation()} onChange={() => toggleAdminBookingSelection(booking.bookingId)} aria-label={t.customer} /></div>
+            <div className="col-span-1 text-slate-600">{booking.appointmentDate || "-"}</div>
             <div className="col-span-2 font-bold text-slate-800">{booking.customerName || booking.name || booking.customerId}</div>
-            <div className="col-span-2 text-slate-600">{booking.customerPhone || booking.phone || "-"}</div>
-            <div className="col-span-1 text-slate-600">{booking.channel}</div>
+            <div className="col-span-1 text-slate-600 truncate">{booking.customerPhone || booking.phone || "-"}</div>
+            <div className="col-span-1 text-slate-600">{channelLabel(booking.channel, lang)}</div>
             <div className="col-span-2 text-slate-600 truncate">{booking.packageName}</div>
             <div className="col-span-1 text-slate-600">{statusLabel(booking.status)}</div>
-            <div className="col-span-2 font-mono text-slate-700">NT$ {Number(booking.finalPrice || 0).toLocaleString()}</div>
+            <div className="col-span-1 text-slate-600">{noticeLabel(booking)}</div>
+            <div className="col-span-1 font-mono text-slate-700">NT$ {Number(booking.finalPrice || 0).toLocaleString()}</div>
             <div className="col-span-1 text-right space-y-1">
-              {booking.status === "CONFIRMED" ? null : <button onClick={() => handleConfirmBooking(booking)} className="text-xs px-2 py-1 rounded bg-emerald-600 text-white">確認</button>}
-              <button onClick={() => printBookings([booking])} className="text-xs px-2 py-1 rounded bg-slate-900 text-white">列印</button>
+              <button onClick={(e) => { e.stopPropagation(); setAdminDetailBooking(booking); }} className="text-xs px-2 py-1 rounded bg-white border border-slate-300 text-slate-700">{t.details}</button>
+              {booking.status === "CONFIRMED" ? null : <button onClick={(e) => { e.stopPropagation(); handleConfirmBooking(booking); }} className="text-xs px-2 py-1 rounded bg-emerald-600 text-white">{t.confirm}</button>}
+              {booking.status !== "CANCELLED" && <button onClick={(e) => { e.stopPropagation(); handleCancelAdminBooking(booking); }} className="text-xs px-2 py-1 rounded bg-rose-600 text-white">{lang === "en" ? "Cancel" : "\u53d6\u6d88"}</button>}
+              <button onClick={(e) => { e.stopPropagation(); printBookings([booking]); }} className="text-xs px-2 py-1 rounded bg-slate-900 text-white">{t.print}</button>
             </div>
           </div>
         )) : (
-          <div className="p-8 text-center text-sm text-slate-400">尚無資料</div>
+          <div className="p-8 text-center text-sm text-slate-400">{t.noBookings}</div>
         )}
       </div>
     </div>
@@ -2398,7 +2670,7 @@ ${selectedItems
     // Root container:
     // Mobile: min-h-screen (allows natural scrolling) + pb-10 (space for footer if needed, though not used here)
     // Desktop: h-screen + overflow-hidden (app-like experience)
-    <div className="min-h-screen lg:h-screen w-full bg-slate-50 text-slate-900 font-sans flex flex-col lg:overflow-hidden relative box-border">
+    <div className="min-h-screen lg:h-screen w-full bg-slate-50 text-slate-900 font-sans flex flex-col lg:overflow-y-auto relative box-border">
       {/* 浮動視窗 (Global) */}
       {modalItem && (
         <div
@@ -2491,6 +2763,7 @@ ${selectedItems
       )}
 
       {comparisonDetailCard && <PackageDetailModal card={comparisonDetailCard} />}
+      {adminDetailBooking && AdminBookingDetailModal()}
       {showBookingModal && BookingModal()}
 
       <div className="flex-none border-b border-slate-200 bg-white px-4 py-3 lg:px-6 flex items-center justify-between gap-3">

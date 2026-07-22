@@ -1,4 +1,4 @@
-﻿# agent_handoff.md
+# agent_handoff.md
 
 ## Project
 CAC (Channel-Activity-Customer) health-check center MVP.
@@ -7,120 +7,100 @@ Repo: `https://github.com/lhm0323-git/channel_activity_customer`
 Local root: `D:\Users\xray\.gemini\antigravity\scratch\Channel–Activity–Customer`
 App root: `cac-liff-app/`
 
-## Current Production URLs
+## Production
 
 - Firebase Hosting: `https://channel-activity-customer.web.app`
+- LIFF ID: `2010725321-sRRkD0Le`
+- LIFF URL: `https://liff.line.me/2010725321-sRRkD0Le`
 - Firebase project: `channel-activity-customer`
-- Firestore database: `(default)`, `asia-east1`, Firestore Native, Standard/free tier.
+- Firestore: `(default)`, `asia-east1`
 
-## Current Goal
+Source and live Hosting are currently aligned. Normal `npm run build` + Firebase deploy is safe if tests pass.
 
-Deliver the first usable CAC MVP:
+## Current MVP Scope
 
-1. Public package selection and booking page.
-2. Internal package/pricing tool.
-3. Same-day booking/checklist view for nurses/case managers.
-4. Firestore persistence for bookings and eventually managed packages.
-5. LIFF integration next.
+Completed working surface:
 
-Deferred: HIS API, queue routing, station status tracking, AI recommendation, AI report translation.
+1. Public package selection with card/table comparison and LIFF deep links.
+2. Public booking create flow.
+3. Public `My bookings / reschedule` view with reschedule request and cancel booking.
+4. Staff Google login gated by `VITE_STAFF_EMAILS` or Firestore `staffUsers`.
+5. Internal package/pricing tool with managed package persistence.
+6. Booking list tab with date range, channel filter, sorting, editable booking modal, confirm/cancel, CSV import/export, selected print.
+7. A4 checklist print flow.
 
-## Current Deployment State
+Deferred: HIS API, real queue routing, station completion tracking, D-1 LINE push job, questionnaires/consent forms, AI recommendation, AI report translation.
 
-Completed today:
+## Most Recent Verified Changes
 
-- Firebase Web App created: `cac-liff-app`.
-- Hosting deployed and reachable at `https://channel-activity-customer.web.app`.
-- Firestore API enabled and `(default)` database created in `asia-east1`.
-- Firestore rules deployed.
-- Google Auth provider was enabled by user in Firebase Console.
-- A live Hosting hotfix was deployed directly to `dist` to fix garbled `????` labels in the top nav. Live bundle currently contains `員工登入` and no `????`.
+2026-07-22:
 
-Important: source and live are not fully aligned right now. `src/App.jsx` was restored to a clean buildable source after an emergency hotfix attempt. The live site includes a patched bundle for `員工登入`, but source does not yet contain the clean staff-gating UI implementation. Do not run `npm run build && firebase deploy --only hosting` until staff gating is re-applied cleanly to source, or the live login/nav hotfix may be overwritten.
+- Fixed staff login so Firestore `staffUsers/{email}` accounts work after being added in the admin UI.
+- Firestore rules now compare staff email with `request.auth.token.email.lower()`.
+- Fixed booking list scrolling by giving the booking list its own scroll container and sticky header.
+- Fixed public `My bookings / reschedule`:
+  - removed broken `buildChangeRequestPayload` call;
+  - sends `bookingChangeRequests` directly;
+  - shows full-width mobile date input;
+  - removes booking id display;
+  - adds `Cancel booking` button;
+  - cleaned garbled Chinese labels in that panel.
+- Deployed Hosting and Firestore rules where needed.
 
-Verified at end of session:
+Verification run:
 
 ```powershell
+cd cac-liff-app
 npm test
 npm run build
-Invoke-WebRequest https://channel-activity-customer.web.app
+firebase deploy --only hosting --project channel-activity-customer
 ```
 
-Tests/build passed after restoring `src/App.jsx`; Hosting URL returned `200`.
+Last deployment completed successfully. Firestore rules compile passed during the staff-login rules deploy.
 
-## Files Added/Changed Today
+## Firestore Collections
 
-Firebase/deploy config:
+- `customers/{customerId}`: public owner data; staff can read.
+- `bookings/{bookingId}`: booking records.
+  - owners can read their own bookings;
+  - owners can only cancel their own booking by changing `status/cancelledAt/updatedAt`;
+  - staff can update booking details.
+- `bookingChangeRequests/{requestId}`: public reschedule requests; staff approves.
+- `checklists/{bookingId}`: generated checklist data.
+- `managedPackages/{packageId}`: public reads; staff creates/updates; soft delete only.
+- `staffUsers/{email}`: staff account allowlist managed by admin UI.
 
-- `cac-liff-app/firebase.json`: Hosting config and Firestore rules/index config.
-- `cac-liff-app/.firebaserc`: default project `channel-activity-customer`.
-- `cac-liff-app/firestore.rules`: MVP Firestore rules.
-- `cac-liff-app/firestore.indexes.json`: empty indexes config.
-- `cac-liff-app/.env.example`: Firebase/LIFF env template.
-- `cac-liff-app/package.json`: adds `deploy:hosting` script.
-- `cac-liff-app/.gitignore`: should ignore `node_modules`, `dist`, `.env`, `.env.local`, `.firebase/`.
+Admin email hardcoded in rules/source: `lhm0323@gmail.com`.
 
-App logic:
+## Important Current Behavior
 
-- `cac-liff-app/src/core.js`: public package classification, booking payload fields, checklist logic.
-- `cac-liff-app/src/core.test.js`: regression tests for public package rules and booking payload.
-- `cac-liff-app/src/firebase.js`: Firebase app init, Firestore booking/checklist helpers, Auth helper functions, managed package helper functions.
-- `cac-liff-app/src/liff.js`: LIFF message text fixed.
+Public users:
 
-## Firestore Rules Currently Deployed
+- Can create bookings through LIFF/public page.
+- Can query their own bookings through `?view=my-bookings`.
+- Can request reschedule; request appears in staff booking list pending area.
+- Can cancel their own booking; record remains with `status = CANCELLED`.
 
-Collections:
+Staff users:
 
-- `customers/{customerId}`
-  - public create allowed for booking flow.
-  - read allowed only when signed in.
-  - update/delete denied.
-- `bookings/{bookingId}`
-  - public create allowed for booking flow.
-  - read/update allowed only when signed in.
-  - delete denied.
-- `checklists/{bookingId}`
-  - public create allowed for booking flow.
-  - read/update allowed only when signed in.
-  - delete denied.
-- `managedPackages/{packageId}`
-  - public read allowed so public UI can load managed packages.
-  - create/update allowed only when signed in.
-  - delete denied; use soft delete.
+- Admin can add staff Gmail accounts in `預約清單` tab.
+- Newly added staff may need to sign out/in again.
+- Booking list can scroll when rows exceed screen height.
+- Clicking a booking row/details opens editable modal.
 
-Security caveat: signed-in means any Google account unless allowlist/custom claims are added. Next hardening step is staff allowlist.
+## Known Gaps / Next Tasks
 
-## Data Persistence State
-
-Bookings:
-
-- Public booking writes to Firestore collections: `customers`, `bookings`, `checklists`.
-- `buildBookingPayload()` now includes `customerName`, `customerPhone`, and `idNumberMasked` in booking payload in source, so internal list/CSV can avoid joining `customers`.
-
-Packages:
-
-- Source has Firebase helper functions for `managedPackages`:
-  - `listManagedPackages()`
-  - `saveManagedPackage()`
-  - `deleteManagedPackage()` soft-deletes with `deleted: true`
-- Clean source wiring in `App.jsx` still needs to be re-applied. Current source internal package edits may still rely on localStorage. This is the next main implementation task.
-
-## Public Package Rules
-
-Current intended rules:
-
-- Public UI shows less detail than internal UI.
-- Single item prices are hidden from public UI.
-- Public cards show highlights first; `查看全部` expands full item list.
-- `甲狀腺` should be available under `一般` when it exists as an internal package.
-- `3500公教` and `4500公教` belong only to `公教`, not `一般`.
-- `7000婚前女` and `7200婚前男` belong to `婚前`, not `高階`.
-- High-end starts around `8000馬年` and above.
-- Enterprise/labor packages remain separate and should not be mixed into general public options until their data is ready.
-
-Highlight exclusions include low-attraction/basic items such as general exam, body fat, physician physical, IOP, UA, CBC/DC, liver/kidney basics, chest X-ray, lipids, fasting glucose, hepatitis antigen/antibody, and EKG.
-
-Gotcha: do not broadly match `/CT/i`; it misclassifies `Pulmonary Function Test` because `Function` contains `ct`. Use stricter CT/CTA matching.
+1. D-1 LINE automatic reminder:
+   - needs Cloud Scheduler or scheduled Cloud Function;
+   - track `d1NoticeSentAt`, `d1NoticeStatus`, `d1AcknowledgedAt`;
+   - add customer acknowledgement link/button later.
+2. Reschedule workflow is request-based only:
+   - public request does not directly change appointment date;
+   - staff must approve from pending changes.
+3. Questionnaire/consent module not started.
+4. Booking CSV import exists but needs real enterprise HR sample validation.
+5. UI still has some older garbled labels outside recently touched panels; fix only when encountered.
+6. Bundle size warning remains; skip code splitting until it causes measurable load issues.
 
 ## Commands
 
@@ -132,67 +112,30 @@ npm install
 npm run dev
 ```
 
-Tests/build:
+Test/build:
 
 ```powershell
 npm test
 npm run build
 ```
 
-Deploy Hosting after source is safe:
+Deploy:
 
 ```powershell
-npm run deploy:hosting
+firebase deploy --only hosting --project channel-activity-customer
+firebase deploy --only firestore:rules --project channel-activity-customer
+firebase deploy --only hosting,firestore:rules --project channel-activity-customer
 ```
 
-Deploy Firestore rules:
+## Do Not Commit
 
-```powershell
-firebase deploy --only firestore --project channel-activity-customer
-```
+- `cac-liff-app/.env.local`
+- `cac-liff-app/dist/`
+- `cac-liff-app/.firebase/`
+- `cac-liff-app/node_modules/`
+- temporary scripts such as `tmp-*.mjs` / `tmp-*.cjs`
+- user-provided PDFs unless explicitly requested
 
-## LIFF Next Step
+## Current Untracked Files To Treat Carefully
 
-LINE Developers:
-
-- Create LIFF app.
-- Endpoint URL: `https://channel-activity-customer.web.app`
-- Scope: at least `profile`; add `openid` later if ID token validation is needed.
-- Put LIFF ID into `cac-liff-app/.env.local` as `VITE_LIFF_ID=...`.
-- Rebuild and deploy Hosting only after source is aligned.
-
-## Next Tasks For Tomorrow
-
-1. Re-apply staff gating cleanly in `src/App.jsx` source:
-   - Top nav: public sees `民眾方案` + `員工登入` only.
-   - Signed-in staff sees `內部工具`, `當日清單`, and `登出`.
-   - Use `watchStaffAuth`, `signInStaff`, `signOutStaff` from `src/firebase.js`.
-   - Avoid editing generated `dist` directly except emergency hotfixes.
-
-2. Wire managed package persistence in source:
-   - Load `managedPackages` on app startup.
-   - Merge active managed packages into `userPackages/packageMeta`.
-   - Save internal package edits to Firestore.
-   - Soft-delete packages via `deleted: true`.
-   - Keep localStorage fallback only for local demo/offline.
-
-3. Internal booking list:
-   - Staff-only date filter reads Firestore `bookings`.
-   - Add CSV export from loaded bookings.
-   - Keep A4 checklist print.
-
-4. Security hardening:
-   - Add staff allowlist or custom claims. Current rules trust any Google signed-in user.
-   - Consider separating public package reads from staff package writes.
-
-5. After source alignment:
-   - `npm test`
-   - `npm run build`
-   - `firebase deploy --only hosting,firestore --project channel-activity-customer`
-   - Verify live JS has no `????` and includes `員工登入`.
-
-## Do Not Forget
-
-- `.env.local` contains real Firebase config and should not be committed.
-- `dist/` and `.firebase/` should not be committed.
-- The live site currently has a bundle hotfix that is not represented by source. Fix source before the next normal deploy.
+At the time of this handoff there were untracked local artifacts such as budget docs/PDFs and `cac-liff-app/tmp-check-packages.mjs`. They were intentionally not included in the app commit unless explicitly requested.

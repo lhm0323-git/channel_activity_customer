@@ -13,7 +13,7 @@ service cloud.firestore {
       return isAdmin() || (
         signedIn() &&
         request.auth.token.email is string &&
-        exists(/databases/$(database)/documents/staffUsers/$(request.auth.token.email))
+        exists(/databases/$(database)/documents/staffUsers/$(request.auth.token.email.lower()))
       );
     }
 
@@ -25,6 +25,11 @@ service cloud.firestore {
       return signedIn() && request.resource.data.ownerUid == request.auth.uid;
     }
 
+    function ownerCancelsBooking() {
+      return ownsResource()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'cancelledAt', 'updatedAt'])
+        && request.resource.data.status == 'CANCELLED';
+    }
     match /customers/{customerId} {
       allow create, update: if ownsNewResource();
       allow read: if isStaff() || ownsResource();
@@ -35,7 +40,7 @@ service cloud.firestore {
       allow create: if ownsNewResource()
         && request.resource.data.keys().hasAll(['ownerUid', 'customerId', 'channel', 'appointmentDate', 'packageName', 'selectedItems', 'status', 'createdAt']);
       allow read: if isStaff() || ownsResource();
-      allow update: if isStaff();
+      allow update: if isStaff() || ownerCancelsBooking();
       allow delete: if false;
     }
 
