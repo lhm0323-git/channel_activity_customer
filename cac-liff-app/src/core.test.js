@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import {
+  audienceToChannel,
   buildBookingPayload,
+  bookingCheckInCode,
+  getVisitInstructions,
   exportBookingsCsv,
   buildChecklistPayload,
   buildPublicPackageCards,
@@ -18,6 +21,13 @@ import {
   parseCSV,
   parseHealthCsv,
 } from "./core.js";
+run("audienceToChannel maps package audience tags", () => {
+  assert.equal(audienceToChannel("\u9ad8\u968e"), "HIGH_END");
+  assert.equal(audienceToChannel("\u516c\u6559"), "CORPORATE");
+  assert.equal(audienceToChannel("\u4f01\u696d\u5718\u6aa2"), "CORPORATE");
+  assert.equal(audienceToChannel("\u52de\u5de5"), "LABOR");
+  assert.equal(audienceToChannel("\u4e00\u822c"), "GENERAL");
+});
 function run(name, fn) {
   try {
     fn();
@@ -61,7 +71,7 @@ run("buildBookingPayload preserves selected item fields and manual final price",
     lineProfile: { userId: "U123", displayName: "LineName" },
     packageName: "自選",
     selectedItems: [
-      { id: 1, name: "CBC", enName: "CBC", code: "612138", category: "血液常規", price: 300, remark: "空腹", outsource: "" },
+      { id: 1, name: "CBC", enName: "CBC", code: "612138", category: "\u8840\u6db2\u5e38\u898f", price: 300, clinical: "\u8a55\u4f30\u8840\u7403\u7570\u5e38", remark: "\u7a7a\u8179", outsource: "" },
     ],
     listPrice: 300,
     discountRate: 5,
@@ -74,7 +84,17 @@ run("buildBookingPayload preserves selected item fields and manual final price",
   assert.equal(result.customer.email, "test@example.com");
   assert.equal(result.booking.customerEmail, "test@example.com");
   assert.equal(result.booking.finalPrice, 999);
-  assert.deepEqual(Object.keys(result.booking.selectedItems[0]), ["id", "name", "enName", "code", "category", "price", "remark", "outsource"]);
+  assert.deepEqual(Object.keys(result.booking.selectedItems[0]), ["id", "name", "enName", "code", "category", "price", "clinical", "remark", "outsource"]);
+  assert.equal(result.booking.selectedItems[0].clinical, "\u8a55\u4f30\u8840\u7403\u7570\u5e38");
+});
+
+run("bookingCheckInCode uses a short stable code", () => {
+  assert.equal(bookingCheckInCode("Abc-123_xYz"), "123XYZ");
+});
+run("visit instructions only include matching tests", () => {
+  const instructions = getVisitInstructions([{ name: "\u7532\u72c0\u817a\u8d85\u97f3\u6ce2" }, { name: "\u975c\u614b\u5fc3\u96fb\u5716" }]);
+  assert.equal(instructions.length, 1);
+  assert.match(instructions[0], /\u9838\u90e8/);
 });
 
 run("makeFirestoreSafeId removes Firestore path separators", () => {

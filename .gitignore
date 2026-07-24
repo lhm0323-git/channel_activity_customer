@@ -1,4 +1,4 @@
-﻿# dependencies
+# dependencies
 node_modules/
 
 # build output
@@ -19,3 +19,11 @@ build/
 # caches
 .pytest_cache/
 __pycache__/
+
+# Local recovery captures and one-off validation scripts
+cac-liff-app/artifacts/
+cac-liff-app/tmp-*.mjs
+cac-liff-app/tmp-*.cjs
+
+# Source documents supplied for local planning/reference
+*.pdf

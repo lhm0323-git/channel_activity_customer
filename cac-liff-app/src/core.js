@@ -6,8 +6,10 @@ export const CHANNELS = [
 ];
 
 export function audienceToChannel(audience) {
-  if (audience === "高階") return "HIGH_END";
-  if (audience === "公教") return "CORPORATE";
+  const tag = String(audience || "");
+  if (/\u4f01\u696d|\u5718\u6aa2|\u516c\u6559/.test(tag)) return "CORPORATE";
+  if (/\u52de\u5de5/.test(tag)) return "LABOR";
+  if (/\u9ad8\u968e/.test(tag)) return "HIGH_END";
   return "GENERAL";
 }
 
@@ -366,6 +368,28 @@ export function maskId(value) {
   return `${text.slice(0, 2)}***${text.slice(-2)}`;
 }
 
+export function bookingCheckInCode(bookingId) {
+  return String(bookingId || "").replace(/[^a-z0-9]/gi, "").slice(-6).toUpperCase() || "-";
+}
+
+const VISIT_INSTRUCTION_RULES = [
+  { id: "eye", zh: "\u773c\u79d1\u6aa2\u67e5\u8005\u8acb\u52ff\u914d\u6234\u96b1\u5f62\u773c\u93e1\u3002", en: "Do not wear contact lenses for eye examinations.", match: /\u773c\u58d3|\u773c\u79d1|\u8996\u529b/i },
+  { id: "abi", zh: "\u56db\u80a2\u52d5\u8108\u58d3\u6aa2\u67e5\u8acb\u52ff\u7a7f\u7dca\u8eab\u9577\u8932\u53ca\u9577\u7d72\u896a\u3002", en: "Avoid tight trousers and long stockings for ABI/PWV testing.", match: /ABI|PWV|\u56db\u80a2\u52d5\u8108/i },
+  { id: "pap", zh: "\u5973\u6027\u57f7\u884c\u5b50\u5bae\u9838\u62b9\u7247\u524d\u4e00\u5929\u8acb\u907f\u514d\u6027\u884c\u70ba\u3002", en: "Avoid sexual intercourse the day before a Pap smear.", match: /\u62b9\u7247|Pap smear/i },
+  { id: "semen", zh: "\u7cbe\u6db2\u5206\u6790\u8acb\u7981\u617e 3 \u5929\u5f8c\u5230\u9662\u7559\u53d6\u3002", en: "Abstain for 3 days before semen analysis.", match: /\u7cbe\u6db2/i },
+  { id: "neck", zh: "\u9838\u90e8\u6216\u7532\u72c0\u817a\u8d85\u97f3\u6ce2\u6aa2\u67e5\u8005\uff0c\u8acb\u7a7f\u8457\u53ef\u9732\u51fa\u9838\u90e8\u7684\u4e0a\u8863\u3002", en: "Wear a top that exposes the neck for neck or thyroid ultrasound.", match: /\u9838\u90e8.*\u8d85\u97f3\u6ce2|\u7532\u72c0\u817a.*\u8d85\u97f3\u6ce2/i },
+  { id: "stress-ekg", zh: "\u904b\u52d5\u5fc3\u96fb\u5716\u6aa2\u67e5\u8005\uff0c\u8acb\u7a7f\u8457\u4fbf\u65bc\u8dd1\u6b65\u7684\u5bec\u9b06\u8863\u8932\u548c\u904b\u52d5\u978b\u3002", en: "Wear loose clothing and athletic shoes for exercise ECG testing.", match: /\u904b\u52d5\u5fc3\u96fb/i },
+  { id: "mri", zh: "MRI \u6aa2\u67e5\u8005\u5982\u6709\u5fc3\u81df\u652f\u67b6\u3001\u690d\u7259\u6216\u5176\u4ed6\u91d1\u5c6c\u690d\u5165\u7269\u8acb\u4e8b\u5148\u544a\u77e5\uff1b\u6aa2\u67e5\u524d\u8acb\u53d6\u4e0b\u91d1\u5c6c\u7269\u54c1\u3002", en: "Tell staff about stents, dental implants, or other metal implants before MRI; remove metal objects.", match: /MRI|\u6838\u78c1/i },
+  { id: "endoscopy", zh: "\u80c3\u8178\u93e1\u6aa2\u67e5\u82e5\u4f7f\u7528\u9ebb\u9189\uff0c\u8acb\u53d6\u4e0b\u6d3b\u52d5\u5047\u7259\uff0c\u52ff\u5316\u599d\u6216\u5857\u6307\u7532\u6cb9\u3002", en: "For sedated endoscopy, remove removable dentures and avoid makeup or nail polish.", match: /\u80c3\u93e1|\u8178\u93e1|\u5167\u8996\u93e1/i },
+  { id: "colonoscopy", zh: "\u5927\u8178\u93e1\u6aa2\u67e5\u8005\u8acb\u4f9d\u885b\u6559\u55ae\u5f35\u5b8c\u6210\u98f2\u98df\u53ca\u6e05\u8178\u6e96\u5099\u3002", en: "Follow the preparation leaflet for diet and bowel cleansing before colonoscopy.", match: /\u5927\u8178\u93e1/i },
+  { id: "sedation", zh: "\u7121\u75db\u8178\u80c3\u93e1\u6aa2\u67e5\u5f8c\u4e0d\u53ef\u81ea\u884c\u958b\u8eca\uff0c\u8acb\u7531\u5bb6\u5c6c\u966a\u540c\u8fd4\u5bb6\u3002", en: "After sedated endoscopy, do not drive; arrange an accompanying adult.", match: /\u7121\u75db|\u9ebb\u9189/i },
+];
+
+export function getVisitInstructions(selectedItems = [], lang = "zh") {
+  const source = selectedItems.map((item) => [item.name, item.enName, item.category].filter(Boolean).join(" ")).join("\n");
+  return VISIT_INSTRUCTION_RULES.filter((rule) => rule.match.test(source)).map((rule) => rule[lang] || rule.zh);
+}
+
 export function makeFirestoreSafeId(value) {
   return String(value || "")
     .trim()
@@ -410,13 +434,14 @@ export function buildBookingPayload({ formData, lineProfile, packageName, select
       channel,
       appointmentDate,
       packageName,
-      selectedItems: selectedItems.map(({ id, name, enName, code, category, price, remark, outsource }) => ({
+      selectedItems: selectedItems.map(({ id, name, enName, code, category, price, clinical, remark, outsource }) => ({
         id,
         name,
         enName,
         code,
         category,
         price,
+        clinical,
         remark,
         outsource,
       })),

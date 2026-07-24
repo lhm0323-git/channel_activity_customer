@@ -1,0 +1,11 @@
+{
+  "name": "cac-liff-functions",
+  "private": true,
+  "engines": {
+    "node": "22"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.0.0",
+    "firebase-functions": "^7.3.2-rc.0"
+  }
+}

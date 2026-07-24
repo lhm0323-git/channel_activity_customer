@@ -1,141 +1,65 @@
-# agent_handoff.md
+# Agent Handoff
 
-## Project
-CAC (Channel-Activity-Customer) health-check center MVP.
+這份文件是「目前狀態」；每日歷程請讀 [docs/PROGRESS.md](docs/PROGRESS.md)，完整操作說明請讀 [README.md](README.md)。兩者必須隨每次有意義的 commit 一起更新。
 
-Repo: `https://github.com/lhm0323-git/channel_activity_customer`
-Local root: `D:\Users\xray\.gemini\antigravity\scratch\Channel–Activity–Customer`
-App root: `cac-liff-app/`
+## 專案與環境
 
-## Production
+- Repo：`https://github.com/lhm0323-git/channel_activity_customer`
+- Local root：`D:\Users\xray\.gemini\antigravity\scratch\Channel–Activity–Customer`
+- App：`cac-liff-app/`
+- Hosting：`https://channel-activity-customer.web.app`
+- Firebase project：`channel-activity-customer`，Firestore `(default)` / `asia-east1`
+- LIFF：`2010725321-sRRkD0Le`
 
-- Firebase Hosting: `https://channel-activity-customer.web.app`
-- LIFF ID: `2010725321-sRRkD0Le`
-- LIFF URL: `https://liff.line.me/2010725321-sRRkD0Le`
-- Firebase project: `channel-activity-customer`
-- Firestore: `(default)`, `asia-east1`
+## 2026-07-24 目前狀態
 
-Source and live Hosting are currently aligned. Normal `npm run build` + Firebase deploy is safe if tests pass.
+本機原始碼已從 7/23 的意外清空事件重建，並比目前 Hosting 多出以下尚未部署的功能：
 
-## Current MVP Scope
+- 民眾預約從套餐的 audience tag 自動帶入通路，不讓民眾選通路；新增必填的身分證/護照號碼與說明。
+- 套餐工具可保存/停用檢查項目；院碼、委外與黃色備註改由備註彈窗編修。
+- 停約日期由 Firestore `bookingBlockedDates` 管理；民眾端應先顯示「此日期暫停預約」，避免把規則拒絕誤解為系統錯誤。
+- Functions 已新增：確認預約後依日期配發 `MMDD-流水號`、每日台北時間 09:00 D-1 LINE 提醒、客戶已讀回覆與人員補發。
+- 中文列印不列院碼/英文名稱，改列檢查意義；英文 UI 則列英文名稱。
 
-Completed working surface:
-
-1. Public package selection with card/table comparison and LIFF deep links.
-2. Public booking create flow.
-3. Public `My bookings / reschedule` view with reschedule request and cancel booking.
-4. Staff Google login gated by `VITE_STAFF_EMAILS` or Firestore `staffUsers`.
-5. Internal package/pricing tool with managed package persistence.
-6. Booking list tab with date range, channel filter, sorting, editable booking modal, confirm/cancel, CSV import/export, selected print.
-7. A4 checklist print flow.
-
-Deferred: HIS API, real queue routing, station completion tracking, D-1 LINE push job, questionnaires/consent forms, AI recommendation, AI report translation.
-
-## Most Recent Verified Changes
-
-2026-07-22:
-
-- Fixed staff login so Firestore `staffUsers/{email}` accounts work after being added in the admin UI.
-- Firestore rules now compare staff email with `request.auth.token.email.lower()`.
-- Fixed booking list scrolling by giving the booking list its own scroll container and sticky header.
-- Fixed public `My bookings / reschedule`:
-  - removed broken `buildChangeRequestPayload` call;
-  - sends `bookingChangeRequests` directly;
-  - shows full-width mobile date input;
-  - removes booking id display;
-  - adds `Cancel booking` button;
-  - cleaned garbled Chinese labels in that panel.
-- Deployed Hosting and Firestore rules where needed.
-
-Verification run:
+## 已驗證
 
 ```powershell
 cd cac-liff-app
 npm test
 npm run build
-firebase deploy --only hosting --project channel-activity-customer
 ```
 
-Last deployment completed successfully. Firestore rules compile passed during the staff-login rules deploy.
+以上皆應通過。請先用本機驗收，不要在未獲明確同意下覆寫 Hosting。
 
-## Firestore Collections
-
-- `customers/{customerId}`: public owner data; staff can read.
-- `bookings/{bookingId}`: booking records.
-  - owners can read their own bookings;
-  - owners can only cancel their own booking by changing `status/cancelledAt/updatedAt`;
-  - staff can update booking details.
-- `bookingChangeRequests/{requestId}`: public reschedule requests; staff approves.
-- `checklists/{bookingId}`: generated checklist data.
-- `managedPackages/{packageId}`: public reads; staff creates/updates; soft delete only.
-- `staffUsers/{email}`: staff account allowlist managed by admin UI.
-
-Admin email hardcoded in rules/source: `lhm0323@gmail.com`.
-
-## Important Current Behavior
-
-Public users:
-
-- Can create bookings through LIFF/public page.
-- Can query their own bookings through `?view=my-bookings`.
-- Can request reschedule; request appears in staff booking list pending area.
-- Can cancel their own booking; record remains with `status = CANCELLED`.
-
-Staff users:
-
-- Admin can add staff Gmail accounts in `預約清單` tab.
-- Newly added staff may need to sign out/in again.
-- Booking list can scroll when rows exceed screen height.
-- Clicking a booking row/details opens editable modal.
-
-## Known Gaps / Next Tasks
-
-1. D-1 LINE automatic reminder:
-   - needs Cloud Scheduler or scheduled Cloud Function;
-   - track `d1NoticeSentAt`, `d1NoticeStatus`, `d1AcknowledgedAt`;
-   - add customer acknowledgement link/button later.
-2. Reschedule workflow is request-based only:
-   - public request does not directly change appointment date;
-   - staff must approve from pending changes.
-3. Questionnaire/consent module not started.
-4. Booking CSV import exists but needs real enterprise HR sample validation.
-5. UI still has some older garbled labels outside recently touched panels; fix only when encountered.
-6. Bundle size warning remains; skip code splitting until it causes measurable load issues.
-
-## Commands
-
-Local dev:
+## 部署順序
 
 ```powershell
 cd cac-liff-app
-npm install
-npm run dev
-```
-
-Test/build:
-
-```powershell
-npm test
-npm run build
-```
-
-Deploy:
-
-```powershell
-firebase deploy --only hosting --project channel-activity-customer
 firebase deploy --only firestore:rules --project channel-activity-customer
-firebase deploy --only hosting,firestore:rules --project channel-activity-customer
+firebase deploy --only functions --project channel-activity-customer
+npm run build
+firebase deploy --only hosting --project channel-activity-customer
 ```
 
-## Do Not Commit
+Functions 首次部署前：`cd functions; npm install`，並設定 `LINE_CHANNEL_ACCESS_TOKEN` secret。不要將 token 寫入 repo。
 
-- `cac-liff-app/.env.local`
-- `cac-liff-app/dist/`
-- `cac-liff-app/.firebase/`
-- `cac-liff-app/node_modules/`
-- temporary scripts such as `tmp-*.mjs` / `tmp-*.cjs`
-- user-provided PDFs unless explicitly requested
+## 主要資料與權限
 
-## Current Untracked Files To Treat Carefully
+- `bookings`、`customers`、`checklists`：預約與清單。
+- `managedPackages`、`managedItems`：人員可維護的套餐與檢查項目。
+- `bookingBlockedDates`：指定日期停止預約。
+- `staffUsers/{lowercase Gmail}`：後台人員白名單。管理者 `lhm0323@gmail.com` 可由預約清單 UI 新增。
+- `bookingChangeRequests`：民眾改期申請。
 
-At the time of this handoff there were untracked local artifacts such as budget docs/PDFs and `cac-liff-app/tmp-check-packages.mjs`. They were intentionally not included in the app commit unless explicitly requested.
+## 下一位 agent 先做
+
+1. 以不同 LINE 帳號測試停約日期，確認只呈現「此日期暫停預約」。
+2. 驗收民眾預約 modal、檢查項目備註彈窗與表格欄寬後，再依使用者明確同意部署。
+3. 以一筆「明日、已確認、有 LINE user ID」預約驗證排程/補發提醒與已讀回覆。
+4. 功能驗收後先更新 README、PROGRESS、handoff，再做具體 commit 與 push。
+
+## 不要提交
+
+- `.env*`、`node_modules/`、`dist/`、`.firebase/`
+- `cac-liff-app/artifacts/`、`cac-liff-app/tmp-*.mjs`
+- 使用者提供的 PDF 或 LINE token

@@ -33,8 +33,10 @@ import {
   PUBLIC_BODY_PARTS,
   PUBLIC_SEXES,
   PUBLIC_COMPARISON_ROWS,
+  audienceToChannel,
   buildBookingPayload,
   calculatePricing,
+  getVisitInstructions,
   buildPublicPackageCards,
   buildChecklistPayload,
   exportBookingsCsv,
@@ -47,19 +49,27 @@ import {
 } from "./core.js";
 import { initLiffProfile } from "./liff.js";
 import {
+  acknowledgeD1Notice,
   approveChangeRequest,
+  deleteBookingBlockedDate,
   cancelBooking,
+  checkInBooking,
+  sendD1Notice,
   confirmBooking,
   deleteManagedPackage,
   getStaffUser,
+  listBookingBlockedDates,
   listBookingsByRange,
   listManagedPackages,
+  listManagedItems,
   listMyBookings,
   listStaffUsers,
   markChecklistPrinted,
   saveBooking,
+  saveBookingBlockedDate,
   requestBookingChange,
   saveManagedPackage,
+  saveManagedItem,
   saveChecklist,
   saveStaffUser,
   signInStaff,
@@ -494,6 +504,9 @@ const App = () => {
   });
 
   const [parsedItems, setParsedItems] = useState([]);
+  const [managedItems, setManagedItems] = useState([]);
+  const [itemEditor, setItemEditor] = useState(null);
+  const [remarkEditor, setRemarkEditor] = useState(null);
   const [packages, setPackages] = useState({});
   const [packageMeta, setPackageMeta] = useState({});
   const [packageAudience, setPackageAudience] = useState("\u4e00\u822c");
@@ -525,6 +538,7 @@ const App = () => {
   const [bookingStatus, setBookingStatus] = useState("");
   const [myBookings, setMyBookings] = useState([]);
   const [myBookingStatus, setMyBookingStatus] = useState("");
+  const [ackHandled, setAckHandled] = useState(false);
   const [changeDates, setChangeDates] = useState({});
   const [changeNotes, setChangeNotes] = useState({});
   const [mode, setMode] = useState("public");
@@ -559,6 +573,13 @@ const App = () => {
   const [staffAccounts, setStaffAccounts] = useState([]);
   const [newStaffEmail, setNewStaffEmail] = useState("");
   const [staffManageStatus, setStaffManageStatus] = useState("");
+  const [blockedBookingDates, setBlockedBookingDates] = useState([]);
+  const [blockedDate, setBlockedDate] = useState("");
+  const [blockedDateReason, setBlockedDateReason] = useState("");
+  const [blockedDateStatus, setBlockedDateStatus] = useState("");
+  const [checkInQuery, setCheckInQuery] = useState("");
+  const [checkInTarget, setCheckInTarget] = useState(null);
+  const [checkInStatus, setCheckInStatus] = useState("");
   const [deletedPackageLimit, setDeletedPackageLimit] = useState(() => {
     if (typeof window === "undefined") return 5;
     return Number(localStorage.getItem("health_planner_deleted_limit_v3")) || 5;
@@ -571,6 +592,13 @@ const App = () => {
     localStorage.setItem("health_planner_deleted_limit_v3", String(next));
   };
 
+  useEffect(() => {
+    let cancelled = false;
+    listManagedItems().then((items) => {
+      if (!cancelled) setManagedItems(items);
+    }).catch((error) => console.warn("Managed item load failed", error));
+    return () => { cancelled = true; };
+  }, []);
   useEffect(() => {
     const syncView = () => {
       const view = readPublicViewFromUrl();
@@ -593,6 +621,14 @@ const App = () => {
       window.history.pushState({}, "", url);
     }
   };
+  const loadBlockedBookingDates = async () => {
+    const dates = await listBookingBlockedDates();
+    setBlockedBookingDates(dates);
+  };
+
+  useEffect(() => {
+    loadBlockedBookingDates().catch((error) => console.warn("Blocked-date load failed", error));
+  }, []);
   // 初始化載入 Tailwind
   useEffect(() => {
     if (!document.getElementById("tailwind-cdn")) {
@@ -749,12 +785,17 @@ const App = () => {
       }
 
       const parsed = parseHealthCsv(normalizedCsvData, userPackages, deletedPackages);
-      setParsedItems(parsed.items);
+      const overrides = new Map(managedItems.map((item) => [String(item.id), item]));
+      const baseItems = parsed.items
+        .map((item) => overrides.has(String(item.id)) ? { ...item, ...overrides.get(String(item.id)) } : item)
+        .filter((item) => !item.deleted);
+      const customItems = managedItems.filter((item) => !item.deleted && !parsed.items.some((base) => String(base.id) === String(item.id)));
+      setParsedItems([...customItems, ...baseItems]);
       setPackages(parsed.packages);
     } catch (e) {
       console.error("CSV Parse Error", e);
     }
-  }, [csvData, userPackages, deletedPackages]);
+  }, [csvData, userPackages, deletedPackages, managedItems]);
 
   // 排序處理
   const handleSort = (key) => {
@@ -980,6 +1021,62 @@ const App = () => {
     });
   };
 
+  const updateItemDraft = (field, value) => {
+    setItemEditor((current) => ({ ...current, [field]: value }));
+  };
+
+  const startItemEdit = (item) => {
+    setItemEditor({ ...item, isNew: false });
+  };
+
+  const startNewItem = () => {
+    const item = { id: `custom-${Date.now()}`, category: "", name: "", enName: "", clinical: "", price: 0, code: "", outsource: "", remark: "", isNew: true };
+    setManagedItems((current) => [...current, item]);
+    setItemEditor(item);
+  };
+
+  const saveItemEdit = async () => {
+    if (!String(itemEditor?.name || "").trim()) return;
+    const { isNew, ...draft } = itemEditor;
+    const item = { ...draft, price: Number(draft.price) || 0 };
+    try {
+      await saveManagedItem(item);
+      setManagedItems((current) => [...current.filter((entry) => String(entry.id) !== String(item.id)), item]);
+      setItemEditor(null);
+      setSavedMessage("\u6aa2\u67e5\u9805\u76ee\u5df2\u5132\u5b58");
+    } catch (error) {
+      setSavedMessage(`\u9805\u76ee\u5132\u5b58\u5931\u6557\uff1a${error.message}`);
+    }
+  };
+
+  const cancelItemEdit = () => {
+    if (itemEditor?.isNew) setManagedItems((current) => current.filter((item) => String(item.id) !== String(itemEditor.id)));
+    setItemEditor(null);
+  };
+
+  const disableManagedItem = async (item) => {
+    const { isNew, ...draft } = item;
+    const disabled = { ...draft, deleted: true };
+    try {
+      await saveManagedItem(disabled);
+      setManagedItems((current) => [...current.filter((entry) => String(entry.id) !== String(disabled.id)), disabled]);
+      setSelectedIds((current) => current.filter((id) => String(id) !== String(disabled.id)));
+      setItemEditor(null);
+    } catch (error) {
+      setSavedMessage(`\u9805\u76ee\u505c\u7528\u5931\u6557\uff1a${error.message}`);
+    }
+  };
+
+  const saveRemarkEdit = async () => {
+    const item = { ...remarkEditor, price: Number(remarkEditor.price) || 0 };
+    try {
+      await saveManagedItem(item);
+      setManagedItems((current) => [...current.filter((entry) => String(entry.id) !== String(item.id)), item]);
+      setRemarkEditor(null);
+    } catch (error) {
+      setSavedMessage(`\u5099\u8a3b\u5132\u5b58\u5931\u6557\uff1a${error.message}`);
+    }
+  };
   const handleRowClick = (item) => {
     setModalItem(item);
   };
@@ -1115,98 +1212,38 @@ ${selectedItems
 
   const handlePrint = () => {
     const printWindow = window.open("", "_blank");
+    if (!printWindow) return;
+    const isEnglish = lang === "en";
+    const labels = isEnglish
+      ? { title: "Health Check Quotation", package: "Package", date: "Created", category: "Category", item: "Item", purpose: "Purpose", price: "Price", count: "Items", final: "Final quotation" }
+      : { title: "\u5065\u6aa2\u5957\u9910\u5831\u50f9\u55ae", package: "\u5957\u9910\u540d\u7a31", date: "\u88fd\u8868\u65e5\u671f", category: "\u5206\u985e", item: "\u9805\u76ee\u540d\u7a31", purpose: "\u6aa2\u67e5\u610f\u7fa9", price: "\u55ae\u50f9", count: "\u6aa2\u67e5\u9805\u76ee", final: "\u6700\u7d42\u5831\u50f9" };
+    const rows = selectedItems.map((item) => {
+      const itemName = isEnglish ? item.enName || item.name : item.name;
+      const purpose = isEnglish ? "" : item.clinical || "";
+      return `<tr><td>${escapeHtml(item.category)}</td><td><strong>${escapeHtml(itemName)}</strong></td><td>${escapeHtml(purpose)}</td><td class="price">NT$ ${Number(item.price || 0).toLocaleString()}</td></tr>`;
+    }).join("");
     printWindow.document.write(`
-      <html>
-        <head>
-          <title>報價單 - ${packageName}</title>
-          <style>
-            body { font-family: "Microsoft JhengHei", sans-serif; padding: 40px; color: #333; }
-            .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 10px; }
-            h1 { margin: 0; font-size: 24px; }
-            .meta { display: flex; justify-content: space-between; margin-bottom: 20px; font-size: 14px; }
-            table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; }
-            th, td { border: 1px solid #ccc; padding: 8px 12px; text-align: left; }
-            th { background-color: #f8f9fa; font-weight: bold; color: #555; }
-            .category-col { width: 12%; }
-            .code-col { width: 10%; }
-            .price-col { width: 12%; text-align: right; }
-            .total-section { margin-top: 30px; display: flex; flex-direction: column; align-items: flex-end; }
-            .total-row { display: flex; justify-content: space-between; width: 250px; padding: 5px 0; }
-            .final-price { font-size: 20px; font-weight: bold; color: #000; border-top: 2px solid #333; padding-top: 10px; margin-top: 5px; }
-            @media print {
-              .no-print { display: none; }
-              body { padding: 0; }
-            }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <h1>健檢套餐報價單</h1>
-          </div>
-          <div class="meta">
-            <span><strong>套餐名稱：</strong>${packageName}</span>
-            <span><strong>製表日期：</strong>${new Date().toLocaleDateString()}</span>
-          </div>
-          
-          <table>
-            <thead>
-              <tr>
-                <th class="category-col">分類</th>
-                <th class="code-col">院碼</th>
-                <th>項目名稱</th>
-                <th class="price-col">單價</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${selectedItems
-                .map(
-                  (item) => `
-                <tr>
-                  <td>${item.category}</td>
-                  <td style="font-family: monospace;">${item.code || "-"}</td>
-                  <td>
-                    <div style="font-weight: bold;">${item.name}</div>
-                    ${
-                      item.enName
-                        ? `<div style="font-size: 11px; color: #666;">${item.enName}</div>`
-                        : ""
-                    }
-                  </td>
-                  <td class="price-col">${item.price.toLocaleString()}</td>
-                </tr>
-              `
-                )
-                .join("")}
-            </tbody>
-          </table>
-
-          <div class="total-section">
-            <div class="total-row">
-              <span>項目總數：</span>
-              <span>${selectedItems.length} 項</span>
-            </div>
-            <div class="total-row">
-              <span>表定總價：</span>
-              <span>NT$ ${listPriceTotal.toLocaleString()}</span>
-            </div>
-            <div class="total-row" style="color: #e11d48;">
-              <span>專案折扣 (${discountRate}%)：</span>
-              <span>- NT$ ${discountAmount.toLocaleString()}</span>
-            </div>
-            <div class="total-row final-price">
-              <span>建議報價：</span>
-              <span>NT$ ${Number(finalPrice).toLocaleString()}</span>
-            </div>
-          </div>
-          <script>
-            window.onload = function() { window.print(); }
-          </script>
-        </body>
-      </html>
-    `);
+      <html><head><title>${escapeHtml(labels.title)} - ${escapeHtml(packageName)}</title>
+      <style>
+        @page { size: A4; margin: 14mm; }
+        body { font-family: "Microsoft JhengHei", Arial, sans-serif; color: #111827; margin: 0; font-size: 13px; }
+        h1 { margin: 0; font-size: 22px; text-align: center; }
+        .header { border-bottom: 2px solid #111827; padding-bottom: 10px; margin-bottom: 16px; }
+        .meta { display: flex; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { border: 1px solid #cbd5e1; padding: 7px 8px; vertical-align: top; }
+        th { background: #f1f5f9; text-align: left; }
+        .price { text-align: right; white-space: nowrap; }
+        .total { margin: 18px 0 0 auto; width: 260px; display: flex; justify-content: space-between; border-top: 2px solid #111827; padding-top: 9px; font-size: 18px; font-weight: 700; }
+      </style></head>
+      <body><div class="header"><h1>${escapeHtml(labels.title)}</h1></div>
+      <div class="meta"><span><strong>${escapeHtml(labels.package)}:</strong> ${escapeHtml(packageName)}</span><span><strong>${escapeHtml(labels.date)}:</strong> ${new Date().toLocaleDateString()}</span></div>
+      <table><thead><tr><th>${escapeHtml(labels.category)}</th><th>${escapeHtml(labels.item)}</th><th>${escapeHtml(labels.purpose)}</th><th class="price">${escapeHtml(labels.price)}</th></tr></thead><tbody>${rows}</tbody></table>
+      <div class="meta" style="margin-top:10px"><span>${escapeHtml(labels.count)}: ${selectedItems.length}</span></div>
+      <div class="total"><span>${escapeHtml(labels.final)}</span><span>NT$ ${Number(finalPrice).toLocaleString()}</span></div>
+      <script>window.onload = () => window.print();</script></body></html>`);
     printWindow.document.close();
   };
-
   const setBookingField = (field, value) => {
     setBookingForm((current) => ({ ...current, [field]: value }));
   };
@@ -1257,9 +1294,13 @@ ${selectedItems
 
   const handleSubmitBooking = async () => {
     try {
+      const blocked = blockedBookingDates.find((entry) => entry.date === bookingForm.appointmentDate);
+      if (blocked && !staffMode) {
+        throw new Error(lang === "en" ? "This date is unavailable" : "\u6b64\u65e5\u671f\u66ab\u505c\u9810\u7d04");
+      }
       setBookingStatus("寫入預約中...");
       const payload = buildBookingPayload({
-        formData: bookingForm,
+        formData: { ...bookingForm, channel: audienceToChannel(packageMeta[packageName]?.audience || inferPackageAudienceName(packageName)) },
         lineProfile,
         packageName,
         selectedItems,
@@ -1275,7 +1316,8 @@ ${selectedItems
       setAdminStartDate(payload.booking.appointmentDate);
       setAdminEndDate(payload.booking.appointmentDate);
     } catch (error) {
-      setBookingStatus(error.message);
+      const isBlockedDate = blockedBookingDates.some((entry) => entry.date === bookingForm.appointmentDate);
+      setBookingStatus(isBlockedDate ? (lang === "en" ? "This date is unavailable" : "\u6b64\u65e5\u671f\u66ab\u505c\u9810\u7d04") : error.message);
     }
   };
 
@@ -1284,13 +1326,33 @@ ${selectedItems
     try {
       setMyBookingStatus("\u8b80\u53d6\u4e2d...");
       const bookings = await listMyBookings();
-      setMyBookings(bookings);
-      setMyBookingStatus(`\u5df2\u8f09\u5165 ${bookings.length} \u7b46\u9810\u7d04`);
+      setMyBookings(bookings.filter((booking) => booking.status !== "CANCELLED"));
+      setMyBookingStatus(`\u5df2\u8f09\u5165 ${bookings.filter((booking) => booking.status !== "CANCELLED").length} \u7b46\u9810\u7d04`);
     } catch (error) {
       setMyBookingStatus(`\u8b80\u53d6\u5931\u6557\uff1a${error.message}`);
     }
   };
 
+  const handleAcknowledgeD1Notice = async (bookingId, ackToken) => {
+    try {
+      await acknowledgeD1Notice(bookingId, ackToken);
+      setMyBookingStatus(lang === "en" ? "Reminder acknowledged" : "\u5df2\u56de\u8986\u5230\u6aa2\u63d0\u9192");
+      handleLoadMyBookings();
+    } catch (error) {
+      setMyBookingStatus(lang === "en" ? `Acknowledge failed: ${error.message}` : `\u56de\u8986\u5931\u6557\uff1a${error.message}`);
+    }
+  };
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const bookingId = params.get("ackBooking");
+    const ackToken = params.get("ackToken");
+    if (!bookingId || !ackToken || ackHandled) return;
+    setAckHandled(true);
+    setPublicView("my-bookings");
+    setMode("public");
+    handleAcknowledgeD1Notice(bookingId, ackToken);
+  }, [ackHandled]);
   const handleRequestBookingChange = async (booking) => {
     const requestedAppointmentDate = changeDates[booking.bookingId];
     if (!requestedAppointmentDate) {
@@ -1335,14 +1397,24 @@ ${selectedItems
 
   const handleConfirmBooking = async (booking) => {
     try {
-      await confirmBooking(booking.bookingId);
-      setAdminStatus(t.confirmed);
+      const result = await confirmBooking(booking.bookingId);
+      const serial = result?.data?.checkInSerial;
+      setAdminStatus(serial ? `${t.confirmed} / ${serial}` : t.confirmed);
       handleLoadAdminBookings();
     } catch (error) {
       setAdminStatus(`${t.confirm} failed: ${error.message}`);
     }
   };
 
+  const handleSendD1Notice = async (booking) => {
+    try {
+      await sendD1Notice(booking.bookingId);
+      setAdminStatus(lang === "en" ? "Reminder sent" : "\u63d0\u9192\u5df2\u767c\u9001");
+      handleLoadAdminBookings();
+    } catch (error) {
+      setAdminStatus(lang === "en" ? `Reminder failed: ${error.message}` : `\u767c\u9001\u63d0\u9192\u5931\u6557\uff1a${error.message}`);
+    }
+  };
   const handleCancelAdminBooking = async (booking) => {
     if (booking.status === "CANCELLED") return;
     const ok = window.confirm(lang === "en" ? "Cancel this booking?" : "\u78ba\u5b9a\u53d6\u6d88\u9019\u7b46\u9810\u7d04\uff1f");
@@ -1368,6 +1440,45 @@ ${selectedItems
     }
   };
 
+  const handleCheckInLookup = () => {
+    const serial = checkInQuery.trim().toUpperCase();
+    const booking = adminBookings.find((entry) => String(entry.checkInSerial || "").toUpperCase() === serial);
+    setCheckInTarget(booking || null);
+    setCheckInStatus(booking ? "" : (lang === "en" ? "No booking found. Load the appointment date first." : "\u627e\u4e0d\u5230\u5831\u5230\u5e8f\u865f\uff0c\u8acb\u5148\u8f09\u5165\u9810\u7d04\u65e5\u671f\u540d\u55ae\u3002"));
+  };
+
+  const handleCompleteCheckIn = async () => {
+    if (!checkInTarget) return;
+    try {
+      const result = await checkInBooking(checkInTarget.bookingId, staffUser?.email || "");
+      const booking = result.booking || { ...checkInTarget, checkInStatus: "CHECKED_IN" };
+      setCheckInTarget({ ...booking, bookingId: checkInTarget.bookingId, checkInStatus: "CHECKED_IN" });
+      setCheckInStatus(lang === "en" ? "Checked in" : "\u5df2\u5b8c\u6210\u5831\u5230\u3002");
+      handleLoadAdminBookings();
+    } catch (error) {
+      setCheckInStatus(lang === "en" ? `Check-in failed: ${error.message}` : `\u5831\u5230\u5931\u6557\uff1a${error.message}`);
+    }
+  };
+  const handleSaveBlockedDate = async () => {
+    try {
+      await saveBookingBlockedDate(blockedDate, blockedDateReason);
+      await loadBlockedBookingDates();
+      setBlockedDateReason("");
+      setBlockedDateStatus(lang === "en" ? "Unavailable date saved" : "已設定停止預約日期");
+    } catch (error) {
+      setBlockedDateStatus(lang === "en" ? `Save failed: ${error.message}` : `設定失敗：${error.message}`);
+    }
+  };
+
+  const handleDeleteBlockedDate = async (date) => {
+    try {
+      await deleteBookingBlockedDate(date);
+      await loadBlockedBookingDates();
+      setBlockedDateStatus(lang === "en" ? "Date reopened" : "已恢復開放預約");
+    } catch (error) {
+      setBlockedDateStatus(lang === "en" ? `Update failed: ${error.message}` : `更新失敗：${error.message}`);
+    }
+  };
   const handleLoadAdminBookings = async () => {
     try {
       setAdminStatus(lang === "en" ? "Loading..." : "\u8b80\u53d6\u4e2d...");
@@ -1440,6 +1551,8 @@ ${selectedItems
   const handleSaveAdminBooking = async () => {
     if (!adminDetailBooking?.bookingId) return;
     try {
+      const original = adminBookings.find((booking) => booking.bookingId === adminDetailBooking.bookingId);
+      const dateChanged = original && original.appointmentDate !== adminDetailBooking.appointmentDate;
       let fields = {
         customerName: adminDetailBooking.customerName || adminDetailBooking.name || "",
         customerPhone: adminDetailBooking.customerPhone || adminDetailBooking.phone || "",
@@ -1462,6 +1575,9 @@ ${selectedItems
           discountRate: pricing.discountRate,
           finalPrice: Number(fields.finalPrice || packageMeta[fields.packageName]?.finalPrice || pricing.suggestedPrice),
         };
+      }
+      if (dateChanged) {
+        fields = { ...fields, status: "BOOKED", checkInSerial: null, checkInSequence: null, d1NoticeSentAt: null, d1AcknowledgedAt: null, d1NoticeStatus: null };
       }
       await updateBooking(adminDetailBooking.bookingId, fields);
       setAdminStatus(lang === "en" ? "Booking updated" : "\u9810\u7d04\u5df2\u66f4\u65b0");
@@ -1561,71 +1677,39 @@ ${selectedItems
     }
   };
   const buildChecklistHtml = (bookings) => {
+    const isEnglish = lang === "en";
+    const labels = isEnglish
+      ? { title: "Personal Health Check Checklist", items: "items", minutes: "min", warnings: "Notes", outsource: "Outsourced tests" }
+      : { title: "\u500b\u4eba\u7576\u65e5\u5065\u6aa2\u6e05\u55ae", items: "\u9805", minutes: "\u5206", warnings: "\u6ce8\u610f\u4e8b\u9805", outsource: "\u5916\u6aa2\u9805\u76ee" };
     const pages = bookings.map((booking) => {
       const checklist = buildChecklistPayload(booking);
-      return `
-        <section class="page">
-          <header class="header">
-            <div>
-              <h1>${escapeHtml(booking.customerName || booking.name || booking.customerId || "未命名")}</h1>
-              <p>${escapeHtml(booking.appointmentDate)} ｜ ${escapeHtml(booking.channel)} ｜ ${escapeHtml(booking.packageName)}</p>
-            </div>
-            <div class="count">${(booking.selectedItems || []).length} 項</div>
-          </header>
-          ${checklist.stationGroups
-            .map(
-              (group) => `
-                <div class="station">
-                  <div class="station-title">
-                    <strong>${escapeHtml(group.station)}</strong>
-                    <span>${group.items.length} 項 / 約 ${group.totalMin} 分</span>
-                  </div>
-                  ${group.items
-                    .map(
-                      (item) => `
-                        <div class="item">
-                          <span class="box"></span>
-                          <span class="code">${escapeHtml(item.code || "-")}</span>
-                          <span class="name">${escapeHtml(item.name)}</span>
-                          <span class="en">${escapeHtml(item.enName || "")}</span>
-                        </div>`
-                    )
-                    .join("")}
-                </div>`
-            )
-            .join("")}
-          ${checklist.warnings.length ? `<div class="notice"><strong>注意事項</strong>${checklist.warnings.map((i) => `<p>${escapeHtml(i.name)}：${escapeHtml(i.remark)}</p>`).join("")}</div>` : ""}
-          ${checklist.outsourceItems.length ? `<div class="outsource"><strong>外檢/後送</strong>${checklist.outsourceItems.map((i) => `<p>${escapeHtml(i.name)}：${escapeHtml(i.outsource)}</p>`).join("")}</div>` : ""}
-        </section>`;
-    });
-
-    return `
-      <html>
-        <head>
-          <title>當日健檢清單</title>
-          <style>
-            @page { size: A4; margin: 10mm; }
-            body { font-family: "Microsoft JhengHei", Arial, sans-serif; color: #111827; margin: 0; }
-            .page { page-break-after: always; padding: 4mm 0; }
-            .header { display: flex; justify-content: space-between; gap: 16px; border-bottom: 2px solid #111827; padding-bottom: 8px; margin-bottom: 10px; }
-            h1 { margin: 0; font-size: 22px; }
-            p { margin: 3px 0; }
-            .count { font-size: 18px; font-weight: 700; white-space: nowrap; }
-            .station { border: 1px solid #d1d5db; margin: 8px 0; break-inside: avoid; }
-            .station-title { display: flex; justify-content: space-between; background: #f3f4f6; padding: 6px 8px; font-size: 13px; }
-            .item { display: grid; grid-template-columns: 18px 82px minmax(120px, 1fr) minmax(80px, 1fr); gap: 8px; align-items: center; padding: 5px 8px; border-top: 1px solid #e5e7eb; font-size: 12px; }
-            .box { width: 13px; height: 13px; border: 1px solid #111827; display: inline-block; }
-            .code { font-family: Consolas, monospace; color: #374151; }
-            .name { font-weight: 700; }
-            .en { color: #6b7280; }
-            .notice, .outsource { border: 1px solid #f59e0b; background: #fffbeb; padding: 8px; margin-top: 8px; font-size: 12px; break-inside: avoid; }
-            .outsource { border-color: #fca5a5; background: #fef2f2; }
-          </style>
-        </head>
-        <body>${pages.join("")}<script>window.onload = () => window.print();</script></body>
-      </html>`;
+      const customerName = booking.customerName || booking.name || booking.customerId || "-";
+      const groups = checklist.stationGroups.map((group) => {
+        const items = group.items.map((item) => {
+          const itemName = isEnglish ? item.enName || item.name : item.name;
+          const purpose = isEnglish ? "" : item.clinical || "";
+          return `<div class="item"><span class="box"></span><span class="name">${escapeHtml(itemName)}</span><span class="purpose">${escapeHtml(purpose)}</span></div>`;
+        }).join("");
+        return `<div class="station"><div class="station-title"><strong>${escapeHtml(group.station)}</strong><span>${group.items.length} ${escapeHtml(labels.items)} / ${group.totalMin} ${escapeHtml(labels.minutes)}</span></div>${items}</div>`;
+      }).join("");
+      const warnings = checklist.warnings.length ? `<div class="notice"><strong>${escapeHtml(labels.warnings)}</strong>${checklist.warnings.map((item) => `<p>${escapeHtml(item.name)}${item.remark ? `: ${escapeHtml(item.remark)}` : ""}</p>`).join("")}</div>` : "";
+      const outsource = checklist.outsourceItems.length ? `<div class="outsource"><strong>${escapeHtml(labels.outsource)}</strong>${checklist.outsourceItems.map((item) => `<p>${escapeHtml(item.name)}${item.outsource ? `: ${escapeHtml(item.outsource)}` : ""}</p>`).join("")}</div>` : "";
+      return `<section class="page"><header class="header"><div><h1>${escapeHtml(customerName)}</h1><p>${escapeHtml(booking.appointmentDate)} | ${escapeHtml(booking.channel)} | ${escapeHtml(booking.packageName)}</p></div><div class="count">${(booking.selectedItems || []).length} ${escapeHtml(labels.items)}</div></header>${groups}${warnings}${outsource}</section>`;
+    }).join("");
+    return `<html><head><title>${escapeHtml(labels.title)}</title><style>
+      @page { size: A4; margin: 10mm; }
+      body { font-family: "Microsoft JhengHei", Arial, sans-serif; color: #111827; margin: 0; }
+      .page { page-break-after: always; padding: 4mm 0; }
+      .header { display:flex; justify-content:space-between; gap:16px; border-bottom:2px solid #111827; padding-bottom:8px; margin-bottom:10px; }
+      h1 { margin:0; font-size:22px; } p { margin:3px 0; } .count { font-size:18px; font-weight:700; white-space:nowrap; }
+      .station { border:1px solid #d1d5db; margin:8px 0; break-inside:avoid; }
+      .station-title { display:flex; justify-content:space-between; background:#f3f4f6; padding:6px 8px; font-size:13px; }
+      .item { display:grid; grid-template-columns:18px minmax(160px, 0.9fr) minmax(180px, 1.4fr); gap:8px; align-items:start; padding:5px 8px; border-top:1px solid #e5e7eb; font-size:12px; }
+      .box { width:13px; height:13px; border:1px solid #111827; display:inline-block; } .name { font-weight:700; } .purpose { color:#475569; }
+      .notice,.outsource { border:1px solid #f59e0b; background:#fffbeb; padding:8px; margin-top:8px; font-size:12px; break-inside:avoid; }
+      .outsource { border-color:#fca5a5; background:#fef2f2; }
+    </style></head><body>${pages}<script>window.onload = () => window.print();</script></body></html>`;
   };
-
   const printBookings = async (bookings) => {
     if (!bookings.length) {
       setAdminStatus(lang === "en" ? "No bookings to print" : "\u6c92\u6709\u53ef\u5217\u5370\u7684\u9810\u7d04");
@@ -1782,6 +1866,12 @@ ${selectedItems
               </button>
             )}
             <button
+              onClick={startNewItem}
+              className="px-3 py-2 rounded-lg text-xs font-bold border border-emerald-200 bg-emerald-50 text-emerald-700 flex-shrink-0 flex items-center gap-1"
+            >
+              <Plus className="w-4 h-4" />
+              <span className="hidden sm:inline">{"\u65b0\u589e"}</span>
+            </button>            <button
               onClick={() => setShowCsvInput(!showCsvInput)}
               className={`px-3 py-2 rounded-lg text-xs font-bold border flex-shrink-0 flex items-center gap-1 ${
                 showCsvInput
@@ -1841,10 +1931,10 @@ ${selectedItems
       )}
 
       <div className="flex-1 overflow-y-auto custom-scrollbar bg-slate-50">
-        <div className="grid grid-cols-12 gap-2 p-3 bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-500 uppercase tracking-wider flex-none sticky top-0 z-20 shadow-sm">
-          <div className="col-span-1 text-left">選取</div>
+        <div className="item-grid grid grid-cols-12 gap-2 p-3 bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-500 uppercase tracking-wider flex-none sticky top-0 z-20 shadow-sm">
+          <div className="item-cell col-span-1 text-left">選取</div>
           <div
-            className="col-span-2 text-left hidden lg:flex items-center gap-1 cursor-pointer hover:text-indigo-600 transition-colors select-none"
+            className="item-cell col-span-1 lg:col-span-1 text-left hidden lg:flex items-center gap-1 cursor-pointer hover:text-indigo-600 transition-colors select-none"
             onClick={() => handleSort("category")}
           >
             分類
@@ -1858,9 +1948,9 @@ ${selectedItems
               <ArrowUpDown className="w-3 h-3 opacity-20" />
             )}
           </div>
-          <div className="col-span-7 lg:col-span-3 text-left">項目名稱</div>
+          <div className="item-cell col-span-7 lg:col-span-1 text-left">項目名稱</div>
           <div
-            className="col-span-2 lg:col-span-1 text-left flex items-center gap-1 cursor-pointer hover:text-indigo-600 transition-colors select-none"
+            className="item-cell col-span-2 lg:col-span-1 text-left flex items-center gap-1 cursor-pointer hover:text-indigo-600 transition-colors select-none"
             onClick={() => handleSort("price")}
           >
             單價
@@ -1874,104 +1964,23 @@ ${selectedItems
               <ArrowUpDown className="w-3 h-3 opacity-20" />
             )}
           </div>
-          <div className="col-span-2 lg:col-span-5 text-left flex items-center gap-1">
+          <div className="item-cell col-span-2 lg:col-span-1 text-left flex items-center gap-1">
             檢查意義 <Info className="w-3 h-3 text-slate-400" />
           </div>
         </div>
 
-        {filteredItems.map((item) => (
-          <div
-            key={item.id}
-            onClick={() => handleRowClick(item)}
-            className={`grid grid-cols-12 gap-2 p-2 border-b border-slate-100 items-center cursor-pointer transition-all hover:bg-slate-50 relative group min-h-[50px] lg:min-h-[40px] ${
-              selectedIds.includes(item.id) ? "bg-indigo-50/60" : ""
-            }`}
-          >
-            {/* Checkbox */}
-            <div className="col-span-1 flex justify-start items-center">
-              <div
-                className={`w-6 h-6 lg:w-5 lg:h-5 rounded border flex items-center justify-center transition-all ${
-                  selectedIds.includes(item.id)
-                    ? "bg-indigo-600 border-indigo-600 text-white"
-                    : "border-slate-300 bg-white"
-                }`}
-                onClick={(e) => handleToggleSelect(e, item)}
-              >
-                {selectedIds.includes(item.id) && (
-                  <CheckCircle2 className="w-4 h-4 lg:w-3.5 lg:h-3.5" />
-                )}
-              </div>
-            </div>
-
-            {/* Category */}
-            <div className="col-span-2 text-left hidden lg:block">
-              <span
-                className={`text-[10px] font-bold px-1 py-0.5 rounded-md block truncate text-center cursor-pointer transition-colors ${
-                  activeCategory === item.category
-                    ? "bg-indigo-600 text-white shadow-sm"
-                    : "bg-slate-100 text-slate-600 hover:bg-indigo-100 hover:text-indigo-700"
-                }`}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleCategoryClick(item.category);
-                }}
-                title="點擊篩選此分類"
-              >
-                {item.category}
-              </span>
-            </div>
-
-            {/* Name */}
-            <div className="col-span-7 lg:col-span-3 text-left">
-              <div className="font-medium text-xs text-slate-800 group-hover:text-indigo-600 transition-colors leading-tight truncate">
-                {item.name}
-              </div>
-              {item.enName && (
-                <div className="text-[10px] text-slate-400 truncate">
-                  {item.enName}
-                </div>
-              )}
-              {/* Mobile Category Tag */}
-              <span
-                className={`lg:hidden text-[10px] font-bold px-1.5 py-0.5 rounded mt-1 inline-block cursor-pointer ${
-                  activeCategory === item.category
-                    ? "bg-indigo-600 text-white"
-                    : "bg-slate-100 text-slate-600"
-                }`}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleCategoryClick(item.category);
-                }}
-              >
-                {item.category}
-              </span>
-            </div>
-
-            {/* Price */}
-            <div className="col-span-2 lg:col-span-1 text-left font-mono font-bold text-slate-700 text-sm lg:text-xs">
-              {item.price.toLocaleString()}
-            </div>
-
-            {/* Clinical */}
-            <div className="col-span-2 lg:col-span-5 text-sm lg:text-xs text-slate-500 leading-relaxed text-left flex items-center gap-1">
-              <span className="line-clamp-2 lg:line-clamp-none">
-                {item.clinical}
-              </span>
-              {item.remark && (
-                <span
-                  className="text-[9px] bg-yellow-100 text-yellow-700 px-1 rounded-sm border border-yellow-200 flex-shrink-0 whitespace-nowrap"
-                  title={item.remark}
-                >
-                  備註
-                </span>
-              )}
-              {item.code && !item.remark && (
-                <Info className="w-3 h-3 text-slate-300 flex-shrink-0" />
-              )}
-            </div>
+        {filteredItems.map((item) => {
+          const editing = String(itemEditor?.id) === String(item.id);
+          return (
+          <div key={item.id} onClick={() => !editing && startItemEdit(item)} className={`item-grid grid grid-cols-12 gap-2 p-2 border-b border-slate-100 items-center cursor-pointer transition-all hover:bg-slate-50 relative group min-h-[50px] lg:min-h-[40px] ${selectedIds.includes(item.id) ? "bg-indigo-50/60" : ""}`}>
+            <div className="item-cell col-span-1 lg:col-span-1 flex justify-start items-center"><div className={`w-6 h-6 lg:w-5 lg:h-5 rounded border flex items-center justify-center ${selectedIds.includes(item.id) ? "bg-indigo-600 border-indigo-600 text-white" : "border-slate-300 bg-white"}`} onClick={(e) => handleToggleSelect(e, item)}>{selectedIds.includes(item.id) && <CheckCircle2 className="w-4 h-4 lg:w-3.5 lg:h-3.5" />}</div></div>
+            <div className="item-cell col-span-1 lg:col-span-1 text-left hidden lg:block">{editing ? <input autoFocus value={itemEditor.category} onClick={(e) => e.stopPropagation()} onChange={(e) => updateItemDraft("category", e.target.value)} className="w-full rounded border border-indigo-300 px-1 py-1 text-xs" /> : <span className="text-[10px] font-bold px-1 py-0.5 rounded-md block truncate text-center bg-slate-100 text-slate-600">{item.category}</span>}</div>
+            <div className="item-cell col-span-7 lg:col-span-1 text-left">{editing ? <><input value={itemEditor.name} onClick={(e) => e.stopPropagation()} onChange={(e) => updateItemDraft("name", e.target.value)} placeholder="\u4e2d\u6587\u540d\u7a31" className="w-full rounded border border-indigo-300 px-1 py-1 text-xs font-medium" /><input value={itemEditor.enName} onClick={(e) => e.stopPropagation()} onChange={(e) => updateItemDraft("enName", e.target.value)} placeholder="English name" className="mt-1 w-full rounded border border-slate-200 px-1 py-1 text-[10px]" /></> : <><div className="font-medium text-xs text-slate-800 leading-tight truncate">{item.name}</div>{item.enName && <div className="text-[10px] text-slate-400 truncate">{item.enName}</div>}</>}</div>
+            <div className="item-cell col-span-2 lg:col-span-1 text-left font-mono font-bold text-slate-700 text-sm lg:text-xs">{editing ? <><input type="number" value={itemEditor.price} onClick={(e) => e.stopPropagation()} onChange={(e) => updateItemDraft("price", e.target.value)} className="w-full rounded border border-indigo-300 px-2 py-1 text-xs" /></> : item.price.toLocaleString()}</div>
+            <div className="item-cell col-span-2 lg:col-span-1 text-sm lg:text-xs text-slate-500 leading-relaxed text-left flex items-center gap-1">{editing ? <div className="w-full" onClick={(e) => e.stopPropagation()}><textarea value={itemEditor.clinical} onChange={(e) => updateItemDraft("clinical", e.target.value)} placeholder="\u6aa2\u67e5\u610f\u7fa9" rows="2" className="w-full rounded border border-indigo-300 px-1 py-1 text-xs" /><div className="mt-1 flex gap-1"><button onClick={saveItemEdit} className="rounded bg-indigo-600 px-2 py-1 text-[10px] font-bold text-white">{"\u5132\u5b58"}</button><button onClick={cancelItemEdit} className="rounded bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-600">{"\u53d6\u6d88"}</button><button onClick={() => disableManagedItem(itemEditor)} className="rounded bg-rose-50 px-2 py-1 text-[10px] font-bold text-rose-600">{"\u505c\u7528"}</button></div></div> : <><span className="line-clamp-2 lg:line-clamp-none">{item.clinical}</span><button onClick={(e) => { e.stopPropagation(); setRemarkEditor({ ...item }); }} className={`text-[9px] px-1 rounded-sm border flex-shrink-0 whitespace-nowrap ${item.remark ? "bg-yellow-100 text-yellow-700 border-yellow-200" : "bg-slate-50 text-slate-400 border-slate-200"}`}>{"\u5099\u8a3b"}</button></>}</div>
           </div>
-        ))}
-
+          );
+        })}
         {filteredItems.length === 0 && (
           <div className="p-8 text-center text-slate-400 text-xs">
             沒有找到符合條件的項目
@@ -2260,7 +2269,20 @@ ${selectedItems
     );
   };
 
+  const CheckInInfoPanel = () => {
+    const active = myBookings.filter((booking) => booking.status !== "CANCELLED");
+    return (
+      <div className="bg-white border border-slate-200 rounded-lg p-5">
+        <h1 className="text-xl font-black text-slate-900">{lang === "en" ? "Check-in serial and visit instructions" : "\u5831\u5230\u5e8f\u865f\uff0f\u7576\u65e5\u6d41\u7a0b"}</h1>
+        <p className="mt-2 text-sm text-slate-600">{lang === "en" ? "Please bring your health insurance card or identification to the health check center." : "\u8acb\u4f9d\u9810\u7d04\u65e5\u671f\u81f3\u5c4f\u57fa\u5065\u6aa2\u4e2d\u5fc3\u5831\u5230\uff0c\u4e26\u651c\u5e36\u5065\u4fdd\u5361\u6216\u8b49\u4ef6\u6838\u5c0d\u8eab\u5206\u3002"}</p>
+        <button onClick={handleLoadMyBookings} className="mt-4 rounded-md bg-slate-900 px-4 py-3 text-sm font-bold text-white">{lang === "en" ? "Load my bookings" : "\u67e5\u8a62\u6211\u7684\u9810\u7d04"}</button>
+        {myBookingStatus && <p className="mt-3 text-xs text-slate-500">{myBookingStatus}</p>}
+        <div className="mt-4 space-y-4">{active.map((booking) => <div key={booking.bookingId} className="rounded-lg border border-slate-200 p-4"><div className="font-black text-slate-900">{booking.packageName}</div><div className="mt-1 text-sm text-slate-600">{booking.appointmentDate}</div><div className="mt-3 rounded bg-slate-50 p-3"><div className="text-xs text-slate-500">{lang === "en" ? "Check-in serial" : "\u5831\u5230\u5e8f\u865f"}</div><div className="mt-1 text-2xl font-black tracking-wider text-slate-900">{booking.checkInSerial || (lang === "en" ? "Awaiting confirmation" : "\u5f85\u5065\u6aa2\u4e2d\u5fc3\u78ba\u8a8d")}</div></div><ul className="mt-3 space-y-1 text-sm text-slate-700">{getVisitInstructions(booking.selectedItems || [], lang).map((item) => <li key={item}>{"\u2610 "}{item}</li>)}</ul></div>)}</div>
+      </div>
+    );
+  };
   const PublicInfoPanel = ({ view }) => {
+    if (view === "checkin") return <CheckInInfoPanel />;
     const contactMapUrl = "https://www.google.com/maps/search/?api=1&query=%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%A4%A7%E9%80%A3%E8%B7%AF66%E8%99%9F%E6%81%A9%E6%85%88%E5%A4%A7%E6%A8%932%E6%A8%93";
     const content = {
       prep: {
@@ -2313,7 +2335,7 @@ ${selectedItems
           {myBookings.map((booking) => (
             <div key={booking.bookingId} className="rounded-md border border-slate-200 p-3 text-sm">
               <div className="font-bold text-slate-900">{booking.packageName}</div>
-              <div className="mt-1 text-slate-600">{booking.appointmentDate} / {statusLabel(booking.status)}</div>
+              <div className="mt-1 text-slate-600">{booking.appointmentDate} / {statusLabel(booking.status)}</div>{booking.checkInSerial && <div className="mt-1 font-mono text-sm font-bold text-indigo-600">{lang === "en" ? "Check-in serial: " : "\u5831\u5230\u5e8f\u865f\uff1a"}{booking.checkInSerial}</div>}
               <div className="mt-3 grid grid-cols-1 gap-2">
                 <input type="date" className="w-full min-w-0 rounded-md border border-slate-300 px-3 py-3 text-base" value={changeDates[booking.bookingId] || ""} onChange={(e) => setChangeDates((current) => ({ ...current, [booking.bookingId]: e.target.value }))} />
                 <input className="w-full min-w-0 rounded-md border border-slate-300 px-3 py-3 text-base" placeholder={lang === "en" ? "Reason / note" : "\u6539\u671f\u539f\u56e0 / \u5099\u8a3b"} value={changeNotes[booking.bookingId] || ""} onChange={(e) => setChangeNotes((current) => ({ ...current, [booking.bookingId]: e.target.value }))} />
@@ -2486,6 +2508,30 @@ ${selectedItems
       </section>
     </main>
   );
+  const BookingModal = () => {
+    const blocked = blockedBookingDates.find((entry) => entry.date === bookingForm.appointmentDate);
+    const disabled = Boolean(blocked) && !staffMode;
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setShowBookingModal(false)}>
+        <form className="w-full max-w-lg rounded-lg bg-white shadow-xl" onClick={(event) => event.stopPropagation()} onSubmit={(event) => { event.preventDefault(); handleSubmitBooking(); }}>
+          <div className="flex items-start justify-between border-b border-slate-100 p-4"><div><h2 className="text-lg font-black text-slate-900">{t.bookingTitle}</h2><p className="mt-1 text-sm text-slate-600">{packageName || "-"} / NT$ {Number(finalPrice || 0).toLocaleString()}</p></div><button type="button" onClick={() => setShowBookingModal(false)} className="rounded-md p-2 text-slate-500"><X className="h-5 w-5" /></button></div>
+          <div className="space-y-3 p-4">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <label className="block text-xs font-bold text-slate-600">{t.name}<input required className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-base font-normal" value={bookingForm.name} onChange={(e) => setBookingField("name", e.target.value)} /></label>
+              <label className="block text-xs font-bold text-slate-600">{t.phone}<input required inputMode="tel" className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-base font-normal" value={bookingForm.phone} onChange={(e) => setBookingField("phone", e.target.value)} /></label>
+              <label className="block text-xs font-bold text-slate-600">{t.idNumber}<input required className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-base font-normal" value={bookingForm.idNumber} onChange={(e) => setBookingField("idNumber", e.target.value)} /></label>
+              <label className="block text-xs font-bold text-slate-600">{t.email}<input type="email" className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-base font-normal" value={bookingForm.email} onChange={(e) => setBookingField("email", e.target.value)} /></label>
+              <label className="block text-xs font-bold text-slate-600">{t.appointmentDate}<input required type="date" className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-base font-normal" value={bookingForm.appointmentDate} onChange={(e) => setBookingField("appointmentDate", e.target.value)} />{disabled && <span className="mt-1 block text-xs font-bold text-rose-600">{lang === "en" ? "This date is unavailable" : "\u6b64\u65e5\u671f\u66ab\u505c\u9810\u7d04"}</span>}</label>
+            </div>
+            <p className="text-xs leading-relaxed text-slate-500">{t.idNumberHelp}</p>
+            <label className="block text-xs font-bold text-slate-600">{t.notes}<textarea rows="3" className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-base font-normal" value={bookingForm.notes} onChange={(e) => setBookingField("notes", e.target.value)} /></label>
+            {bookingStatus && <p className="text-sm text-slate-600">{bookingStatus}</p>}
+            <button disabled={disabled} type="submit" className="w-full rounded-md bg-emerald-600 px-4 py-3 text-base font-black text-white disabled:opacity-40">{t.submit}</button>
+          </div>
+        </form>
+      </div>
+    );
+  };
   const PackageDetailModal = ({ card }) => card ? (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setComparisonDetailCard(null)}>
       <div className="w-full max-w-3xl max-h-[90vh] overflow-hidden rounded-lg border border-slate-200 bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
@@ -2569,7 +2615,20 @@ ${selectedItems
     </div>
   ) : null;
 
-  const AdminView = () => (
+  const MobileCheckInView = () => (
+    <section className="lg:hidden flex-1 overflow-y-auto bg-slate-50 p-4">
+      <div className="mx-auto max-w-lg space-y-4">
+        <div className="rounded-lg border border-slate-200 bg-white p-4">
+          <h1 className="text-lg font-black text-slate-900">{lang === "en" ? "On-site check-in" : "\u73fe\u5834\u5831\u5230"}</h1>
+          <p className="mt-1 text-xs text-slate-500">{lang === "en" ? "Load a date, then enter the printed check-in serial." : "\u8f09\u5165\u7576\u65e5\u540d\u55ae\u5f8c\uff0c\u8f38\u5165\u6c11\u773e\u7684\u5831\u5230\u5e8f\u865f\u3002"}</p>
+          <div className="mt-4 flex gap-2"><input type="date" value={adminStartDate} onChange={(e) => { setAdminStartDate(e.target.value); setAdminEndDate(e.target.value); }} className="min-w-0 flex-1 rounded-md border border-slate-300 px-3 py-3 text-base" /><button onClick={handleLoadAdminBookings} className="rounded-md bg-slate-900 px-4 py-3 text-sm font-bold text-white">{lang === "en" ? "Load" : "\u8f09\u5165"}</button></div>
+        </div>
+        <div className="rounded-lg border border-slate-200 bg-white p-4"><div className="flex gap-2"><input value={checkInQuery} onChange={(e) => setCheckInQuery(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") handleCheckInLookup(); }} placeholder={lang === "en" ? "Example: 0724-001" : "\u4f8b\u5982\uff1a0724-001"} className="min-w-0 flex-1 rounded-md border border-slate-300 px-3 py-3 text-base" /><button onClick={handleCheckInLookup} className="rounded-md bg-emerald-600 px-4 py-3 text-sm font-bold text-white">{lang === "en" ? "Find" : "\u67e5\u8a62"}</button></div>{checkInStatus && <p className="mt-3 text-sm text-slate-600">{checkInStatus}</p>}</div>
+        {checkInTarget && <div className="rounded-lg border border-slate-200 bg-white p-4"><div className="text-xl font-black text-slate-900">{checkInTarget.customerName || checkInTarget.name || "-"}</div><div className="mt-1 text-sm text-slate-600">{checkInTarget.packageName}</div><div className="mt-4 rounded bg-slate-50 p-3"><div className="text-xs text-slate-500">{lang === "en" ? "Check-in serial" : "\u5831\u5230\u5e8f\u865f"}</div><div className="mt-1 text-2xl font-black tracking-wider text-slate-900">{checkInTarget.checkInSerial}</div></div>{checkInTarget.notes && <div className="mt-3 rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">{checkInTarget.notes}</div>}<button disabled={checkInTarget.status === "CANCELLED" || checkInTarget.checkInStatus === "CHECKED_IN"} onClick={handleCompleteCheckIn} className="mt-4 w-full rounded-md bg-emerald-600 px-4 py-4 text-base font-black text-white disabled:opacity-40">{checkInTarget.checkInStatus === "CHECKED_IN" ? (lang === "en" ? "Checked in" : "\u5df2\u5831\u5230") : (lang === "en" ? "Complete check-in" : "\u5b8c\u6210\u5831\u5230\uff0f\u4ea4\u4ed8\u6e05\u55ae")}</button></div>}
+      </div>
+    </section>
+  );
+  const AdminView = () => (<><MobileCheckInView />
     <div className="hidden lg:flex h-[calc(100vh-73px)] min-h-0 max-w-[1280px] mx-auto w-full flex-col gap-4 p-6 overflow-hidden">
       <div className="flex-none bg-white border border-slate-200 rounded-lg p-4 flex items-end gap-3">
         <label className="text-xs font-bold text-slate-600">
@@ -2613,6 +2672,16 @@ ${selectedItems
         </div>
       )}
 
+      <div className="flex-none rounded-lg border border-rose-200 bg-white p-4">
+        <div className="mb-2 text-sm font-black text-slate-900">{lang === "en" ? "Unavailable booking dates" : "停止預約日期"}</div>
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="text-xs font-bold text-slate-600">{lang === "en" ? "Date" : "日期"}<input type="date" className="mt-1 block rounded-md border border-slate-300 px-3 py-2 text-sm font-normal" value={blockedDate} onChange={(e) => setBlockedDate(e.target.value)} /></label>
+          <label className="min-w-48 flex-1 text-xs font-bold text-slate-600">{lang === "en" ? "Reason" : "原因（選填）"}<input className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-normal" value={blockedDateReason} onChange={(e) => setBlockedDateReason(e.target.value)} placeholder={lang === "en" ? "Off-site event" : "例如：外場活動"} /></label>
+          <button disabled={!blockedDate} onClick={handleSaveBlockedDate} className="rounded-md bg-rose-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-40">{lang === "en" ? "Block date" : "停止預約"}</button>
+          {blockedDateStatus && <span className="text-xs text-slate-500">{blockedDateStatus}</span>}
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2">{blockedBookingDates.length ? blockedBookingDates.map((entry) => <span key={entry.date} className="rounded bg-rose-50 px-2 py-1 text-xs font-bold text-rose-800">{entry.date}{entry.reason ? `／${entry.reason}` : ""} <button onClick={() => handleDeleteBlockedDate(entry.date)} className="underline">{lang === "en" ? "Reopen" : "解除"}</button></span>) : <span className="text-xs text-slate-400">{lang === "en" ? "No unavailable dates" : "目前沒有停止預約日期"}</span>}</div>
+      </div>
       <div className="flex-none bg-white border border-amber-200 rounded-lg overflow-hidden">
         <div className="bg-amber-50 px-4 py-2 text-sm font-black text-amber-900">{t.pendingChanges} ({pendingChanges.length})</div>
         {pendingChanges.length ? pendingChanges.map((request) => (
@@ -2650,21 +2719,20 @@ ${selectedItems
             <div className="col-span-1 text-slate-600 truncate">{booking.customerPhone || booking.phone || "-"}</div>
             <div className="col-span-1 text-slate-600">{channelLabel(booking.channel, lang)}</div>
             <div className="col-span-2 text-slate-600 truncate">{booking.packageName}</div>
-            <div className="col-span-1 text-slate-600">{statusLabel(booking.status)}</div>
+            <div className="col-span-1 text-slate-600">{statusLabel(booking.status)}{booking.checkInSerial && <div className="mt-1 font-mono text-xs font-bold text-indigo-600">{booking.checkInSerial}</div>}</div>
             <div className="col-span-1 text-slate-600">{noticeLabel(booking)}</div>
             <div className="col-span-1 font-mono text-slate-700">NT$ {Number(booking.finalPrice || 0).toLocaleString()}</div>
             <div className="col-span-1 text-right space-y-1">
-              <button onClick={(e) => { e.stopPropagation(); setAdminDetailBooking(booking); }} className="text-xs px-2 py-1 rounded bg-white border border-slate-300 text-slate-700">{t.details}</button>
               {booking.status === "CONFIRMED" ? null : <button onClick={(e) => { e.stopPropagation(); handleConfirmBooking(booking); }} className="text-xs px-2 py-1 rounded bg-emerald-600 text-white">{t.confirm}</button>}
               {booking.status !== "CANCELLED" && <button onClick={(e) => { e.stopPropagation(); handleCancelAdminBooking(booking); }} className="text-xs px-2 py-1 rounded bg-rose-600 text-white">{lang === "en" ? "Cancel" : "\u53d6\u6d88"}</button>}
-              <button onClick={(e) => { e.stopPropagation(); printBookings([booking]); }} className="text-xs px-2 py-1 rounded bg-slate-900 text-white">{t.print}</button>
+              <>{booking.status === "CONFIRMED" && <button onClick={(e) => { e.stopPropagation(); handleSendD1Notice(booking); }} className="text-xs px-2 py-1 rounded bg-amber-500 text-white">{lang === "en" ? "Reminder" : "\u63d0\u9192"}</button>}<button onClick={(e) => { e.stopPropagation(); printBookings([booking]); }} className="text-xs px-2 py-1 rounded bg-slate-900 text-white">{t.print}</button></>
             </div>
           </div>
         )) : (
           <div className="p-8 text-center text-sm text-slate-400">{t.noBookings}</div>
         )}
       </div>
-    </div>
+    </div></>
   );
   return (
     // Root container:
@@ -2762,6 +2830,17 @@ ${selectedItems
         </div>
       )}
 
+      {remarkEditor && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/40 p-4" onClick={() => setRemarkEditor(null)}>
+          <div className="w-full max-w-lg rounded-lg bg-white p-5 shadow-2xl" onClick={(event) => event.stopPropagation()}>
+            <div className="mb-4 flex items-center justify-between"><div><p className="text-xs font-bold text-indigo-600">{remarkEditor.category}</p><h3 className="font-bold text-slate-900">{remarkEditor.name}</h3></div><button onClick={() => setRemarkEditor(null)} className="rounded p-2 text-slate-500 hover:bg-slate-100"><X className="h-5 w-5" /></button></div>
+            <label className="block text-xs font-bold text-slate-600">{"\u5099\u8a3b / \u9650\u5236"}<textarea rows="6" value={remarkEditor.remark || ""} onChange={(event) => setRemarkEditor((current) => ({ ...current, remark: event.target.value }))} className="mt-1 w-full rounded border border-yellow-300 bg-yellow-50 p-3 text-sm font-normal text-slate-800" /></label>
+            <label className="mt-3 block text-xs font-bold text-slate-600">{"\u9662\u78bc"}<input value={remarkEditor.code || ""} onChange={(event) => setRemarkEditor((current) => ({ ...current, code: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 p-2 text-sm font-normal" /></label>
+            <label className="mt-3 block text-xs font-bold text-slate-600">{"\u59d4\u5916\u55ae\u4f4d"}<input value={remarkEditor.outsource || ""} onChange={(event) => setRemarkEditor((current) => ({ ...current, outsource: event.target.value }))} className="mt-1 w-full rounded border border-slate-300 p-2 text-sm font-normal" /></label>
+            <div className="mt-5 flex justify-end gap-2"><button onClick={() => setRemarkEditor(null)} className="rounded border border-slate-300 px-4 py-2 text-sm font-bold text-slate-600">{"\u53d6\u6d88"}</button><button onClick={saveRemarkEdit} className="rounded bg-indigo-600 px-4 py-2 text-sm font-bold text-white">{"\u5132\u5b58\u5099\u8a3b"}</button></div>
+          </div>
+        </div>
+      )}
       {comparisonDetailCard && <PackageDetailModal card={comparisonDetailCard} />}
       {adminDetailBooking && AdminBookingDetailModal()}
       {showBookingModal && BookingModal()}
@@ -2852,7 +2931,10 @@ ${selectedItems
       </>}
 
       <style>{`
-        .custom-scrollbar::-webkit-scrollbar { width: 4px; height: 4px; }
+        @media (min-width: 1024px) {
+          .item-grid { grid-template-columns: minmax(0, 0.75fr) minmax(0, 1.5fr) minmax(0, 3.25fr) minmax(0, 1.5fr) minmax(0, 5fr); }
+          .item-grid > .item-cell { grid-column: span 1 / span 1 !important; min-width: 0; }
+        }        .custom-scrollbar::-webkit-scrollbar { width: 4px; height: 4px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
@@ -2865,7 +2947,6 @@ ${selectedItems
 };
 
 export default App;
-
 
 
 
