@@ -19,9 +19,11 @@ import {
 import {
   GoogleAuthProvider,
   getAuth,
+  getRedirectResult,
   onAuthStateChanged,
   signInAnonymously,
   signInWithPopup,
+  signInWithRedirect,
   signOut,
 } from "firebase/auth";
 import { filterBookingsByChannel } from "./core.js";
@@ -69,13 +71,22 @@ export function watchStaffAuth(callback) {
     callback(null);
     return () => {};
   }
+  getRedirectResult(auth).catch((err) => console.warn("Redirect auth catch:", err));
   return onAuthStateChanged(auth, callback);
 }
 
 export async function signInStaff() {
   if (!auth) throw new Error("Firebase 尚未設定，無法登入員工帳號");
-  const result = await signInWithPopup(auth, provider);
-  return result.user;
+  try {
+    const result = await signInWithPopup(auth, provider);
+    return result.user;
+  } catch (error) {
+    if (error.code === "auth/popup-blocked" || error.message?.includes("popup")) {
+      await signInWithRedirect(auth, provider);
+      return null;
+    }
+    throw error;
+  }
 }
 
 export async function signOutStaff() {
@@ -426,6 +437,164 @@ export async function deleteManagedPackage(name, itemIds = []) {
     name,
     itemIds,
     deleted: true,
+    updatedAt: serverTimestamp(),
+  }, { merge: true });
+  return { localOnly: false };
+}
+
+function localQuestionnaireRules() {
+  return JSON.parse(localStorage.getItem("cac_questionnaire_rules") || "{}");
+}
+
+export async function listPackageQuestionnaireRules() {
+  if (!db) return localQuestionnaireRules();
+  const snapshot = await getDocs(collection(db, "packageQuestionnaireRules"));
+  const rules = {};
+  snapshot.docs.forEach((docSnap) => {
+    rules[docSnap.id] = docSnap.data().questionnaireId || "general-health";
+  });
+  return rules;
+}
+
+export async function savePackageQuestionnaireRule(packageName, questionnaireId) {
+  if (!packageName) return;
+  if (!db) {
+    const rules = localQuestionnaireRules();
+    rules[packageName] = questionnaireId;
+    localStorage.setItem("cac_questionnaire_rules", JSON.stringify(rules));
+    return { localOnly: true };
+  }
+  await setDoc(doc(db, "packageQuestionnaireRules", packageDocId(packageName)), {
+    packageName,
+    questionnaireId,
+    updatedAt: serverTimestamp(),
+  }, { merge: true });
+  return { localOnly: false };
+}
+
+export async function getLastCustomerQuestionnaireResponse(customerId, questionnaireId) {
+  if (!questionnaireId) return null;
+  if (!db) {
+    const saved = JSON.parse(localStorage.getItem("cac_questionnaire_responses") || "[]");
+    const match = saved
+      .filter((r) => (r.customerId === customerId || !customerId) && r.questionnaireId === questionnaireId)
+      .sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""))[0];
+    return match || null;
+  }
+  try {
+    const user = await ensurePublicUser();
+    const staff = await getStaffUser();
+    let q;
+    if (staff) {
+      q = query(
+        collection(db, "customerQuestionnaireResponses"),
+        where("customerId", "==", customerId || ""),
+        where("questionnaireId", "==", questionnaireId)
+      );
+    } else {
+      q = query(
+        collection(db, "customerQuestionnaireResponses"),
+        where("ownerUid", "==", user.uid),
+        where("questionnaireId", "==", questionnaireId)
+      );
+    }
+    const snapshot = await getDocs(q);
+    if (snapshot.empty) return null;
+    const docs = snapshot.docs.map((docSnap) => ({ responseId: docSnap.id, ...docSnap.data() }));
+    docs.sort((a, b) => (b.updatedAt?.toMillis?.() || 0) - (a.updatedAt?.toMillis?.() || 0));
+    return docs[0] || null;
+  } catch (error) {
+    console.warn("Failed to load last questionnaire response from Firestore", error);
+    return null;
+  }
+}
+
+export async function saveCustomerQuestionnaireResponse({ bookingId, customerId, questionnaireId, answers }) {
+  if (!bookingId || !questionnaireId) throw new Error("Booking ID and questionnaire ID are required");
+  if (!db) {
+    const saved = JSON.parse(localStorage.getItem("cac_questionnaire_responses") || "[]");
+    const next = saved.filter((r) => r.bookingId !== bookingId);
+    next.push({ bookingId, customerId, questionnaireId, answers, updatedAt: new Date().toISOString() });
+    localStorage.setItem("cac_questionnaire_responses", JSON.stringify(next));
+    return { responseId: `local-${Date.now()}`, localOnly: true };
+  }
+  const user = await ensurePublicUser();
+  const docId = `${bookingId}_${questionnaireId}`;
+  await setDoc(doc(db, "customerQuestionnaireResponses", docId), {
+    bookingId,
+    customerId: customerId || "",
+    questionnaireId,
+    answers: answers || {},
+    ownerUid: user.uid,
+    updatedAt: serverTimestamp(),
+  }, { merge: true });
+  return { responseId: docId, localOnly: false };
+}
+
+function localManagedQuestionnaires() {
+  return JSON.parse(localStorage.getItem("cac_managed_questionnaires") || "[]");
+}
+
+export async function listManagedQuestionnaires() {
+  if (!db) return localManagedQuestionnaires();
+  const snapshot = await getDocs(collection(db, "managedQuestionnaires"));
+  return snapshot.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
+}
+
+export async function saveManagedQuestionnaire(schema) {
+  if (!schema?.id) throw new Error("Questionnaire ID is required");
+  if (!db) {
+    const list = localManagedQuestionnaires().filter((q) => q.id !== schema.id);
+    list.push({ ...schema, updatedAt: new Date().toISOString() });
+    localStorage.setItem("cac_managed_questionnaires", JSON.stringify(list));
+    return { localOnly: true };
+  }
+  await setDoc(doc(db, "managedQuestionnaires", schema.id), {
+    ...schema,
+    updatedAt: serverTimestamp(),
+  }, { merge: true });
+  return { localOnly: false };
+}
+
+export const DEFAULT_PUBLIC_ADDON_CATEGORIES = [
+  "心血管功能檢驗",
+  "腫瘤篩檢",
+  "影像醫學",
+  "超音波",
+  "腸胃內視鏡",
+  "賀爾蒙營養功能檢驗",
+  "甲狀腺功能檢驗",
+  "血脂肪",
+  "糖尿病檢驗",
+  "自體免疫與發炎",
+  "基因檢測",
+];
+
+export async function getPublicAddonCategories() {
+  if (!db) {
+    const saved = localStorage.getItem("cac_public_addon_categories");
+    return saved ? JSON.parse(saved) : DEFAULT_PUBLIC_ADDON_CATEGORIES;
+  }
+  try {
+    const docSnap = await getDoc(doc(db, "settings", "publicAddonCategories"));
+    if (docSnap.exists() && Array.isArray(docSnap.data()?.categories)) {
+      return docSnap.data().categories;
+    }
+    return DEFAULT_PUBLIC_ADDON_CATEGORIES;
+  } catch (error) {
+    console.warn("Failed to fetch public addon categories", error);
+    return DEFAULT_PUBLIC_ADDON_CATEGORIES;
+  }
+}
+
+export async function savePublicAddonCategories(categories) {
+  if (!Array.isArray(categories)) throw new Error("Categories must be an array");
+  if (!db) {
+    localStorage.setItem("cac_public_addon_categories", JSON.stringify(categories));
+    return { localOnly: true };
+  }
+  await setDoc(doc(db, "settings", "publicAddonCategories"), {
+    categories,
     updatedAt: serverTimestamp(),
   }, { merge: true });
   return { localOnly: false };

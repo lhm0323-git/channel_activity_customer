@@ -13,6 +13,13 @@
 - 重構後台「預約清單」版面為 2 欄式設計（主區域最大化表格高度，右側側邊欄整合「停止預約日期」與「員工帳號管理」）。
 - 補強非 LINE 身份預約之 Email 欄位必填與提示說明。
 - 擴充 Cloud Functions 與前端提醒觸發：無 LINE ID 時轉為排入 Email 到檢提醒 (`d1NoticeChannel: EMAIL`)。
+- 實現 LIFF 「我的預約／報到序號」開啟時自動載入，並以高亮看板直接呈現報到序號，無需重複點擊查詢。
+- 新增健康問卷模組 `src/questionnaire.js` 與後台套餐問卷對應規則（`packageQuestionnaireRules`）。
+- 新增民眾端「填寫/修改健康問卷」 Modal，支援依 `customerId` 自動預填帶入歷年填寫紀錄，加速問卷填寫。
+- 新增「問卷內容三合一管理編輯器」Modal，支援：(1) 護理人員點選式表單設計器 (Form Builder)、(2) Excel / OCR 貼上快捷轉換、(3) JSON 高級模式，儲存至 Firestore `managedQuestionnaires`。
+- 新增「A4 紙本健康問卷列印」功能，格式化屏基健檢中心抬頭、客戶資料、評估答覆與「受檢者/立同意書人簽名」與日期欄位。
+- 新增前台「自費加選項目參考表 (`?view=addon-items`)」頁面，支援 11 大熱門加選分類預設公開展示、手機端滾動凍結頂端列 (Sticky Header)、分類標籤切換、關鍵字即時搜尋與欄位標頭排序 (分類/名稱/單價)。
+- 新增後台「管理前台公開加選分類」Modal，允許醫護人員動態勾選欲在前台向民眾公開的檢查分類，設定即時儲存至 Firestore `settings/publicAddonCategories`。
 - 回復檢查項目管理，將院碼/委外/備註集中到黃色備註彈窗；改善套餐工具固定欄寬。
 - 更新 README 與 agent handoff，使部署、環境變數、已知風險與下一步可由 GitHub 直接接手。
 

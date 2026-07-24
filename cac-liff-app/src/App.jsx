@@ -26,6 +26,8 @@ import {
   ArrowUp,
   ArrowDown,
   Filter,
+  PhoneCall,
+  Sliders,
 } from "lucide-react";
 import {
   CHANNELS,
@@ -49,6 +51,14 @@ import {
 } from "./core.js";
 import { initLiffProfile } from "./liff.js";
 import {
+  QUESTIONNAIRES,
+  getQuestionnaireById,
+  mergePreviousAnswers,
+  parseExcelPasteText,
+  printQuestionnaireDocument,
+  validateQuestionnaireSchema,
+} from "./questionnaire.js";
+import {
   acknowledgeD1Notice,
   approveChangeRequest,
   deleteBookingBlockedDate,
@@ -57,19 +67,28 @@ import {
   sendD1Notice,
   confirmBooking,
   deleteManagedPackage,
+  getLastCustomerQuestionnaireResponse,
   getStaffUser,
   listBookingBlockedDates,
   listBookingsByRange,
   listManagedPackages,
   listManagedItems,
+  listManagedQuestionnaires,
   listMyBookings,
+  listPackageQuestionnaireRules,
   listStaffUsers,
   markChecklistPrinted,
   saveBooking,
   saveBookingBlockedDate,
+  saveCustomerQuestionnaireResponse,
+  saveManagedQuestionnaire,
   requestBookingChange,
   saveManagedPackage,
   saveManagedItem,
+  DEFAULT_PUBLIC_ADDON_CATEGORIES,
+  getPublicAddonCategories,
+  savePublicAddonCategories,
+  savePackageQuestionnaireRule,
   saveChecklist,
   saveStaffUser,
   signInStaff,
@@ -289,7 +308,7 @@ function isUsableCsvData(value) {
     return false;
   }
 }
-const PUBLIC_VIEWS = new Set(["packages", "my-bookings", "prep", "checkin", "followup", "contact"]);
+const PUBLIC_VIEWS = new Set(["packages", "addon-items", "my-bookings", "prep", "checkin", "followup", "contact"]);
 
 function readPublicViewFromUrl() {
   if (typeof window === "undefined") return "packages";
@@ -464,7 +483,6 @@ const INITIAL_CSV_DATA = `分類,檢查項目(中),檢查項目(英),臨床意�
 重金屬檢測,尿鎳,Urine Ni,鎳中毒,576,614190,立人,22個工作天,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
 重金屬檢測,尿汞,Urine Hg,汞中毒,480,610327/612118,立人,22個工作天,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
 重金屬檢測,尿砷,Urine As,砷中毒,3720,614189,立人,30個工作天,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,`;
-
 const App = () => {
   // 核心狀態
   const [csvData, setCsvData] = useState(() => {
@@ -533,6 +551,15 @@ const App = () => {
 
   // LIFF / 預約 / 後台狀態
   const [lineProfile, setLineProfile] = useState(null);
+  const [questionnaireRules, setQuestionnaireRules] = useState({});
+  const [packageQuestionnaireId, setPackageQuestionnaireId] = useState("general-health");
+  const [activeQuestionnaireModal, setActiveQuestionnaireModal] = useState(null);
+  const [customQuestionnaires, setCustomQuestionnaires] = useState([]);
+  const [showQuestionnaireEditorModal, setShowQuestionnaireEditorModal] = useState(false);
+  const [editingQuestionnaireJson, setEditingQuestionnaireJson] = useState("");
+  const [questionnaireEditorStatus, setQuestionnaireEditorStatus] = useState("");
+  const [questionnaireEditorTab, setQuestionnaireEditorTab] = useState("visual");
+  const [questionnaireExcelInput, setQuestionnaireExcelInput] = useState("");
   const [liffMessage, setLiffMessage] = useState("一般瀏覽器模式");
   const [showBookingModal, setShowBookingModal] = useState(false);
   const [bookingStatus, setBookingStatus] = useState("");
@@ -543,6 +570,28 @@ const App = () => {
   const [changeNotes, setChangeNotes] = useState({});
   const [mode, setMode] = useState("public");
   const [publicView, setPublicView] = useState(readPublicViewFromUrl);
+
+  const allQuestionnaires = useMemo(() => [...customQuestionnaires, ...QUESTIONNAIRES], [customQuestionnaires]);
+
+  const [publicAddonCategories, setPublicAddonCategories] = useState(DEFAULT_PUBLIC_ADDON_CATEGORIES);
+  const [showAddonCategoryManagerModal, setShowAddonCategoryManagerModal] = useState(false);
+  const [managerSelectedCats, setManagerSelectedCats] = useState(DEFAULT_PUBLIC_ADDON_CATEGORIES);
+  const [managerStatusMsg, setManagerStatusMsg] = useState("");
+  const [addonSearchTerm, setAddonSearchTerm] = useState("");
+  const [addonSelectedCategory, setAddonSelectedCategory] = useState("ALL");
+  const [addonSortConfig, setAddonSortConfig] = useState({ key: "category", direction: "asc" });
+
+  useEffect(() => {
+    listPackageQuestionnaireRules()
+      .then(setQuestionnaireRules)
+      .catch((error) => console.warn("Questionnaire rules load failed", error));
+    listManagedQuestionnaires()
+      .then(setCustomQuestionnaires)
+      .catch((error) => console.warn("Managed questionnaires load failed", error));
+    getPublicAddonCategories()
+      .then(setPublicAddonCategories)
+      .catch((error) => console.warn("Public addon categories load failed", error));
+  }, []);
   const [lang, setLang] = useState("zh");
   const [staffUser, setStaffUser] = useState(null);
   const [staffStatus, setStaffStatus] = useState("");
@@ -1116,6 +1165,8 @@ const App = () => {
     );
 
     await saveManagedPackage({ name: packageName, itemIds: selectedIds, audience: packageAudience.trim(), bodyParts, finalPrice });
+    await savePackageQuestionnaireRule(packageName, packageQuestionnaireId);
+    setQuestionnaireRules((current) => ({ ...current, [packageName]: packageQuestionnaireId }));
 
     setSavedMessage(`「${packageName}」已儲存`);
     setTimeout(() => setSavedMessage(""), 3000);
@@ -1324,7 +1375,7 @@ ${selectedItems
 
   const handleLoadMyBookings = async () => {
     try {
-      setMyBookingStatus("\u8b80\u53d6\u4e2d...");
+      setMyBookingStatus(lang === "en" ? "Loading..." : "\u8b80\u53d6\u4e2d...");
       const bookings = await listMyBookings();
       setMyBookings(bookings.filter((booking) => booking.status !== "CANCELLED"));
       setMyBookingStatus(`\u5df2\u8f09\u5165 ${bookings.filter((booking) => booking.status !== "CANCELLED").length} \u7b46\u9810\u7d04`);
@@ -1332,6 +1383,12 @@ ${selectedItems
       setMyBookingStatus(`\u8b80\u53d6\u5931\u6557\uff1a${error.message}`);
     }
   };
+
+  useEffect(() => {
+    if (publicView === "my-bookings" || publicView === "checkin") {
+      handleLoadMyBookings();
+    }
+  }, [publicView]);
 
   const handleAcknowledgeD1Notice = async (bookingId, ackToken) => {
     try {
@@ -1385,6 +1442,27 @@ ${selectedItems
       handleLoadMyBookings();
     } catch (error) {
       setMyBookingStatus(lang === "en" ? `Cancel failed: ${error.message}` : `\u53d6\u6d88\u5931\u6557\uff1a${error.message}`);
+    }
+  };
+
+  const openQuestionnaireForBooking = async (booking) => {
+    try {
+      const qId = questionnaireRules[booking.packageName] || "general-health";
+      const schema = getQuestionnaireById(qId, customQuestionnaires);
+      const customerId = booking.customerId || booking.ownerUid || booking.customerPhone || booking.idNumber || "";
+      setMyBookingStatus(lang === "en" ? "Loading questionnaire..." : "讀取問卷紀錄中...");
+      const lastResp = await getLastCustomerQuestionnaireResponse(customerId, qId);
+      const initialAnswers = mergePreviousAnswers(schema, lastResp?.answers);
+      setMyBookingStatus("");
+      setActiveQuestionnaireModal({
+        booking,
+        schema,
+        answers: initialAnswers,
+        previousLoaded: Boolean(lastResp),
+        status: "",
+      });
+    } catch (error) {
+      setMyBookingStatus(`載入問卷失敗：${error.message}`);
     }
   };
   const statusLabel = (status) => ({ BOOKED: t.booked, CONFIRMED: t.confirmed, RESCHEDULED: t.rescheduled, CANCELLED: t.cancelled }[status] || status || t.booked);
@@ -2134,6 +2212,19 @@ ${selectedItems
                 {"\u90e8\u4f4d\u6a19\u7c64"}
                 <input placeholder="心血管, 企業專案" className="w-full mt-1 px-2 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-700" value={packageBodyParts} onChange={(e) => setPackageBodyParts(e.target.value)} />
               </label>
+              <label className="w-56 text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+                <div className="flex justify-between items-center">
+                  <span>對應健康問卷</span>
+                  <button type="button" onClick={() => { setEditingQuestionnaireJson(JSON.stringify(getQuestionnaireById(packageQuestionnaireId, customQuestionnaires), null, 2)); setShowQuestionnaireEditorModal(true); }} className="text-[10px] text-indigo-600 underline font-bold hover:text-indigo-800">
+                    管理/匯入
+                  </button>
+                </div>
+                <select className="w-full mt-1 px-2 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-700" value={packageQuestionnaireId} onChange={(e) => setPackageQuestionnaireId(e.target.value)}>
+                  {allQuestionnaires.map((q) => (
+                    <option key={q.id} value={q.id}>{q.title}</option>
+                  ))}
+                </select>
+              </label>
               <button
                 onClick={savePackage}
                 className="px-4 py-2 bg-indigo-100 text-indigo-700 rounded-lg text-xs font-bold h-[38px] flex items-center gap-1"
@@ -2278,11 +2369,42 @@ ${selectedItems
     const active = myBookings.filter((booking) => booking.status !== "CANCELLED");
     return (
       <div className="bg-white border border-slate-200 rounded-lg p-5">
-        <h1 className="text-xl font-black text-slate-900">{lang === "en" ? "Check-in serial and visit instructions" : "\u5831\u5230\u5e8f\u865f\uff0f\u7576\u65e5\u6d41\u7a0b"}</h1>
-        <p className="mt-2 text-sm text-slate-600">{lang === "en" ? "Please bring your health insurance card or identification to the health check center." : "\u8acb\u4f9d\u9810\u7d04\u65e5\u671f\u81f3\u5c4f\u57fa\u5065\u6aa2\u4e2d\u5fc3\u5831\u5230\uff0c\u4e26\u651c\u5e36\u5065\u4fdd\u5361\u6216\u8b49\u4ef6\u6838\u5c0d\u8eab\u5206\u3002"}</p>
-        <button onClick={handleLoadMyBookings} className="mt-4 rounded-md bg-slate-900 px-4 py-3 text-sm font-bold text-white">{lang === "en" ? "Load my bookings" : "\u67e5\u8a62\u6211\u7684\u9810\u7d04"}</button>
-        {myBookingStatus && <p className="mt-3 text-xs text-slate-500">{myBookingStatus}</p>}
-        <div className="mt-4 space-y-4">{active.map((booking) => <div key={booking.bookingId} className="rounded-lg border border-slate-200 p-4"><div className="font-black text-slate-900">{booking.packageName}</div><div className="mt-1 text-sm text-slate-600">{booking.appointmentDate}</div><div className="mt-3 rounded bg-slate-50 p-3"><div className="text-xs text-slate-500">{lang === "en" ? "Check-in serial" : "\u5831\u5230\u5e8f\u865f"}</div><div className="mt-1 text-2xl font-black tracking-wider text-slate-900">{booking.checkInSerial || (lang === "en" ? "Awaiting confirmation" : "\u5f85\u5065\u6aa2\u4e2d\u5fc3\u78ba\u8a8d")}</div></div><ul className="mt-3 space-y-1 text-sm text-slate-700">{getVisitInstructions(booking.selectedItems || [], lang).map((item) => <li key={item}>{"\u2610 "}{item}</li>)}</ul></div>)}</div>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h1 className="text-xl font-black text-slate-900">{lang === "en" ? "Check-in serial and visit instructions" : "\u5831\u5230\u5e8f\u865f\uff0f\u7576\u65e5\u6d41\u7a0b"}</h1>
+            <p className="mt-1 text-sm text-slate-600">{lang === "en" ? "Please bring your health insurance card or identification to the health check center." : "\u8acb\u4f9d\u9810\u7d04\u65e5\u671f\u81f3\u5c4f\u57fa\u5065\u6aa2\u4e2d\u5fc3\u5831\u5230\uff0c\u4e26\u651c\u5e36\u5065\u4fdd\u5361\u6216\u8b49\u4ef6\u6838\u5c0d\u8eab\u5206\u3002"}</p>
+          </div>
+          <button onClick={handleLoadMyBookings} className="rounded-md bg-slate-900 px-4 py-2 text-xs font-bold text-white self-start sm:self-auto">{lang === "en" ? "Refresh" : "\u91cd\u65b0\u6574\u7406"}</button>
+        </div>
+        {myBookingStatus && <p className="mt-2 text-xs text-slate-500">{myBookingStatus}</p>}
+        <div className="mt-4 space-y-4">
+          {active.length > 0 ? active.map((booking) => (
+            <div key={booking.bookingId} className="rounded-lg border border-slate-200 p-4 bg-slate-50/50">
+              <div className="flex items-center justify-between font-black text-slate-900">
+                <span className="text-lg">{booking.packageName}</span>
+                <span className="text-sm font-normal text-slate-600">{booking.appointmentDate}</span>
+              </div>
+              <div className="mt-3 rounded-lg bg-indigo-900 text-white p-4 text-center shadow-md">
+                <div className="text-xs font-bold text-indigo-200 tracking-wider uppercase">{lang === "en" ? "Check-in serial" : "\u5831\u5230\u5e8f\u865f"}</div>
+                <div className="mt-1 text-3xl font-black tracking-widest font-mono text-amber-300">
+                  {booking.checkInSerial || (lang === "en" ? "Awaiting confirmation" : "\u5f85\u5065\u6aa2\u4e2d\u5fc3\u78ba\u8a8d")}
+                </div>
+              </div>
+              <ul className="mt-3 space-y-1.5 text-sm text-slate-700 font-medium">
+                {getVisitInstructions(booking.selectedItems || [], lang).map((item) => (
+                  <li key={item} className="flex items-start gap-2">
+                    <span className="text-indigo-600 font-bold">✓</span>
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )) : (
+            <div className="rounded-lg border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500">
+              {lang === "en" ? "No active bookings found." : "\u76ee\u524d\u6c92\u6709有效\u9810\u7d04\u7d00\u9004\u3002"}
+            </div>
+          )}
+        </div>
       </div>
     );
   };
@@ -2344,9 +2466,15 @@ ${selectedItems
               <div className="mt-3 grid grid-cols-1 gap-2">
                 <input type="date" className="w-full min-w-0 rounded-md border border-slate-300 px-3 py-3 text-base" value={changeDates[booking.bookingId] || ""} onChange={(e) => setChangeDates((current) => ({ ...current, [booking.bookingId]: e.target.value }))} />
                 <input className="w-full min-w-0 rounded-md border border-slate-300 px-3 py-3 text-base" placeholder={lang === "en" ? "Reason / note" : "\u6539\u671f\u539f\u56e0 / \u5099\u8a3b"} value={changeNotes[booking.bookingId] || ""} onChange={(e) => setChangeNotes((current) => ({ ...current, [booking.bookingId]: e.target.value }))} />
+                <button onClick={() => openQuestionnaireForBooking(booking)} className="w-full rounded-md bg-indigo-600 px-3 py-3 text-sm font-bold text-white shadow-sm flex items-center justify-center gap-1">
+                  <FileText className="w-4 h-4" />
+                  {lang === "en" ? "Fill / Edit Health Questionnaire" : "填寫／修改健康問卷"}
+                </button>
                 <button onClick={() => handleRequestBookingChange(booking)} disabled={booking.status === "CANCELLED"} className="w-full rounded-md bg-emerald-600 px-3 py-3 text-sm font-bold text-white disabled:opacity-40">{lang === "en" ? "Request reschedule" : "\u9001\u51fa\u6539\u671f"}</button>
                 {booking.status !== "CANCELLED" && (
-                  <button onClick={() => handleCancelMyBooking(booking)} className="w-full rounded-md bg-rose-600 px-3 py-3 text-sm font-bold text-white">{lang === "en" ? "Cancel booking" : "\u53d6\u6d88\u9810\u7d04"}</button>
+                  <button onClick={() => handleCancelMyBooking(booking)} className="w-full rounded-md bg-rose-600 px-3 py-3 text-sm font-bold text-white">
+                    {lang === "en" ? "Cancel booking" : "\u53d6\u6d88\u9810\u7d04"}
+                  </button>
                 )}
               </div>
             </div>
@@ -2411,106 +2539,136 @@ ${selectedItems
     );
   };
   const PublicPackageView = () => (
-    <main className="flex-1 overflow-y-auto bg-slate-50">
-      <section className="mx-auto w-full max-w-6xl px-4 py-6 lg:px-6 space-y-5">
-        {publicView === "packages" ? (
-          <>
-            <div className="bg-white border border-slate-200 rounded-lg p-4 lg:p-5">
-              <h1 className="text-xl lg:text-2xl font-black text-slate-900">{t.publicTitle}</h1>
-              <p className="mt-2 text-sm text-slate-600">{t.publicSubtitle}</p>
-              <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <label className="text-xs font-bold text-slate-600">
-                  {t.audience}
-                  <select className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal" value={publicFilters.audience} onChange={(e) => setPublicFilter("audience", e.target.value)}>
-                    {availableAudiences.map((value) => <option key={value} value={value}>{optionLabel(value, lang)}</option>)}
-                  </select>
-                </label>
-                <label className="text-xs font-bold text-slate-600">
-                  {t.sex}
-                  <select className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal" value={publicFilters.sex} onChange={(e) => setPublicFilter("sex", e.target.value)}>
-                    {PUBLIC_SEXES.map((value) => <option key={value} value={value}>{optionLabel(value, lang)}</option>)}
-                  </select>
-                </label>
-                <label className="text-xs font-bold text-slate-600">
-                  {t.bodyPart}
-                  <select className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal" value={publicFilters.bodyPart} onChange={(e) => setPublicFilter("bodyPart", e.target.value)}>
-                    {availableBodyParts.map((value) => <option key={value} value={value}>{optionLabel(value, lang)}</option>)}
-                  </select>
-                </label>
-              </div>
-            </div>
+    <main className="flex-1 overflow-y-auto bg-slate-50 flex flex-col min-h-0">
+      <div className="bg-white border-b border-slate-200 px-4 py-2.5 flex items-center gap-2 overflow-x-auto text-xs font-bold shadow-xs flex-none">
+        <button
+          type="button"
+          onClick={() => openPublicView("packages")}
+          className={`px-3.5 py-1.5 rounded-lg transition-all whitespace-nowrap ${
+            publicView === "packages" ? "bg-slate-900 text-white shadow-xs" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+          }`}
+        >
+          精選健檢套餐
+        </button>
+        <button
+          type="button"
+          onClick={() => openPublicView("addon-items")}
+          className={`px-3.5 py-1.5 rounded-lg transition-all whitespace-nowrap ${
+            publicView === "addon-items" ? "bg-indigo-600 text-white shadow-xs" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+          }`}
+        >
+          自費加選項目參考
+        </button>
+        <button
+          type="button"
+          onClick={() => openPublicView("my-bookings")}
+          className={`px-3.5 py-1.5 rounded-lg transition-all whitespace-nowrap ${
+            publicView === "my-bookings" || publicView === "checkin" ? "bg-emerald-600 text-white shadow-xs" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+          }`}
+        >
+          我的預約 / 報到序號
+        </button>
+      </div>
 
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <div className="inline-flex rounded-md border border-slate-200 bg-white p-1 text-sm font-bold">
-                <button className={`rounded px-3 py-2 ${publicPackageLayout === "cards" ? "bg-slate-900 text-white" : "text-slate-600"}`} onClick={() => setPublicPackageLayout("cards")}>{"\u5361\u7247\u6aa2\u8996"}</button>
-                <button className={`rounded px-3 py-2 ${publicPackageLayout === "table" ? "bg-slate-900 text-white" : "text-slate-600"}`} onClick={() => setPublicPackageLayout("table")}>{"\u6bd4\u8f03\u7e3d\u8868"}</button>
-              </div>
-            </div>
-
-            {publicPackageLayout === "table" ? <PackageComparison cards={visiblePublicPackageCards} /> : null}
-
-            <div className={`${publicPackageLayout === "table" ? "hidden" : "grid"} grid-cols-1 lg:grid-cols-2 gap-4`}>
-              {visiblePublicPackageCards.map((card) => {
-                const expanded = expandedPackageName === card.name;
-                const shownItems = expanded ? card.items : card.displayItems.slice(0, 8);
-                return (
-                  <article key={card.name} className="bg-white border border-slate-200 rounded-lg p-4 lg:p-5 flex flex-col gap-4">
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <h2 className="text-lg font-black text-slate-900">{card.name}</h2>
-                        <div className="mt-2 flex flex-wrap gap-1.5">
-                          {card.tags.audience.slice(0, 3).map((tag) => <span key={tag} className="rounded bg-slate-100 px-2 py-1 text-[11px] font-bold text-slate-600">{tag}</span>)}
-                          {card.tags.sex !== "不限" && <span className="rounded bg-slate-100 px-2 py-1 text-[11px] font-bold text-slate-600">{card.tags.sex}</span>}
-                          {card.tags.bodyParts.slice(0, 4).map((tag) => <span key={tag} className="rounded bg-emerald-50 px-2 py-1 text-[11px] font-bold text-emerald-700">{tag}</span>)}
-                        </div>
-                      </div>
-                      <div className="text-right flex-shrink-0">
-                        <div className="text-xs text-slate-500">{t.packagePrice}</div>
-                        <div className="text-xl font-black font-mono text-slate-900">NT$ {card.price.toLocaleString()}</div>
-                      </div>
-                    </div>
-                    <div className="text-sm text-slate-600">
-                      <div className="font-bold text-slate-800 mb-1">{t.highlights}</div>
-                      <div className="flex flex-wrap gap-1.5">
-                        {card.highlights.map((item) => <span key={item.id} className="rounded border border-slate-200 px-2 py-1 text-xs text-slate-600">{item.label}</span>)}
-                      </div>
-                    </div>
-
-                    <div className="border-t border-slate-100 pt-3">
-                      <div className="text-xs font-bold text-slate-500 mb-2">{t.included}</div>
-                      <div className="space-y-2">
-                        {shownItems.map((item) => (
-                          <div key={item.id} className="grid grid-cols-1 sm:grid-cols-[160px_1fr] gap-1 sm:gap-3 text-sm">
-                            <div className="font-bold text-slate-800">{lang === "en" && item.enName ? item.enName : item.name}</div>
-                            <div className="text-slate-600 leading-relaxed">{item.clinical || (lang === "en" ? item.category : item.enName || item.category)}</div>
-                          </div>
-                        ))}
-                      </div>
-                      {card.items.length > card.displayItems.length && (
-                        <button className="mt-3 text-xs font-bold text-slate-700 underline" onClick={() => setExpandedPackageName(expanded ? null : card.name)}>
-                          {expanded ? t.collapse : `${t.viewAllPrefix} ${card.items.length} ${t.itemUnit}`}
-                        </button>
-                      )}
-                    </div>
-
-                    <button onClick={() => selectPublicPackage(card)} className="mt-auto w-full rounded-md bg-emerald-600 px-4 py-3 text-sm font-bold text-white hover:bg-emerald-700">
-                      {t.choose}
-                    </button>
-                  </article>
-                );
-              })}
-            </div>
-
-            {visiblePublicPackageCards.length === 0 && (
-              <div className="rounded-lg border border-slate-200 bg-white p-8 text-center text-sm text-slate-500">{t.noPackages}</div>
-            )}
-          </>
-        ) : publicView === "my-bookings" ? (
+      {publicView === "addon-items" ? (
+        <AddonItemsView />
+      ) : publicView === "my-bookings" || publicView === "checkin" ? (
+        <section className="mx-auto w-full max-w-6xl px-4 py-6 lg:px-6 space-y-5 flex-1 flex flex-col min-h-0">
           <MyBookingsPanel />
-        ) : (
-          <PublicInfoPanel view={publicView} />
-        )}
-      </section>
+        </section>
+      ) : (
+        <section className="mx-auto w-full max-w-6xl px-4 py-6 lg:px-6 space-y-5">
+          <div className="bg-white border border-slate-200 rounded-lg p-4 lg:p-5">
+            <h1 className="text-xl lg:text-2xl font-black text-slate-900">{t.publicTitle}</h1>
+            <p className="mt-2 text-sm text-slate-600">{t.publicSubtitle}</p>
+            <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <label className="text-xs font-bold text-slate-600">
+                {t.audience}
+                <select className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal" value={publicFilters.audience} onChange={(e) => setPublicFilter("audience", e.target.value)}>
+                  {availableAudiences.map((value) => <option key={value} value={value}>{optionLabel(value, lang)}</option>)}
+                </select>
+              </label>
+              <label className="text-xs font-bold text-slate-600">
+                {t.sex}
+                <select className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal" value={publicFilters.sex} onChange={(e) => setPublicFilter("sex", e.target.value)}>
+                  {PUBLIC_SEXES.map((value) => <option key={value} value={value}>{optionLabel(value, lang)}</option>)}
+                </select>
+              </label>
+              <label className="text-xs font-bold text-slate-600">
+                {t.bodyPart}
+                <select className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal" value={publicFilters.bodyPart} onChange={(e) => setPublicFilter("bodyPart", e.target.value)}>
+                  {availableBodyParts.map((value) => <option key={value} value={value}>{optionLabel(value, lang)}</option>)}
+                </select>
+              </label>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="inline-flex rounded-md border border-slate-200 bg-white p-1 text-sm font-bold">
+              <button className={`rounded px-3 py-2 ${publicPackageLayout === "cards" ? "bg-slate-900 text-white" : "text-slate-600"}`} onClick={() => setPublicPackageLayout("cards")}>{"\u5361\u7247\u6aa2\u8996"}</button>
+              <button className={`rounded px-3 py-2 ${publicPackageLayout === "table" ? "bg-slate-900 text-white" : "text-slate-600"}`} onClick={() => setPublicPackageLayout("table")}>{"\u6bd4\u8f03\u7e3d\u8868"}</button>
+            </div>
+          </div>
+
+          {publicPackageLayout === "table" ? <PackageComparison cards={visiblePublicPackageCards} /> : null}
+
+          <div className={`${publicPackageLayout === "table" ? "hidden" : "grid"} grid-cols-1 lg:grid-cols-2 gap-4`}>
+            {visiblePublicPackageCards.map((card) => {
+              const expanded = expandedPackageName === card.name;
+              const shownItems = expanded ? card.items : card.displayItems.slice(0, 8);
+              return (
+                <article key={card.name} className="bg-white border border-slate-200 rounded-lg p-4 lg:p-5 flex flex-col gap-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <h2 className="text-lg font-black text-slate-900">{card.name}</h2>
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {card.tags.audience.slice(0, 3).map((tag) => <span key={tag} className="rounded bg-slate-100 px-2 py-1 text-[11px] font-bold text-slate-600">{tag}</span>)}
+                        {card.tags.sex !== "不限" && <span className="rounded bg-slate-100 px-2 py-1 text-[11px] font-bold text-slate-600">{card.tags.sex}</span>}
+                        {card.tags.bodyParts.slice(0, 4).map((tag) => <span key={tag} className="rounded bg-emerald-50 px-2 py-1 text-[11px] font-bold text-emerald-700">{tag}</span>)}
+                      </div>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <div className="text-xs text-slate-500">{t.packagePrice}</div>
+                      <div className="text-xl font-black font-mono text-slate-900">NT$ {card.price.toLocaleString()}</div>
+                    </div>
+                  </div>
+                  <div className="text-sm text-slate-600">
+                    <div className="font-bold text-slate-800 mb-1">{t.highlights}</div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {card.highlights.map((item) => <span key={item.id} className="rounded border border-slate-200 px-2 py-1 text-xs text-slate-600">{item.label}</span>)}
+                    </div>
+                  </div>
+
+                  <div className="border-t border-slate-100 pt-3">
+                    <div className="text-xs font-bold text-slate-500 mb-2">{t.included}</div>
+                    <div className="space-y-2">
+                      {shownItems.map((item) => (
+                        <div key={item.id} className="grid grid-cols-1 sm:grid-cols-[160px_1fr] gap-1 sm:gap-3 text-sm">
+                          <div className="font-bold text-slate-800">{lang === "en" && item.enName ? item.enName : item.name}</div>
+                          <div className="text-slate-600 leading-relaxed">{item.clinical || (lang === "en" ? item.category : item.enName || item.category)}</div>
+                        </div>
+                      ))}
+                    </div>
+                    {card.items.length > card.displayItems.length && (
+                      <button className="mt-3 text-xs font-bold text-slate-700 underline" onClick={() => setExpandedPackageName(expanded ? null : card.name)}>
+                        {expanded ? t.collapse : `${t.viewAllPrefix} ${card.items.length} ${t.itemUnit}`}
+                      </button>
+                    )}
+                  </div>
+
+                  <button onClick={() => selectPublicPackage(card)} className="mt-auto w-full rounded-md bg-emerald-600 px-4 py-3 text-sm font-bold text-white hover:bg-emerald-700">
+                    {t.choose}
+                  </button>
+                </article>
+              );
+            })}
+          </div>
+
+          {visiblePublicPackageCards.length === 0 && (
+            <div className="rounded-lg border border-slate-200 bg-white p-8 text-center text-sm text-slate-500">{t.noPackages}</div>
+          )}
+        </section>
+      )}
     </main>
   );
   const BookingModal = () => {
@@ -2613,15 +2771,687 @@ ${selectedItems
           </div>
         </div>
         <div className="flex justify-end gap-2 border-t border-slate-100 p-4">
+          <button
+            type="button"
+            className="rounded-md border border-slate-700 bg-slate-800 px-3.5 py-2 text-xs font-bold text-white hover:bg-slate-900 flex items-center gap-1.5"
+            onClick={async () => {
+              const qId = questionnaireRules[adminDetailBooking.packageName] || "general-health";
+              const schema = getQuestionnaireById(qId, customQuestionnaires);
+              const customerId = adminDetailBooking.customerId || adminDetailBooking.ownerUid || adminDetailBooking.customerPhone || adminDetailBooking.idNumber || "";
+              const lastResp = await getLastCustomerQuestionnaireResponse(customerId, qId);
+              printQuestionnaireDocument({ booking: adminDetailBooking, schema, answers: lastResp?.answers });
+            }}
+          >
+            <Printer className="w-4 h-4 text-slate-300" />
+            列印健康問卷 (A4紙本)
+          </button>
           {adminDetailBooking.status !== "CANCELLED" && (
-            <button className="rounded-md bg-rose-600 px-4 py-2 text-sm font-bold text-white" onClick={() => handleCancelAdminBooking(adminDetailBooking)}>{lang === "en" ? "Cancel booking" : "\u53d6\u6d88\u9810\u7d04"}</button>
+            <button className="rounded-md bg-rose-600 px-4 py-2 text-xs font-bold text-white" onClick={() => handleCancelAdminBooking(adminDetailBooking)}>{lang === "en" ? "Cancel booking" : "\u53d6\u6d88\u9810\u7d04"}</button>
           )}
-          <button className="rounded-md border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700" onClick={() => setAdminDetailBooking(null)}>{lang === "en" ? "Close" : "\u95dc\u9589"}</button>
-          <button className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-bold text-white" onClick={handleSaveAdminBooking}>{t.saveChanges}</button>
+          <button className="rounded-md border border-slate-200 px-4 py-2 text-xs font-bold text-slate-700" onClick={() => setAdminDetailBooking(null)}>{lang === "en" ? "Close" : "\u95dc\u9589"}</button>
+          <button className="rounded-md bg-emerald-600 px-4 py-2 text-xs font-bold text-white" onClick={handleSaveAdminBooking}>{t.saveChanges}</button>
         </div>
       </div>
     </div>
   ) : null;
+
+  const QuestionnaireModal = () => {
+    if (!activeQuestionnaireModal) return null;
+    const { booking, schema, answers, status, previousLoaded } = activeQuestionnaireModal;
+
+    const handleAnswerChange = (questionId, value) => {
+      setActiveQuestionnaireModal((current) => ({
+        ...current,
+        answers: { ...current.answers, [questionId]: value },
+      }));
+    };
+
+    const handleCheckboxChange = (questionId, option, checked) => {
+      const currentList = Array.isArray(answers[questionId]) ? answers[questionId] : [];
+      let nextList = [];
+      if (checked) {
+        if (option === "無") {
+          nextList = ["無"];
+        } else {
+          nextList = [...currentList.filter((o) => o !== "無"), option];
+        }
+      } else {
+        nextList = currentList.filter((o) => o !== option);
+      }
+      handleAnswerChange(questionId, nextList);
+    };
+
+    const handleSubmitQuestionnaire = async () => {
+      try {
+        setActiveQuestionnaireModal((current) => ({ ...current, status: lang === "en" ? "Saving..." : "儲存中..." }));
+        await saveCustomerQuestionnaireResponse({
+          bookingId: booking.bookingId,
+          customerId: booking.customerId || booking.ownerUid || booking.customerPhone || booking.idNumber,
+          questionnaireId: schema.id,
+          answers,
+        });
+        setActiveQuestionnaireModal(null);
+        setMyBookingStatus(lang === "en" ? "Questionnaire saved!" : "健康問卷已成功儲存！");
+      } catch (error) {
+        setActiveQuestionnaireModal((current) => ({ ...current, status: `儲存失敗：${error.message}` }));
+      }
+    };
+
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setActiveQuestionnaireModal(null)}>
+        <div className="w-full max-w-2xl max-h-[90vh] flex flex-col rounded-xl bg-white shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+          <div className="flex items-start justify-between border-b border-slate-100 p-4 bg-slate-900 text-white">
+            <div>
+              <h2 className="text-lg font-black">{schema.title}</h2>
+              <p className="mt-1 text-xs text-slate-300">{booking.packageName} (希望日期：{booking.appointmentDate})</p>
+            </div>
+            <button onClick={() => setActiveQuestionnaireModal(null)} className="rounded-md p-1.5 text-slate-400 hover:text-white">
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-5 space-y-6">
+            {previousLoaded && (
+              <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-3 text-xs text-emerald-800 font-bold flex items-center gap-2">
+                <CheckCircle2 className="h-4 w-4 text-emerald-600 flex-shrink-0" />
+                <span>已自動為您帶入上次填寫紀錄（無須重複選擇，確認異動處即可）。</span>
+              </div>
+            )}
+
+            {schema.sections.map((section, sIdx) => (
+              <div key={sIdx} className="space-y-3">
+                <h3 className="text-sm font-black text-slate-900 border-b border-slate-200 pb-1.5">{section.title}</h3>
+                <div className="space-y-4">
+                  {section.questions.map((q) => (
+                    <div key={q.id} className="space-y-1.5">
+                      <label className="block text-xs font-bold text-slate-700">{q.label}</label>
+
+                      {q.type === "radio" && (
+                        <div className="flex flex-wrap gap-2">
+                          {q.options.map((opt) => (
+                            <label key={opt} className={`cursor-pointer px-3 py-1.5 rounded-md border text-xs font-bold transition-all ${answers[q.id] === opt ? "bg-indigo-600 text-white border-indigo-600 shadow-sm" : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"}`}>
+                              <input type="radio" name={q.id} value={opt} checked={answers[q.id] === opt} onChange={() => handleAnswerChange(q.id, opt)} className="hidden" />
+                              {opt}
+                            </label>
+                          ))}
+                        </div>
+                      )}
+
+                      {q.type === "checkbox" && (
+                        <div className="flex flex-wrap gap-2">
+                          {q.options.map((opt) => {
+                            const isChecked = (answers[q.id] || []).includes(opt);
+                            return (
+                              <label key={opt} className={`cursor-pointer px-3 py-1.5 rounded-md border text-xs font-bold transition-all ${isChecked ? "bg-indigo-600 text-white border-indigo-600 shadow-sm" : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"}`}>
+                                <input type="checkbox" checked={isChecked} onChange={(e) => handleCheckboxChange(q.id, opt, e.target.checked)} className="hidden" />
+                                {opt}
+                              </label>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {q.type === "text" && (
+                        <input type="text" placeholder={q.placeholder} value={answers[q.id] || ""} onChange={(e) => handleAnswerChange(q.id, e.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-normal" />
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="p-4 border-t border-slate-100 bg-slate-50 flex items-center justify-between">
+            {status ? <span className="text-xs font-bold text-indigo-600">{status}</span> : <span />}
+            <div className="flex gap-2">
+              <button type="button" onClick={() => printQuestionnaireDocument({ booking, schema, answers })} className="rounded-md border border-slate-700 bg-slate-800 px-3.5 py-2 text-xs font-bold text-white hover:bg-slate-900 flex items-center gap-1.5">
+                <Printer className="w-4 h-4 text-slate-300" />
+                {lang === "en" ? "Print A4 Questionnaire" : "列印問卷 (含簽名欄)"}
+              </button>
+              <button onClick={() => setActiveQuestionnaireModal(null)} className="rounded-md border border-slate-300 px-4 py-2 text-xs font-bold text-slate-600 hover:bg-white">{lang === "en" ? "Cancel" : "取消"}</button>
+              <button onClick={handleSubmitQuestionnaire} className="rounded-md bg-indigo-600 px-4 py-2 text-xs font-bold text-white shadow-md hover:bg-indigo-700">{lang === "en" ? "Save & Submit" : "儲存並送出健康問卷"}</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const QuestionnaireEditorModal = () => {
+    if (!showQuestionnaireEditorModal) return null;
+
+    let currentSchema = null;
+    try {
+      currentSchema = JSON.parse(editingQuestionnaireJson);
+    } catch (e) {
+      currentSchema = null;
+    }
+
+    const updateSchema = (nextSchema) => {
+      setEditingQuestionnaireJson(JSON.stringify(nextSchema, null, 2));
+    };
+
+    const handleSaveEditor = async (schemaToSave) => {
+      try {
+        const target = schemaToSave || currentSchema;
+        if (!target) throw new Error("無效的問卷內容");
+        setQuestionnaireEditorStatus(lang === "en" ? "Validating..." : "驗證中...");
+        validateQuestionnaireSchema(target);
+        setQuestionnaireEditorStatus(lang === "en" ? "Saving..." : "儲存中...");
+        await saveManagedQuestionnaire(target);
+        const updatedList = await listManagedQuestionnaires();
+        setCustomQuestionnaires(updatedList);
+        setPackageQuestionnaireId(target.id);
+        setShowQuestionnaireEditorModal(false);
+        setSavedMessage(`已儲存問卷：${target.title}`);
+        setTimeout(() => setSavedMessage(""), 3000);
+      } catch (error) {
+        setQuestionnaireEditorStatus(`儲存失敗：${error.message}`);
+      }
+    };
+
+    const handleParseExcel = () => {
+      try {
+        setQuestionnaireEditorStatus("");
+        const parsed = parseExcelPasteText(questionnaireExcelInput);
+        updateSchema(parsed);
+        setQuestionnaireEditorTab("visual");
+        setQuestionnaireEditorStatus("已成功解析並轉為點選式問卷！請確認標題後儲存。");
+      } catch (error) {
+        setQuestionnaireEditorStatus(`解析失敗：${error.message}`);
+      }
+    };
+
+    // Helper functions for Visual Form Builder
+    const updateTitle = (val) => updateSchema({ ...currentSchema, title: val });
+    const updateSectionTitle = (sIdx, val) => {
+      const nextSecs = [...currentSchema.sections];
+      nextSecs[sIdx].title = val;
+      updateSchema({ ...currentSchema, sections: nextSecs });
+    };
+    const addSection = () => {
+      const nextSecs = [...currentSchema.sections, { title: "新章節標題", questions: [{ id: `q_${Date.now()}`, type: "radio", label: "新題目問題名稱？", options: ["否", "是"] }] }];
+      updateSchema({ ...currentSchema, sections: nextSecs });
+    };
+    const removeSection = (sIdx) => {
+      const nextSecs = currentSchema.sections.filter((_, idx) => idx !== sIdx);
+      updateSchema({ ...currentSchema, sections: nextSecs });
+    };
+    const addQuestion = (sIdx) => {
+      const nextSecs = [...currentSchema.sections];
+      nextSecs[sIdx].questions.push({
+        id: `q_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        type: "radio",
+        label: "請輸入題目說明名稱？",
+        options: ["否", "是"],
+      });
+      updateSchema({ ...currentSchema, sections: nextSecs });
+    };
+    const removeQuestion = (sIdx, qIdx) => {
+      const nextSecs = [...currentSchema.sections];
+      nextSecs[sIdx].questions = nextSecs[sIdx].questions.filter((_, idx) => idx !== qIdx);
+      updateSchema({ ...currentSchema, sections: nextSecs });
+    };
+    const updateQuestion = (sIdx, qIdx, field, val) => {
+      const nextSecs = [...currentSchema.sections];
+      nextSecs[sIdx].questions[qIdx][field] = val;
+      updateSchema({ ...currentSchema, sections: nextSecs });
+    };
+    const updateOptions = (sIdx, qIdx, strVal) => {
+      const nextSecs = [...currentSchema.sections];
+      nextSecs[sIdx].questions[qIdx].options = strVal.split(/[,，、]/).map((o) => o.trim()).filter(Boolean);
+      updateSchema({ ...currentSchema, sections: nextSecs });
+    };
+
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setShowQuestionnaireEditorModal(false)}>
+        <div className="w-full max-w-4xl max-h-[90vh] flex flex-col rounded-xl bg-white shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+          <div className="flex items-center justify-between border-b border-slate-100 p-4 bg-slate-900 text-white">
+            <div className="flex items-center gap-3">
+              <h2 className="text-base font-black">管理／匯入健康問卷內容</h2>
+              <div className="flex rounded-md bg-slate-800 p-1 text-xs font-bold">
+                <button onClick={() => setQuestionnaireEditorTab("visual")} className={`px-3 py-1 rounded ${questionnaireEditorTab === "visual" ? "bg-indigo-600 text-white shadow-sm" : "text-slate-300 hover:text-white"}`}>1. 點選式表單設計器</button>
+                <button onClick={() => setQuestionnaireEditorTab("excel")} className={`px-3 py-1 rounded ${questionnaireEditorTab === "excel" ? "bg-indigo-600 text-white shadow-sm" : "text-slate-300 hover:text-white"}`}>2. Excel / OCR 貼上匯入</button>
+                <button onClick={() => setQuestionnaireEditorTab("json")} className={`px-3 py-1 rounded ${questionnaireEditorTab === "json" ? "bg-indigo-600 text-white shadow-sm" : "text-slate-300 hover:text-white"}`}>3. JSON 高級模式</button>
+              </div>
+            </div>
+            <button onClick={() => setShowQuestionnaireEditorModal(false)} className="rounded-md p-1 text-slate-400 hover:text-white">
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+
+          <div className="p-3 bg-slate-50 border-b border-slate-200 flex justify-between items-center gap-2">
+            <div className="flex items-center gap-2 flex-1">
+              <span className="text-xs font-bold text-slate-600">載入範本編輯：</span>
+              <select
+                className="rounded border border-slate-300 px-3 py-1.5 text-xs font-bold text-slate-700 bg-white"
+                onChange={(e) => {
+                  const target = allQuestionnaires.find((q) => q.id === e.target.value);
+                  if (target) setEditingQuestionnaireJson(JSON.stringify(target, null, 2));
+                }}
+              >
+                {allQuestionnaires.map((q) => (
+                  <option key={q.id} value={q.id}>{q.title} ({q.id})</option>
+                ))}
+              </select>
+            </div>
+            <button
+              onClick={() => {
+                const template = {
+                  id: `custom-q-${Date.now()}`,
+                  title: "新自訂健康問卷",
+                  description: "點選設計器維護題目",
+                  sections: [
+                    {
+                      title: "第一章節：基本疾病史",
+                      questions: [
+                        { id: "q1", type: "checkbox", label: "個人疾病史（可複選）", options: ["高血壓", "糖尿病", "高血脂", "無"] },
+                        { id: "q2", type: "radio", label: "目前是否有服藥？", options: ["否", "是"] },
+                      ],
+                    },
+                  ],
+                };
+                updateSchema(template);
+              }}
+              className="rounded bg-indigo-50 border border-indigo-200 px-3 py-1.5 text-xs font-bold text-indigo-700 hover:bg-indigo-100"
+            >
+              + 產生空白新問卷
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-5 space-y-4">
+            {questionnaireEditorTab === "visual" && currentSchema && (
+              <div className="space-y-5">
+                <div className="rounded-lg bg-indigo-50/60 border border-indigo-100 p-4 space-y-3">
+                  <label className="block text-xs font-bold text-slate-700">問卷名稱標題：</label>
+                  <input type="text" className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-bold text-slate-900 bg-white" value={currentSchema.title || ""} onChange={(e) => updateTitle(e.target.value)} />
+                </div>
+
+                {currentSchema.sections?.map((section, sIdx) => (
+                  <div key={sIdx} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm space-y-4">
+                    <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                      <div className="flex items-center gap-2 flex-1">
+                        <span className="text-xs font-bold text-indigo-600">章節 {sIdx + 1}：</span>
+                        <input type="text" className="flex-1 rounded border border-slate-300 px-2 py-1 text-sm font-bold text-slate-800" value={section.title} onChange={(e) => updateSectionTitle(sIdx, e.target.value)} />
+                      </div>
+                      <button onClick={() => removeSection(sIdx)} className="text-xs text-rose-600 font-bold px-2 py-1 hover:bg-rose-50 rounded">刪除此章節</button>
+                    </div>
+
+                    <div className="space-y-3 pl-2">
+                      {section.questions?.map((q, qIdx) => (
+                        <div key={q.id || qIdx} className="rounded-lg border border-slate-200 bg-slate-50/80 p-3 space-y-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-xs font-mono font-bold text-slate-400">Q{qIdx + 1}</span>
+                            <input type="text" className="flex-1 rounded border border-slate-300 px-2 py-1 text-xs font-bold text-slate-800 bg-white" placeholder="題目說明名稱" value={q.label} onChange={(e) => updateQuestion(sIdx, qIdx, "label", e.target.value)} />
+                            <select className="rounded border border-slate-300 px-2 py-1 text-xs font-bold text-slate-700 bg-white" value={q.type} onChange={(e) => updateQuestion(sIdx, qIdx, "type", e.target.value)}>
+                              <option value="radio">單選 (Radio)</option>
+                              <option value="checkbox">複選 (Checkbox)</option>
+                              <option value="text">填空／簡答 (Text)</option>
+                            </select>
+                            <button onClick={() => removeQuestion(sIdx, qIdx)} className="text-xs text-rose-500 hover:text-rose-700 font-bold px-1">✕ 刪除</button>
+                          </div>
+
+                          {q.type !== "text" && (
+                            <div className="flex items-center gap-2">
+                              <span className="text-[10px] font-bold text-slate-500 whitespace-nowrap">選項列表（以逗號隔開）：</span>
+                              <input type="text" className="flex-1 rounded border border-slate-200 px-2 py-1 text-xs font-normal bg-white" placeholder="例如：否, 是 或 高血壓, 糖尿病, 無" value={(q.options || []).join(", ")} onChange={(e) => updateOptions(sIdx, qIdx, e.target.value)} />
+                            </div>
+                          )}
+                        </div>
+                      ))}
+
+                      <button onClick={() => addQuestion(sIdx)} className="rounded-md border border-indigo-200 bg-indigo-50/50 px-3 py-1.5 text-xs font-bold text-indigo-700 hover:bg-indigo-100 flex items-center gap-1">
+                        + 新增題目
+                      </button>
+                    </div>
+                  </div>
+                ))}
+
+                <button onClick={addSection} className="w-full rounded-lg border border-dashed border-slate-300 p-3 text-xs font-bold text-slate-600 hover:bg-slate-50 flex items-center justify-center gap-1">
+                  + 新增問卷章節
+                </button>
+              </div>
+            )}
+
+            {questionnaireEditorTab === "excel" && (
+              <div className="space-y-4">
+                <div className="rounded-lg bg-indigo-50 border border-indigo-100 p-4 text-xs text-indigo-900 leading-relaxed font-bold space-y-1">
+                  <p>💡 護理人員文字 / Excel 複製貼上快速匯入指引：</p>
+                  <p className="font-normal">您可以直接將 Excel 欄位或 OCR 辨識文字整理成下述格式貼上，一鍵轉換為問卷題目：</p>
+                  <pre className="bg-white p-2 rounded border border-indigo-200 font-mono text-[11px] text-slate-800">
+{`章節名稱 | 題目名稱 | 題型 (單選/複選/簡答) | 選項 (以逗號隔開)
+個人病史 | 過去是否有高血壓或糖尿病？ | 複選 | 高血壓, 糖尿病, 心臟病, 無
+健康行為 | 最近半年您是否吸菸？ | 單選 | 不吸菸, 偶爾吸菸, 經常吸菸
+健康行為 | 長期常用藥物說明 | 簡答 |`}
+                  </pre>
+                </div>
+                <textarea
+                  className="w-full h-64 font-mono text-xs p-3 rounded-lg border border-slate-300 focus:outline-none focus:border-indigo-500"
+                  placeholder="請在此貼上 Excel 或 OCR 辨識後之文字表格（欄位間以 | 或 Tab 分隔）..."
+                  value={questionnaireExcelInput}
+                  onChange={(e) => setQuestionnaireExcelInput(e.target.value)}
+                />
+                <button onClick={handleParseExcel} className="rounded-md bg-indigo-600 px-4 py-2 text-xs font-bold text-white shadow hover:bg-indigo-700">
+                  解析並轉為問卷題目
+                </button>
+              </div>
+            )}
+
+            {questionnaireEditorTab === "json" && (
+              <div className="space-y-3">
+                <label className="block text-xs font-bold text-slate-600">問卷 Schema 結構 JSON (高級備份編輯)：</label>
+                <textarea
+                  className="w-full h-80 font-mono text-xs p-3 rounded-lg border border-slate-300 bg-slate-900 text-emerald-400 focus:outline-none focus:border-indigo-500"
+                  value={editingQuestionnaireJson}
+                  onChange={(e) => setEditingQuestionnaireJson(e.target.value)}
+                />
+              </div>
+            )}
+
+            {questionnaireEditorStatus && (
+              <div className="text-xs font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded p-3.5">
+                {questionnaireEditorStatus}
+              </div>
+            )}
+          </div>
+
+          <div className="p-4 border-t border-slate-100 bg-slate-50 flex items-center justify-between">
+            <span className="text-xs text-slate-500">儲存後更新至資料庫，即刻提供套餐對應綁定與問卷填寫</span>
+            <div className="flex gap-2">
+              <button onClick={() => setShowQuestionnaireEditorModal(false)} className="rounded-md border border-slate-300 px-4 py-2 text-xs font-bold text-slate-600 hover:bg-white">取消</button>
+              <button onClick={() => handleSaveEditor()} className="rounded-md bg-indigo-600 px-5 py-2 text-xs font-bold text-white hover:bg-indigo-700 shadow-md">儲存問卷至資料庫</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const AddonItemsView = () => {
+    const publicItems = useMemo(() => {
+      if (!parsedItems || parsedItems.length === 0) return [];
+      return parsedItems.filter((item) => {
+        if (!item.category) return false;
+        return publicAddonCategories.some(
+          (cat) => item.category.includes(cat) || cat.includes(item.category)
+        );
+      });
+    }, [parsedItems, publicAddonCategories]);
+
+    const filteredAddonItems = useMemo(() => {
+      let items = publicItems;
+
+      if (addonSelectedCategory !== "ALL") {
+        items = items.filter(
+          (item) =>
+            item.category?.includes(addonSelectedCategory) ||
+            addonSelectedCategory.includes(item.category)
+        );
+      }
+
+      if (addonSearchTerm.trim()) {
+        const term = addonSearchTerm.toLowerCase().trim();
+        items = items.filter(
+          (item) =>
+            item.name.toLowerCase().includes(term) ||
+            item.category.toLowerCase().includes(term) ||
+            (item.clinical || "").toLowerCase().includes(term)
+        );
+      }
+
+      const sorted = [...items];
+      sorted.sort((a, b) => {
+        const key = addonSortConfig.key;
+        let valA = a[key] ?? "";
+        let valB = b[key] ?? "";
+        if (key === "price") {
+          valA = Number(valA) || 0;
+          valB = Number(valB) || 0;
+          return addonSortConfig.direction === "asc" ? valA - valB : valB - valA;
+        } else {
+          return addonSortConfig.direction === "asc"
+            ? String(valA).localeCompare(String(valB), "zh-Hant")
+            : String(valB).localeCompare(String(valA), "zh-Hant");
+        }
+      });
+
+      return sorted;
+    }, [publicItems, addonSelectedCategory, addonSearchTerm, addonSortConfig]);
+
+    const handleSortClick = (key) => {
+      setAddonSortConfig((current) => {
+        if (current.key === key) {
+          return { key, direction: current.direction === "asc" ? "desc" : "asc" };
+        }
+        return { key, direction: "asc" };
+      });
+    };
+
+    return (
+      <div className="flex-1 bg-slate-50 flex flex-col min-h-0 w-full">
+        {/* Banner Header */}
+        <div className="bg-slate-900 text-white p-4 lg:p-6 shadow-md border-b border-indigo-950 flex-none">
+          <div className="max-w-6xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-xs font-bold border border-emerald-500/30 mb-2">
+                <CheckCircle2 className="w-3.5 h-3.5" /> 屏基健診中心
+              </div>
+              <h1 className="text-xl lg:text-2xl font-black tracking-tight text-white">
+                屏基健診中心 自費加選項目（依個人健康需求）
+              </h1>
+              <p className="mt-1 text-xs lg:text-sm text-slate-300 font-bold flex items-center gap-1.5">
+                <span>如有客製化套餐需求，歡迎來電洽詢健檢中心專線。</span>
+              </p>
+            </div>
+            <a
+              href="tel:087368686"
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 py-3 text-xs lg:text-sm font-bold text-white shadow-lg hover:bg-emerald-700 transition-all flex-shrink-0"
+            >
+              <PhoneCall className="w-4 h-4" />
+              <span>來電洽詢 (08) 736-8686</span>
+            </a>
+          </div>
+        </div>
+
+        {/* Sticky Top Header (Search & Category Pills) */}
+        <div className="sticky top-[44px] z-30 bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-sm p-3 lg:p-4 space-y-2.5 flex-none">
+          <div className="max-w-6xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+            {/* Search Input */}
+            <div className="relative flex-1 min-w-0">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                placeholder="搜尋檢查項目名稱或臨床意義..."
+                value={addonSearchTerm}
+                onChange={(e) => setAddonSearchTerm(e.target.value)}
+                className="w-full pl-9 pr-8 py-2 bg-slate-100 border border-slate-200 rounded-lg text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+              {addonSearchTerm && (
+                <button onClick={() => setAddonSearchTerm("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 font-bold text-xs">✕</button>
+              )}
+            </div>
+
+            {/* Sorting & Count Badge */}
+            <div className="flex items-center justify-between sm:justify-end gap-2 text-xs font-bold text-slate-600">
+              <span className="text-slate-400">排序：</span>
+              <button
+                type="button"
+                onClick={() => handleSortClick("name")}
+                className={`px-2.5 py-1.5 rounded-md border flex items-center gap-1 transition-colors ${
+                  addonSortConfig.key === "name" ? "bg-slate-900 text-white border-slate-900" : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                }`}
+              >
+                <span>名稱</span>
+                <ArrowUpDown className="w-3 h-3 text-slate-400" />
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSortClick("price")}
+                className={`px-2.5 py-1.5 rounded-md border flex items-center gap-1 transition-colors ${
+                  addonSortConfig.key === "price" ? "bg-indigo-600 text-white border-indigo-600" : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                }`}
+              >
+                <span>單價 {addonSortConfig.key === "price" ? (addonSortConfig.direction === "asc" ? "↑" : "↓") : ""}</span>
+                <ArrowUpDown className="w-3 h-3 text-slate-400" />
+              </button>
+              <span className="text-indigo-600 font-mono font-bold text-xs ml-1">({filteredAddonItems.length} 項)</span>
+            </div>
+          </div>
+
+          {/* Category Filter Pills (Horizontal Scrollable) */}
+          <div className="max-w-6xl mx-auto flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar text-xs font-bold">
+            <button
+              type="button"
+              onClick={() => setAddonSelectedCategory("ALL")}
+              className={`px-3 py-1.5 rounded-full whitespace-nowrap transition-all ${
+                addonSelectedCategory === "ALL"
+                  ? "bg-slate-900 text-white shadow-sm"
+                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+              }`}
+            >
+              全部公開分類 ({publicItems.length})
+            </button>
+            {publicAddonCategories.map((cat) => {
+              const count = publicItems.filter((i) => i.category?.includes(cat) || cat.includes(i.category)).length;
+              if (count === 0) return null;
+              const isActive = addonSelectedCategory === cat;
+              return (
+                <button
+                  type="button"
+                  key={cat}
+                  onClick={() => setAddonSelectedCategory(cat)}
+                  className={`px-3 py-1.5 rounded-full whitespace-nowrap transition-all ${
+                    isActive
+                      ? "bg-indigo-600 text-white shadow-sm"
+                      : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                  }`}
+                >
+                  {cat} ({count})
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Mobile & Desktop Full-Width Card-Row List (No Horizontal Overflow!) */}
+        <div className="flex-1 max-w-6xl mx-auto w-full p-3 lg:p-6 space-y-4">
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden divide-y divide-slate-100">
+            {filteredAddonItems.length > 0 ? (
+              filteredAddonItems.map((item, idx) => (
+                <div key={item.id || idx} className="p-3.5 sm:p-4 hover:bg-slate-50/80 transition-colors space-y-2">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-sm sm:text-base font-bold text-slate-900 tracking-tight">
+                        {item.name}
+                      </h3>
+                      {item.enName && (
+                        <p className="text-[11px] sm:text-xs text-slate-400 font-medium mt-0.5">{item.enName}</p>
+                      )}
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <span className="inline-block px-2.5 py-1 rounded-lg bg-indigo-50 border border-indigo-100 font-mono font-black text-indigo-900 text-sm sm:text-base">
+                        NT$ {Number(item.price || 0).toLocaleString()}
+                      </span>
+                    </div>
+                  </div>
+                  {(item.clinical || item.remark) && (
+                    <p className="text-xs sm:text-sm text-slate-600 leading-relaxed bg-slate-50/80 p-2.5 rounded-lg border border-slate-100/80">
+                      <span className="font-bold text-slate-500 mr-1.5">[臨床意義]</span>
+                      {item.clinical || item.remark}
+                    </p>
+                  )}
+                </div>
+              ))
+            ) : (
+              <div className="p-12 text-center text-slate-400 font-bold text-xs">
+                沒有符合條件的自費加選項目。請嘗試清除搜尋關鍵字或點選其他分類。
+              </div>
+            )}
+          </div>
+
+          {/* Consultation Banner */}
+          <div className="rounded-xl bg-amber-50 border border-amber-200 p-4 text-xs font-bold text-amber-900 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
+            <div className="flex items-center gap-2">
+              <span className="text-base">💡</span>
+              <span>如有客製化套餐需求、特別檢測或疑慮，歡迎來電洽詢健檢中心專線。</span>
+            </div>
+            <a href="tel:087368686" className="rounded-lg bg-amber-800 text-white px-4 py-2 text-xs font-bold whitespace-nowrap hover:bg-amber-900 text-center">
+              專線 (08) 736-8686
+            </a>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const AddonCategoryManagerModal = () => {
+    if (!showAddonCategoryManagerModal) return null;
+
+    const allAvailableCategories = Array.from(
+      new Set([...(parsedItems || []).map((i) => i.category).filter(Boolean), ...DEFAULT_PUBLIC_ADDON_CATEGORIES])
+    );
+
+    const toggleCategory = (cat) => {
+      setManagerSelectedCats((prev) =>
+        prev.includes(cat) ? prev.filter((c) => c !== cat) : [...prev, cat]
+      );
+    };
+
+    const handleSave = async () => {
+      try {
+        setManagerStatusMsg("儲存中...");
+        await savePublicAddonCategories(managerSelectedCats);
+        setPublicAddonCategories(managerSelectedCats);
+        setShowAddonCategoryManagerModal(false);
+        setSavedMessage("已更新前台公開加選分類");
+        setTimeout(() => setSavedMessage(""), 3000);
+      } catch (error) {
+        setManagerStatusMsg(`儲存失敗：${error.message}`);
+      }
+    };
+
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setShowAddonCategoryManagerModal(false)}>
+        <div className="w-full max-w-lg rounded-xl bg-white shadow-2xl overflow-hidden flex flex-col max-h-[85vh]" onClick={(e) => e.stopPropagation()}>
+          <div className="p-4 bg-slate-900 text-white flex justify-between items-center">
+            <h2 className="text-base font-black">管理前台公開加選項目分類</h2>
+            <button onClick={() => setShowAddonCategoryManagerModal(false)} className="text-slate-400 hover:text-white">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+          <div className="p-4 bg-slate-50 border-b border-slate-200 text-xs text-slate-600 font-medium">
+            請勾選需要在前台「自費加選項目參考表 (?view=addon-items)」公開顯示的檢查分類：
+          </div>
+          <div className="p-4 flex-1 overflow-y-auto space-y-2">
+            {allAvailableCategories.map((cat) => {
+              const isChecked = managerSelectedCats.includes(cat);
+              const itemCount = (parsedItems || []).filter((i) => i.category === cat).length;
+              return (
+                <label key={cat} className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer text-xs font-bold transition-all ${isChecked ? "bg-indigo-50 border-indigo-300 text-indigo-900" : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"}`}>
+                  <div className="flex items-center gap-2">
+                    <input type="checkbox" checked={isChecked} onChange={() => toggleCategory(cat)} className="h-4 w-4 rounded border-slate-300 text-indigo-600" />
+                    <span>{cat}</span>
+                  </div>
+                  <span className="text-[10px] text-slate-400 font-normal">({itemCount} 項檢查)</span>
+                </label>
+              );
+            })}
+          </div>
+          {managerStatusMsg && <div className="p-2 text-xs font-bold text-indigo-600 bg-indigo-50 border-t border-slate-200">{managerStatusMsg}</div>}
+          <div className="p-4 border-t border-slate-100 bg-slate-50 flex justify-between items-center">
+            <div className="flex gap-2">
+              <button type="button" onClick={() => setManagerSelectedCats(allAvailableCategories)} className="text-xs text-indigo-600 font-bold underline">全選</button>
+              <button type="button" onClick={() => setManagerSelectedCats([])} className="text-xs text-slate-500 font-bold underline">全不選</button>
+            </div>
+            <div className="flex gap-2">
+              <button type="button" onClick={() => setShowAddonCategoryManagerModal(false)} className="px-4 py-2 rounded-md border border-slate-300 text-xs font-bold text-slate-600 hover:bg-white">取消</button>
+              <button type="button" onClick={handleSave} className="px-4 py-2 rounded-md bg-indigo-600 text-xs font-bold text-white hover:bg-indigo-700 shadow-md">儲存公開設定</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   const MobileCheckInView = () => (
     <section className="lg:hidden flex-1 overflow-y-auto bg-slate-50 p-4">
@@ -2898,6 +3728,9 @@ ${selectedItems
       {comparisonDetailCard && <PackageDetailModal card={comparisonDetailCard} />}
       {adminDetailBooking && AdminBookingDetailModal()}
       {showBookingModal && BookingModal()}
+      {activeQuestionnaireModal && QuestionnaireModal()}
+      {showQuestionnaireEditorModal && QuestionnaireEditorModal()}
+      {showAddonCategoryManagerModal && AddonCategoryManagerModal()}
 
       <div className="flex-none border-b border-slate-200 bg-white px-4 py-3 lg:px-6 flex items-center justify-between gap-3">
         <div>

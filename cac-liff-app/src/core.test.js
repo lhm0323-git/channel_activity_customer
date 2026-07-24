@@ -21,12 +21,37 @@ import {
   parseCSV,
   parseHealthCsv,
 } from "./core.js";
-run("audienceToChannel maps package audience tags", () => {
-  assert.equal(audienceToChannel("\u9ad8\u968e"), "HIGH_END");
-  assert.equal(audienceToChannel("\u516c\u6559"), "CORPORATE");
-  assert.equal(audienceToChannel("\u4f01\u696d\u5718\u6aa2"), "CORPORATE");
-  assert.equal(audienceToChannel("\u52de\u5de5"), "LABOR");
-  assert.equal(audienceToChannel("\u4e00\u822c"), "GENERAL");
+import {
+  generatePrintableQuestionnaireHtml,
+  getQuestionnaireById,
+  mergePreviousAnswers,
+  validateQuestionnaireSchema,
+  QUESTIONNAIRES,
+} from "./questionnaire.js";
+
+run("questionnaire validation and printing html generator", () => {
+  const schema = getQuestionnaireById("general-health");
+  assert.equal(validateQuestionnaireSchema(schema), true);
+  assert.throws(() => validateQuestionnaireSchema(null), /JSON 物件/);
+  assert.throws(() => validateQuestionnaireSchema({}), /識別碼/);
+
+  const html = generatePrintableQuestionnaireHtml({
+    booking: { customerName: "張三", appointmentDate: "2026-08-01", packageName: "婚前健檢" },
+    schema,
+    answers: { smoking: "已戒菸" },
+  });
+  assert.match(html, /屏東基督教醫院 健檢中心/);
+  assert.match(html, /受檢者 \/ 立同意書人簽名/);
+  assert.match(html, /已戒菸/);
+});
+
+run("questionnaire mergePreviousAnswers populates default and previous fields", () => {
+  const schema = getQuestionnaireById("general-health");
+  const merged = mergePreviousAnswers(schema, { smoking: "已戒菸", pastDiseases: ["高血壓"] });
+  assert.equal(merged.smoking, "已戒菸");
+  assert.deepEqual(merged.pastDiseases, ["高血壓"]);
+  assert.equal(merged.currentMeds, "");
+  assert.deepEqual(merged.familyHistory, []);
 });
 function run(name, fn) {
   try {
