@@ -8,8 +8,7 @@ export async function initLiffProfile() {
   const liff = (await import("@line/liff")).default;
   await liff.init({ liffId });
   if (!liff.isLoggedIn()) {
-    liff.login();
-    return { status: "LOGIN_REDIRECT", profile: null, message: "正在導向 LINE 登入" };
+    return { status: "OPTIONAL", profile: null, message: "\u672a\u767b\u5165 LINE\uff0c\u5c07\u4ee5 Email \u4f5c\u70ba\u5230\u6aa2\u63d0\u9192\u806f\u7d61\u65b9\u5f0f" };
   }
 
   const profile = await liff.getProfile();

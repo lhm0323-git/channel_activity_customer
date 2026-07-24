@@ -88,6 +88,19 @@ run("buildBookingPayload preserves selected item fields and manual final price",
   assert.equal(result.booking.selectedItems[0].clinical, "\u8a55\u4f30\u8840\u7403\u7570\u5e38");
 });
 
+run("buildBookingPayload uses email when LINE identity is unavailable", () => {
+  const result = buildBookingPayload({
+    formData: { name: "Email customer", phone: "0912345678", email: "email@example.com", idNumber: "A123456789", channel: "GENERAL", appointmentDate: "2026-08-01" },
+    lineProfile: null,
+    packageName: "Test package",
+    selectedItems: [{ id: 1, name: "CBC", enName: "CBC", code: "", category: "Lab", price: 300, clinical: "", remark: "", outsource: "" }],
+    listPrice: 300,
+    discountRate: 0,
+    finalPrice: 300,
+  });
+  assert.equal(result.booking.lineUserId, null);
+  assert.equal(result.booking.notificationChannel, "EMAIL");
+});
 run("bookingCheckInCode uses a short stable code", () => {
   assert.equal(bookingCheckInCode("Abc-123_xYz"), "123XYZ");
 });

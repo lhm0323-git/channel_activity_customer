@@ -1408,8 +1408,13 @@ ${selectedItems
 
   const handleSendD1Notice = async (booking) => {
     try {
-      await sendD1Notice(booking.bookingId);
-      setAdminStatus(lang === "en" ? "Reminder sent" : "\u63d0\u9192\u5df2\u767c\u9001");
+      const result = await sendD1Notice(booking.bookingId);
+      const channel = result?.data?.channel || booking.notificationChannel || (booking.lineUserId ? "LINE" : "EMAIL");
+      setAdminStatus(
+        channel === "EMAIL"
+          ? (lang === "en" ? "Email reminder queued" : "\u5df2\u6392\u5165 Email \u5230\u6aa2\u63d0\u9192")
+          : (lang === "en" ? "LINE reminder sent" : "\u5df2\u767c\u9001 LINE \u5230\u6aa2\u63d0\u9192")
+      );
       handleLoadAdminBookings();
     } catch (error) {
       setAdminStatus(lang === "en" ? `Reminder failed: ${error.message}` : `\u767c\u9001\u63d0\u9192\u5931\u6557\uff1a${error.message}`);
@@ -2520,7 +2525,10 @@ ${selectedItems
               <label className="block text-xs font-bold text-slate-600">{t.name}<input required className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-base font-normal" value={bookingForm.name} onChange={(e) => setBookingField("name", e.target.value)} /></label>
               <label className="block text-xs font-bold text-slate-600">{t.phone}<input required inputMode="tel" className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-base font-normal" value={bookingForm.phone} onChange={(e) => setBookingField("phone", e.target.value)} /></label>
               <label className="block text-xs font-bold text-slate-600">{t.idNumber}<input required className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-base font-normal" value={bookingForm.idNumber} onChange={(e) => setBookingField("idNumber", e.target.value)} /></label>
-              <label className="block text-xs font-bold text-slate-600">{t.email}<input type="email" className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-base font-normal" value={bookingForm.email} onChange={(e) => setBookingField("email", e.target.value)} /></label>
+              <label className="block text-xs font-bold text-slate-600">
+                {t.email} {!lineProfile && <span className="text-rose-600 font-bold">* ({lang === "en" ? "Required for non-LINE" : "無 LINE 身份時必填"})</span>}
+                <input type="email" required={!lineProfile} placeholder={!lineProfile ? (lang === "en" ? "Required for email reminder" : "\u8acb\u8f38\u5165 Email \u4ee5\u63a5\u6536\u5230\u6aa2\u63d0\u9192") : ""} className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-base font-normal" value={bookingForm.email} onChange={(e) => setBookingField("email", e.target.value)} />
+              </label>
               <label className="block text-xs font-bold text-slate-600">{t.appointmentDate}<input required type="date" className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-base font-normal" value={bookingForm.appointmentDate} onChange={(e) => setBookingField("appointmentDate", e.target.value)} />{disabled && <span className="mt-1 block text-xs font-bold text-rose-600">{lang === "en" ? "This date is unavailable" : "\u6b64\u65e5\u671f\u66ab\u505c\u9810\u7d04"}</span>}</label>
             </div>
             <p className="text-xs leading-relaxed text-slate-500">{t.idNumberHelp}</p>
@@ -2629,108 +2637,154 @@ ${selectedItems
     </section>
   );
   const AdminView = () => (<><MobileCheckInView />
-    <div className="hidden lg:flex h-[calc(100vh-73px)] min-h-0 max-w-[1280px] mx-auto w-full flex-col gap-4 p-6 overflow-hidden">
-      <div className="flex-none bg-white border border-slate-200 rounded-lg p-4 flex items-end gap-3">
-        <label className="text-xs font-bold text-slate-600">
-          {t.startDate}
-          <input type="date" className="block mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm font-normal" value={adminStartDate} onChange={(e) => setAdminStartDate(e.target.value)} />
-        </label>
-        <label className="text-xs font-bold text-slate-600">
-          {t.endDate}
-          <input type="date" className="block mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm font-normal" value={adminEndDate} onChange={(e) => setAdminEndDate(e.target.value)} />
-        </label>
-        <label className="text-xs font-bold text-slate-600">
-          {t.adminChannel}
-          <select className="block mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm font-normal" value={adminChannel} onChange={(e) => setAdminChannel(e.target.value)}>
-            <option value="ALL">{t.allChannels}</option>
-            {CHANNELS.map((channel) => (
-              <option key={channel.value} value={channel.value}>{channel.label}</option>
-            ))}
-          </select>
-        </label>
-
-        <button onClick={handleLoadAdminBookings} className="px-4 py-2 rounded-md bg-slate-900 text-white text-sm font-bold">{t.load}</button>
-        <button onClick={handlePrintSelectedBookings} disabled={!selectedAdminBookings.length} className="px-4 py-2 rounded-md bg-emerald-600 text-white text-sm font-bold disabled:opacity-40">{t.printSelected}</button>
-        <button onClick={handleExportAdminBookings} disabled={!adminBookings.length} className="px-4 py-2 rounded-md bg-white border border-slate-300 text-slate-700 text-sm font-bold disabled:opacity-40">{t.exportCsv}</button>
-        <label className="px-4 py-2 rounded-md bg-white border border-slate-300 text-slate-700 text-sm font-bold cursor-pointer">
-          {t.importCsv}
-          <input type="file" accept=".csv,text/csv" className="hidden" onChange={handleImportBookingCsv} />
-        </label>
-        <span className="text-xs text-slate-500">{adminStatus}</span>
-      </div>
-      {isAdminUser && (
-        <div className="flex-none bg-white border border-slate-200 rounded-lg p-4 flex flex-wrap items-end gap-3">
+    <div className="hidden lg:flex h-[calc(100vh-73px)] min-h-0 max-w-[1400px] mx-auto w-full flex-col gap-4 p-6 overflow-hidden">
+      <div className="flex-none bg-white border border-slate-200 rounded-lg p-4 flex items-end justify-between gap-3">
+        <div className="flex items-end gap-3 flex-wrap">
           <label className="text-xs font-bold text-slate-600">
-            {t.staffAccounts}
-            <input type="email" className="block mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm font-normal" placeholder={t.staffEmailPlaceholder} value={newStaffEmail} onChange={(e) => setNewStaffEmail(e.target.value)} />
+            {t.startDate}
+            <input type="date" className="block mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm font-normal" value={adminStartDate} onChange={(e) => setAdminStartDate(e.target.value)} />
           </label>
-          <button onClick={handleAddStaffUser} className="px-4 py-2 rounded-md bg-slate-900 text-white text-sm font-bold">{t.addStaff}</button>
-          <div className="flex flex-wrap gap-2 text-xs text-slate-600">
-            {staffAccounts.length ? staffAccounts.map((staff) => <span key={staff.email} className="rounded bg-slate-100 px-2 py-1 font-bold">{staff.email}</span>) : <span className="text-slate-400">{t.noStaffAccounts}</span>}
-          </div>
-          {staffManageStatus && <span className="text-xs text-slate-500">{staffManageStatus}</span>}
+          <label className="text-xs font-bold text-slate-600">
+            {t.endDate}
+            <input type="date" className="block mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm font-normal" value={adminEndDate} onChange={(e) => setAdminEndDate(e.target.value)} />
+          </label>
+          <label className="text-xs font-bold text-slate-600">
+            {t.adminChannel}
+            <select className="block mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm font-normal" value={adminChannel} onChange={(e) => setAdminChannel(e.target.value)}>
+              <option value="ALL">{t.allChannels}</option>
+              {CHANNELS.map((channel) => (
+                <option key={channel.value} value={channel.value}>{channel.label}</option>
+              ))}
+            </select>
+          </label>
+          <button onClick={handleLoadAdminBookings} className="px-4 py-2 rounded-md bg-slate-900 text-white text-sm font-bold">{t.load}</button>
+          <button onClick={handlePrintSelectedBookings} disabled={!selectedAdminBookings.length} className="px-4 py-2 rounded-md bg-emerald-600 text-white text-sm font-bold disabled:opacity-40">{t.printSelected}</button>
+          <button onClick={handleExportAdminBookings} disabled={!adminBookings.length} className="px-4 py-2 rounded-md bg-white border border-slate-300 text-slate-700 text-sm font-bold disabled:opacity-40">{t.exportCsv}</button>
+          <label className="px-4 py-2 rounded-md bg-white border border-slate-300 text-slate-700 text-sm font-bold cursor-pointer">
+            {t.importCsv}
+            <input type="file" accept=".csv,text/csv" className="hidden" onChange={handleImportBookingCsv} />
+          </label>
         </div>
-      )}
-
-      <div className="flex-none rounded-lg border border-rose-200 bg-white p-4">
-        <div className="mb-2 text-sm font-black text-slate-900">{lang === "en" ? "Unavailable booking dates" : "停止預約日期"}</div>
-        <div className="flex flex-wrap items-end gap-3">
-          <label className="text-xs font-bold text-slate-600">{lang === "en" ? "Date" : "日期"}<input type="date" className="mt-1 block rounded-md border border-slate-300 px-3 py-2 text-sm font-normal" value={blockedDate} onChange={(e) => setBlockedDate(e.target.value)} /></label>
-          <label className="min-w-48 flex-1 text-xs font-bold text-slate-600">{lang === "en" ? "Reason" : "原因（選填）"}<input className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-normal" value={blockedDateReason} onChange={(e) => setBlockedDateReason(e.target.value)} placeholder={lang === "en" ? "Off-site event" : "例如：外場活動"} /></label>
-          <button disabled={!blockedDate} onClick={handleSaveBlockedDate} className="rounded-md bg-rose-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-40">{lang === "en" ? "Block date" : "停止預約"}</button>
-          {blockedDateStatus && <span className="text-xs text-slate-500">{blockedDateStatus}</span>}
-        </div>
-        <div className="mt-3 flex flex-wrap gap-2">{blockedBookingDates.length ? blockedBookingDates.map((entry) => <span key={entry.date} className="rounded bg-rose-50 px-2 py-1 text-xs font-bold text-rose-800">{entry.date}{entry.reason ? `／${entry.reason}` : ""} <button onClick={() => handleDeleteBlockedDate(entry.date)} className="underline">{lang === "en" ? "Reopen" : "解除"}</button></span>) : <span className="text-xs text-slate-400">{lang === "en" ? "No unavailable dates" : "目前沒有停止預約日期"}</span>}</div>
-      </div>
-      <div className="flex-none bg-white border border-amber-200 rounded-lg overflow-hidden">
-        <div className="bg-amber-50 px-4 py-2 text-sm font-black text-amber-900">{t.pendingChanges} ({pendingChanges.length})</div>
-        {pendingChanges.length ? pendingChanges.map((request) => (
-          <div key={request.requestId} className="grid grid-cols-12 items-center gap-2 px-4 py-3 border-t border-amber-100 text-sm">
-            <div className="col-span-2 font-bold text-slate-800">{request.customerName || t.unnamed}</div>
-            <div className="col-span-3 text-slate-600 truncate">{request.packageName}</div>
-            <div className="col-span-2 text-slate-600">{request.currentAppointmentDate}</div>
-            <div className="col-span-2 font-bold text-emerald-700">{request.requestedAppointmentDate}</div>
-            <div className="col-span-2 text-slate-500 truncate">{request.notes}</div>
-            <div className="col-span-1 text-right"><button onClick={() => handleApproveChangeRequest(request)} className="text-xs px-2 py-1 rounded bg-emerald-600 text-white">{t.approve}</button></div>
-          </div>
-        )) : (
-          <div className="p-4 text-sm text-slate-400">{t.noPendingChanges}</div>
-        )}
+        {adminStatus && <span className="text-xs font-bold text-slate-600 bg-slate-100 px-3 py-2 rounded-md">{adminStatus}</span>}
       </div>
 
-      <div className="bg-white border border-slate-200 rounded-lg flex-1 min-h-0 overflow-y-auto">
-        <div className="sticky top-0 z-10 grid grid-cols-12 bg-slate-100 text-xs font-bold text-slate-600 px-4 py-2">
-          <div className="col-span-1"><input type="checkbox" checked={allAdminBookingsSelected} onChange={toggleAllAdminBookings} aria-label={t.selectAllBookings} /></div>
-          <div className="col-span-1"><button className="font-bold" onClick={() => toggleAdminSort("date")}>{t.appointmentDate}{adminSortMark("date")}</button></div>
-          <div className="col-span-2"><button className="font-bold" onClick={() => toggleAdminSort("customer")}>{t.customer}{adminSortMark("customer")}</button></div>
-          <div className="col-span-1"><button className="font-bold" onClick={() => toggleAdminSort("phone")}>{t.phone}{adminSortMark("phone")}</button></div>
-          <div className="col-span-1"><button className="font-bold" onClick={() => toggleAdminSort("channel")}>{t.adminChannel}{adminSortMark("channel")}</button></div>
-          <div className="col-span-2"><button className="font-bold" onClick={() => toggleAdminSort("package")}>{t.package}{adminSortMark("package")}</button></div>
-          <div className="col-span-1"><button className="font-bold" onClick={() => toggleAdminSort("status")}>{t.status}{adminSortMark("status")}</button></div>
-          <div className="col-span-1"><button className="font-bold" onClick={() => toggleAdminSort("notice")}>{t.notice}{adminSortMark("notice")}</button></div>
-          <div className="col-span-1"><button className="font-bold" onClick={() => toggleAdminSort("amount")}>{t.amount}{adminSortMark("amount")}</button></div>
-          <div className="col-span-1 text-right">{t.operation}</div>
-        </div>
-        {sortedAdminBookings.length ? sortedAdminBookings.map((booking) => (
-          <div key={booking.bookingId} onClick={() => setAdminDetailBooking(booking)} className="grid grid-cols-12 items-center px-4 py-3 border-t border-slate-100 text-sm cursor-pointer hover:bg-slate-50">
-            <div className="col-span-1"><input type="checkbox" checked={selectedAdminBookingIds.includes(booking.bookingId)} onClick={(e) => e.stopPropagation()} onChange={() => toggleAdminBookingSelection(booking.bookingId)} aria-label={t.customer} /></div>
-            <div className="col-span-1 text-slate-600">{booking.appointmentDate || "-"}</div>
-            <div className="col-span-2 font-bold text-slate-800">{booking.customerName || booking.name || booking.customerId}</div>
-            <div className="col-span-1 text-slate-600 truncate">{booking.customerPhone || booking.phone || "-"}</div>
-            <div className="col-span-1 text-slate-600">{channelLabel(booking.channel, lang)}</div>
-            <div className="col-span-2 text-slate-600 truncate">{booking.packageName}</div>
-            <div className="col-span-1 text-slate-600">{statusLabel(booking.status)}{booking.checkInSerial && <div className="mt-1 font-mono text-xs font-bold text-indigo-600">{booking.checkInSerial}</div>}</div>
-            <div className="col-span-1 text-slate-600">{noticeLabel(booking)}</div>
-            <div className="col-span-1 font-mono text-slate-700">NT$ {Number(booking.finalPrice || 0).toLocaleString()}</div>
-            <div className="col-span-1 text-right space-y-1">
-              {booking.status === "CONFIRMED" ? null : <button onClick={(e) => { e.stopPropagation(); handleConfirmBooking(booking); }} className="text-xs px-2 py-1 rounded bg-emerald-600 text-white">{t.confirm}</button>}
-              {booking.status !== "CANCELLED" && <button onClick={(e) => { e.stopPropagation(); handleCancelAdminBooking(booking); }} className="text-xs px-2 py-1 rounded bg-rose-600 text-white">{lang === "en" ? "Cancel" : "\u53d6\u6d88"}</button>}
-              <>{booking.status === "CONFIRMED" && <button onClick={(e) => { e.stopPropagation(); handleSendD1Notice(booking); }} className="text-xs px-2 py-1 rounded bg-amber-500 text-white">{lang === "en" ? "Reminder" : "\u63d0\u9192"}</button>}<button onClick={(e) => { e.stopPropagation(); printBookings([booking]); }} className="text-xs px-2 py-1 rounded bg-slate-900 text-white">{t.print}</button></>
+      <div className="flex-1 min-h-0 flex gap-4 overflow-hidden">
+        <div className="flex-1 min-h-0 flex flex-col gap-3 overflow-hidden">
+          {pendingChanges.length > 0 && (
+            <div className="flex-none bg-amber-50 border border-amber-200 rounded-lg overflow-hidden">
+              <div className="px-4 py-2 text-sm font-black text-amber-900 border-b border-amber-200">
+                {t.pendingChanges} ({pendingChanges.length})
+              </div>
+              <div className="max-h-36 overflow-y-auto">
+                {pendingChanges.map((request) => (
+                  <div key={request.requestId} className="grid grid-cols-12 items-center gap-2 px-4 py-2.5 border-t border-amber-100 text-sm bg-white/60">
+                    <div className="col-span-2 font-bold text-slate-800">{request.customerName || t.unnamed}</div>
+                    <div className="col-span-3 text-slate-600 truncate">{request.packageName}</div>
+                    <div className="col-span-2 text-slate-600">{request.currentAppointmentDate}</div>
+                    <div className="col-span-2 font-bold text-emerald-700">{request.requestedAppointmentDate}</div>
+                    <div className="col-span-2 text-slate-500 truncate">{request.notes}</div>
+                    <div className="col-span-1 text-right">
+                      <button onClick={() => handleApproveChangeRequest(request)} className="text-xs px-2.5 py-1 rounded bg-emerald-600 text-white font-bold">{t.approve}</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="bg-white border border-slate-200 rounded-lg flex-1 min-h-0 flex flex-col overflow-hidden">
+            <div className="flex-none grid grid-cols-12 bg-slate-100 text-xs font-bold text-slate-600 px-4 py-2.5 border-b border-slate-200">
+              <div className="col-span-1"><input type="checkbox" checked={allAdminBookingsSelected} onChange={toggleAllAdminBookings} aria-label={t.selectAllBookings} /></div>
+              <div className="col-span-1"><button className="font-bold" onClick={() => toggleAdminSort("date")}>{t.appointmentDate}{adminSortMark("date")}</button></div>
+              <div className="col-span-2"><button className="font-bold" onClick={() => toggleAdminSort("customer")}>{t.customer}{adminSortMark("customer")}</button></div>
+              <div className="col-span-1"><button className="font-bold" onClick={() => toggleAdminSort("phone")}>{t.phone}{adminSortMark("phone")}</button></div>
+              <div className="col-span-1"><button className="font-bold" onClick={() => toggleAdminSort("channel")}>{t.adminChannel}{adminSortMark("channel")}</button></div>
+              <div className="col-span-2"><button className="font-bold" onClick={() => toggleAdminSort("package")}>{t.package}{adminSortMark("package")}</button></div>
+              <div className="col-span-1"><button className="font-bold" onClick={() => toggleAdminSort("status")}>{t.status}{adminSortMark("status")}</button></div>
+              <div className="col-span-1"><button className="font-bold" onClick={() => toggleAdminSort("notice")}>{t.notice}{adminSortMark("notice")}</button></div>
+              <div className="col-span-1"><button className="font-bold" onClick={() => toggleAdminSort("amount")}>{t.amount}{adminSortMark("amount")}</button></div>
+              <div className="col-span-1 text-right">{t.operation}</div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
+              {sortedAdminBookings.length ? sortedAdminBookings.map((booking) => (
+                <div key={booking.bookingId} onClick={() => setAdminDetailBooking(booking)} className="grid grid-cols-12 items-center px-4 py-3 text-sm cursor-pointer hover:bg-slate-50 transition-colors">
+                  <div className="col-span-1"><input type="checkbox" checked={selectedAdminBookingIds.includes(booking.bookingId)} onClick={(e) => e.stopPropagation()} onChange={() => toggleAdminBookingSelection(booking.bookingId)} aria-label={t.customer} /></div>
+                  <div className="col-span-1 text-slate-600">{booking.appointmentDate || "-"}</div>
+                  <div className="col-span-2 font-bold text-slate-800">{booking.customerName || booking.name || booking.customerId}</div>
+                  <div className="col-span-1 text-slate-600 truncate">{booking.customerPhone || booking.phone || "-"}</div>
+                  <div className="col-span-1 text-slate-600">{channelLabel(booking.channel, lang)}</div>
+                  <div className="col-span-2 text-slate-600 truncate">{booking.packageName}</div>
+                  <div className="col-span-1 text-slate-600">{statusLabel(booking.status)}{booking.checkInSerial && <div className="mt-0.5 font-mono text-xs font-bold text-indigo-600">{booking.checkInSerial}</div>}</div>
+                  <div className="col-span-1 text-slate-600">{noticeLabel(booking)}</div>
+                  <div className="col-span-1 font-mono text-slate-700">NT$ {Number(booking.finalPrice || 0).toLocaleString()}</div>
+                  <div className="col-span-1 text-right flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+                    {booking.status === "CONFIRMED" ? null : <button onClick={() => handleConfirmBooking(booking)} className="text-xs px-2 py-1 rounded bg-emerald-600 text-white font-bold">{t.confirm}</button>}
+                    {booking.status !== "CANCELLED" && <button onClick={() => handleCancelAdminBooking(booking)} className="text-xs px-2 py-1 rounded bg-rose-600 text-white font-bold">{lang === "en" ? "Cancel" : "\u53d6\u6d88"}</button>}
+                    {booking.status === "CONFIRMED" && <button onClick={() => handleSendD1Notice(booking)} className="text-xs px-2 py-1 rounded bg-amber-500 text-white font-bold">{lang === "en" ? "Reminder" : "\u63d0\u9192"}</button>}
+                    <button onClick={() => printBookings([booking])} className="text-xs px-2 py-1 rounded bg-slate-900 text-white font-bold">{t.print}</button>
+                  </div>
+                </div>
+              )) : (
+                <div className="p-12 text-center text-sm text-slate-400">{t.noBookings}</div>
+              )}
             </div>
           </div>
-        )) : (
-          <div className="p-8 text-center text-sm text-slate-400">{t.noBookings}</div>
-        )}
+        </div>
+
+        <div className="w-80 flex-none flex flex-col gap-4 overflow-y-auto">
+          <div className="rounded-lg border border-rose-200 bg-white p-4 shadow-sm space-y-3">
+            <div className="text-sm font-black text-slate-900 flex items-center justify-between">
+              <span>{lang === "en" ? "Unavailable dates" : "\u505c\u6b62\u9810\u7d04\u65e5\u671f"}</span>
+              <span className="text-xs text-rose-600 font-bold">{blockedBookingDates.length} 個</span>
+            </div>
+            <div className="space-y-2">
+              <label className="block text-xs font-bold text-slate-600">
+                {lang === "en" ? "Date" : "\u65e5\u671f"}
+                <input type="date" className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm font-normal" value={blockedDate} onChange={(e) => setBlockedDate(e.target.value)} />
+              </label>
+              <label className="block text-xs font-bold text-slate-600">
+                {lang === "en" ? "Reason" : "\u539f\u56e0\uff08\u9078\u586b\uff09"}
+                <input className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm font-normal" value={blockedDateReason} onChange={(e) => setBlockedDateReason(e.target.value)} placeholder={lang === "en" ? "Off-site event" : "\u4f8b\u5982\uff1a\u5916\u5834\u6d3b\u52d5"} />
+              </label>
+              <button disabled={!blockedDate} onClick={handleSaveBlockedDate} className="w-full rounded-md bg-rose-600 px-3 py-2 text-sm font-bold text-white disabled:opacity-40">
+                {lang === "en" ? "Block date" : "\u65b0\u589e\u505c\u7d04\u65e5\u671f"}
+              </button>
+              {blockedDateStatus && <p className="text-xs text-slate-500">{blockedDateStatus}</p>}
+            </div>
+            <div className="pt-2 border-t border-rose-100 flex flex-wrap gap-1.5 max-h-40 overflow-y-auto">
+              {blockedBookingDates.length ? blockedBookingDates.map((entry) => (
+                <span key={entry.date} className="inline-flex items-center gap-1 rounded bg-rose-50 px-2 py-1 text-xs font-bold text-rose-800 border border-rose-200">
+                  {entry.date}{entry.reason ? ` (${entry.reason})` : ""}
+                  <button onClick={() => handleDeleteBlockedDate(entry.date)} className="ml-1 text-rose-600 font-black">✕</button>
+                </span>
+              )) : (
+                <span className="text-xs text-slate-400">{lang === "en" ? "No unavailable dates" : "\u76ee\u524d\u7121\u505c\u7d04\u65e5\u671f"}</span>
+              )}
+            </div>
+          </div>
+
+          {isAdminUser && (
+            <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm space-y-3">
+              <div className="text-sm font-black text-slate-900 flex items-center justify-between">
+                <span>{t.staffAccounts}</span>
+                <span className="text-xs text-slate-500 font-bold">{staffAccounts.length} 人</span>
+              </div>
+              <div className="space-y-2">
+                <input type="email" className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm font-normal" placeholder={t.staffEmailPlaceholder} value={newStaffEmail} onChange={(e) => setNewStaffEmail(e.target.value)} />
+                <button onClick={handleAddStaffUser} className="w-full rounded-md bg-slate-900 px-3 py-2 text-sm font-bold text-white">{t.addStaff}</button>
+                {staffManageStatus && <p className="text-xs text-slate-500">{staffManageStatus}</p>}
+              </div>
+              <div className="pt-2 border-t border-slate-100 flex flex-wrap gap-1.5 max-h-36 overflow-y-auto">
+                {staffAccounts.length ? staffAccounts.map((staff) => (
+                  <span key={staff.email} className="rounded bg-slate-100 px-2 py-1 text-xs font-bold text-slate-700 border border-slate-200">{staff.email}</span>
+                )) : (
+                  <span className="text-xs text-slate-400">{t.noStaffAccounts}</span>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div></>
   );

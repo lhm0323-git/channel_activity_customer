@@ -35,6 +35,30 @@ function buildD1Message(bookingId, booking, ackToken) {
   };
 }
 
+function buildD1Email(booking) {
+  const date = booking.appointmentDate || "";
+  const packageName = booking.packageName || "\u5065\u6aa2\u5957\u9910";
+  const serial = booking.checkInSerial || "-";
+  return {
+    subject: "\u5c4f\u57fa\u5065\u6aa2\u5230\u6aa2\u63d0\u9192",
+    text: "\u63d0\u9192\u60a8\u660e\u65e5 " + date + " \u9810\u7d04 " + packageName + "\u3002\n\u5831\u5230\u5e8f\u865f\uff1a" + serial + "\n\u8acb\u651c\u5e36\u5065\u4fdd\u5361\u8207\u8eab\u5206\u8b49\u81f3\u5c4f\u57fa\u5065\u6aa2\u4e2d\u5fc3\u5831\u5230\u3002",
+  };
+}
+
+async function queueD1Email(doc, email) {
+  const booking = doc.data();
+  await admin.firestore().collection("mail").add({
+    to: [email],
+    message: buildD1Email(booking),
+  });
+  await doc.ref.update({
+    d1NoticeStatus: "EMAIL_QUEUED",
+    d1NoticeChannel: "EMAIL",
+    d1NoticeSentAt: admin.firestore.FieldValue.serverTimestamp(),
+    d1NoticeError: null,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+}
 async function pushLineMessage(token, to, message) {
   const response = await fetch("https://api.line.me/v2/bot/message/push", {
     method: "POST",
@@ -54,26 +78,39 @@ async function markD1NoticeFailed(doc, error) {
 
 async function sendD1Notice(doc) {
   const booking = doc.data();
-  if (!booking.lineUserId) {
-    const error = "Booking has no LINE user ID";
-    await markD1NoticeFailed(doc, error);
-    throw new HttpsError("failed-precondition", error);
-  }
+  const email = String(booking.customerEmail || booking.email || "").trim();
   if (booking.status === "CANCELLED") throw new HttpsError("failed-precondition", "Cancelled bookings cannot receive reminders");
-  try {
-    const ackToken = crypto.randomBytes(32).toString("hex");
-    await pushLineMessage(lineChannelAccessToken.value(), booking.lineUserId, buildD1Message(doc.id, booking, ackToken));
-    await doc.ref.update({
-      d1NoticeStatus: "SENT",
-      d1AckToken: ackToken,
-      d1NoticeSentAt: admin.firestore.FieldValue.serverTimestamp(),
-      d1NoticeError: null,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-    });
-  } catch (error) {
-    await markD1NoticeFailed(doc, error);
-    throw new HttpsError("internal", "LINE reminder could not be sent");
+
+  if (booking.lineUserId) {
+    try {
+      const ackToken = crypto.randomBytes(32).toString("hex");
+      await pushLineMessage(lineChannelAccessToken.value(), booking.lineUserId, buildD1Message(doc.id, booking, ackToken));
+      await doc.ref.update({
+        d1NoticeStatus: "SENT",
+        d1NoticeChannel: "LINE",
+        d1AckToken: ackToken,
+        d1NoticeSentAt: admin.firestore.FieldValue.serverTimestamp(),
+        d1NoticeError: null,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      return "LINE";
+    } catch (error) {
+      if (!email) {
+        await markD1NoticeFailed(doc, error);
+        throw new HttpsError("internal", "LINE reminder could not be sent");
+      }
+      console.warn("LINE reminder failed; queueing email for " + doc.id, error.message);
+    }
   }
+
+  if (email) {
+    await queueD1Email(doc, email);
+    return "EMAIL";
+  }
+
+  const error = "Booking has no LINE user ID or email address";
+  await markD1NoticeFailed(doc, error);
+  throw new HttpsError("failed-precondition", error);
 }
 
 async function assertStaff(request) {
@@ -129,7 +166,7 @@ exports.sendD1LineNotices = onSchedule({ schedule: "0 9 * * *", timeZone: "Asia/
     if (booking.status === "CANCELLED") return "cancelled";
     if (booking.status !== "CONFIRMED" || !booking.checkInSerial) return "unconfirmed";
     if (booking.d1NoticeSentAt) return "alreadySent";
-    if (!booking.lineUserId) return "missingLineId";
+    if (!booking.lineUserId && !String(booking.customerEmail || booking.email || "").trim()) return "missingContact";
     try {
       await sendD1Notice(doc);
       return "sent";
