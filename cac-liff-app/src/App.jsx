@@ -3453,22 +3453,9 @@ ${selectedItems
     );
   };
 
-  const MobileCheckInView = () => (
-    <section className="lg:hidden flex-1 overflow-y-auto bg-slate-50 p-4">
-      <div className="mx-auto max-w-lg space-y-4">
-        <div className="rounded-lg border border-slate-200 bg-white p-4">
-          <h1 className="text-lg font-black text-slate-900">{lang === "en" ? "On-site check-in" : "\u73fe\u5834\u5831\u5230"}</h1>
-          <p className="mt-1 text-xs text-slate-500">{lang === "en" ? "Load a date, then enter the printed check-in serial." : "\u8f09\u5165\u7576\u65e5\u540d\u55ae\u5f8c\uff0c\u8f38\u5165\u6c11\u773e\u7684\u5831\u5230\u5e8f\u865f\u3002"}</p>
-          <div className="mt-4 flex gap-2"><input type="date" value={adminStartDate} onChange={(e) => { setAdminStartDate(e.target.value); setAdminEndDate(e.target.value); }} className="min-w-0 flex-1 rounded-md border border-slate-300 px-3 py-3 text-base" /><button onClick={handleLoadAdminBookings} className="rounded-md bg-slate-900 px-4 py-3 text-sm font-bold text-white">{lang === "en" ? "Load" : "\u8f09\u5165"}</button></div>
-        </div>
-        <div className="rounded-lg border border-slate-200 bg-white p-4"><div className="flex gap-2"><input value={checkInQuery} onChange={(e) => setCheckInQuery(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") handleCheckInLookup(); }} placeholder={lang === "en" ? "Example: 0724-001" : "\u4f8b\u5982\uff1a0724-001"} className="min-w-0 flex-1 rounded-md border border-slate-300 px-3 py-3 text-base" /><button onClick={handleCheckInLookup} className="rounded-md bg-emerald-600 px-4 py-3 text-sm font-bold text-white">{lang === "en" ? "Find" : "\u67e5\u8a62"}</button></div>{checkInStatus && <p className="mt-3 text-sm text-slate-600">{checkInStatus}</p>}</div>
-        {checkInTarget && <div className="rounded-lg border border-slate-200 bg-white p-4"><div className="text-xl font-black text-slate-900">{checkInTarget.customerName || checkInTarget.name || "-"}</div><div className="mt-1 text-sm text-slate-600">{checkInTarget.packageName}</div><div className="mt-4 rounded bg-slate-50 p-3"><div className="text-xs text-slate-500">{lang === "en" ? "Check-in serial" : "\u5831\u5230\u5e8f\u865f"}</div><div className="mt-1 text-2xl font-black tracking-wider text-slate-900">{checkInTarget.checkInSerial}</div></div>{checkInTarget.notes && <div className="mt-3 rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">{checkInTarget.notes}</div>}<button disabled={checkInTarget.status === "CANCELLED" || checkInTarget.checkInStatus === "CHECKED_IN"} onClick={handleCompleteCheckIn} className="mt-4 w-full rounded-md bg-emerald-600 px-4 py-4 text-base font-black text-white disabled:opacity-40">{checkInTarget.checkInStatus === "CHECKED_IN" ? (lang === "en" ? "Checked in" : "\u5df2\u5831\u5230") : (lang === "en" ? "Complete check-in" : "\u5b8c\u6210\u5831\u5230\uff0f\u4ea4\u4ed8\u6e05\u55ae")}</button></div>}
-      </div>
-    </section>
-  );
-  const AdminView = () => (<><MobileCheckInView />
-    <div className="hidden lg:flex h-[calc(100vh-73px)] min-h-0 max-w-[1400px] mx-auto w-full flex-col gap-4 p-6 overflow-hidden">
-      <div className="flex-none bg-white border border-slate-200 rounded-lg p-4 flex items-end justify-between gap-3">
+  const AdminView = () => (
+    <div className="min-h-[calc(100vh-73px)] lg:h-[calc(100vh-73px)] min-h-0 max-w-[1400px] mx-auto w-full flex flex-col gap-3 lg:gap-4 p-3 lg:p-6 lg:overflow-hidden">
+      <div className="flex-none bg-white border border-slate-200 rounded-lg p-4 flex flex-col items-stretch gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div className="flex items-end gap-3 flex-wrap">
           <label className="text-xs font-bold text-slate-600">
             {t.startDate}
@@ -3498,8 +3485,8 @@ ${selectedItems
         {adminStatus && <span className="text-xs font-bold text-slate-600 bg-slate-100 px-3 py-2 rounded-md">{adminStatus}</span>}
       </div>
 
-      <div className="flex-1 min-h-0 flex gap-4 overflow-hidden">
-        <div className="flex-1 min-h-0 flex flex-col gap-3 overflow-hidden">
+      <div className="flex-1 min-h-0 flex flex-col lg:flex-row gap-4 lg:overflow-hidden">
+        <div className="flex-1 min-h-0 flex flex-col gap-3 lg:overflow-hidden">
           {pendingChanges.length > 0 && (
             <div className="flex-none bg-amber-50 border border-amber-200 rounded-lg overflow-hidden">
               <div className="px-4 py-2 text-sm font-black text-amber-900 border-b border-amber-200">
@@ -3523,7 +3510,7 @@ ${selectedItems
           )}
 
           <div className="bg-white border border-slate-200 rounded-lg flex-1 min-h-0 flex flex-col overflow-hidden">
-            <div className="flex-none grid grid-cols-12 bg-slate-100 text-xs font-bold text-slate-600 px-4 py-2.5 border-b border-slate-200">
+            <div className="hidden lg:grid flex-none grid-cols-12 bg-slate-100 text-xs font-bold text-slate-600 px-4 py-2.5 border-b border-slate-200">
               <div className="col-span-1"><input type="checkbox" checked={allAdminBookingsSelected} onChange={toggleAllAdminBookings} aria-label={t.selectAllBookings} /></div>
               <div className="col-span-1"><button className="font-bold" onClick={() => toggleAdminSort("date")}>{t.appointmentDate}{adminSortMark("date")}</button></div>
               <div className="col-span-2"><button className="font-bold" onClick={() => toggleAdminSort("customer")}>{t.customer}{adminSortMark("customer")}</button></div>
@@ -3536,19 +3523,25 @@ ${selectedItems
               <div className="col-span-1 text-right">{t.operation}</div>
             </div>
 
-            <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
+            <div className="flex-1 lg:overflow-y-auto divide-y divide-slate-100">
+              <div className="lg:hidden grid grid-cols-2 gap-1 border-b border-slate-200 bg-slate-50 p-2 text-xs font-bold text-slate-600">
+                <button onClick={() => toggleAdminSort("date")} className="rounded border border-slate-200 bg-white px-2 py-1.5 text-left">{t.appointmentDate}{adminSortMark("date")}</button>
+                <button onClick={() => toggleAdminSort("customer")} className="rounded border border-slate-200 bg-white px-2 py-1.5 text-left">{t.customer}{adminSortMark("customer")}</button>
+                <button onClick={() => toggleAdminSort("status")} className="rounded border border-slate-200 bg-white px-2 py-1.5 text-left">{t.status}{adminSortMark("status")}</button>
+                <button onClick={() => toggleAdminSort("amount")} className="rounded border border-slate-200 bg-white px-2 py-1.5 text-left">{t.amount}{adminSortMark("amount")}</button>
+              </div>
               {sortedAdminBookings.length ? sortedAdminBookings.map((booking) => (
-                <div key={booking.bookingId} onClick={() => setAdminDetailBooking(booking)} className="grid grid-cols-12 items-center px-4 py-3 text-sm cursor-pointer hover:bg-slate-50 transition-colors">
+                <div key={booking.bookingId} onClick={() => setAdminDetailBooking(booking)} className="grid grid-cols-2 lg:grid-cols-12 items-center gap-x-3 gap-y-2 px-4 py-3 text-sm cursor-pointer hover:bg-slate-50 transition-colors">
                   <div className="col-span-1"><input type="checkbox" checked={selectedAdminBookingIds.includes(booking.bookingId)} onClick={(e) => e.stopPropagation()} onChange={() => toggleAdminBookingSelection(booking.bookingId)} aria-label={t.customer} /></div>
-                  <div className="col-span-1 text-slate-600">{booking.appointmentDate || "-"}</div>
-                  <div className="col-span-2 font-bold text-slate-800">{booking.customerName || booking.name || booking.customerId}</div>
-                  <div className="col-span-1 text-slate-600 truncate">{booking.customerPhone || booking.phone || "-"}</div>
-                  <div className="col-span-1 text-slate-600">{channelLabel(booking.channel, lang)}</div>
-                  <div className="col-span-2 text-slate-600 truncate">{booking.packageName}</div>
-                  <div className="col-span-1 text-slate-600">{statusLabel(booking.status)}{booking.checkInSerial && <div className="mt-0.5 font-mono text-xs font-bold text-indigo-600">{booking.checkInSerial}</div>}</div>
-                  <div className="col-span-1 text-slate-600">{noticeLabel(booking)}</div>
-                  <div className="col-span-1 font-mono text-slate-700">NT$ {Number(booking.finalPrice || 0).toLocaleString()}</div>
-                  <div className="col-span-1 text-right flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+                  <div className="col-span-1 text-slate-600"><span className="lg:hidden block text-[10px] text-slate-400">{t.appointmentDate}</span>{booking.appointmentDate || "-"}</div>
+                  <div className="col-span-2 font-bold text-slate-800"><span className="lg:hidden block text-[10px] font-normal text-slate-400">{t.customer}</span>{booking.customerName || booking.name || booking.customerId}</div>
+                  <div className="col-span-1 text-slate-600 truncate"><span className="lg:hidden block text-[10px] text-slate-400">{t.phone}</span>{booking.customerPhone || booking.phone || "-"}</div>
+                  <div className="col-span-1 text-slate-600"><span className="lg:hidden block text-[10px] text-slate-400">{t.adminChannel}</span>{channelLabel(booking.channel, lang)}</div>
+                  <div className="col-span-2 text-slate-600 truncate"><span className="lg:hidden block text-[10px] text-slate-400">{t.package}</span>{booking.packageName}</div>
+                  <div className="col-span-1 text-slate-600"><span className="lg:hidden block text-[10px] text-slate-400">{t.status}</span>{statusLabel(booking.status)}{booking.checkInSerial && <div className="mt-0.5 font-mono text-xs font-bold text-indigo-600">{booking.checkInSerial}</div>}</div>
+                  <div className="col-span-1 text-slate-600"><span className="lg:hidden block text-[10px] text-slate-400">{t.notice}</span>{noticeLabel(booking)}</div>
+                  <div className="col-span-1 font-mono text-slate-700"><span className="lg:hidden block font-sans text-[10px] text-slate-400">{t.amount}</span>NT$ {Number(booking.finalPrice || 0).toLocaleString()}</div>
+                  <div className="col-span-1 text-right flex flex-wrap items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
                     {booking.status === "CONFIRMED" ? null : <button onClick={() => handleConfirmBooking(booking)} className="text-xs px-2 py-1 rounded bg-emerald-600 text-white font-bold">{t.confirm}</button>}
                     {booking.status !== "CANCELLED" && <button onClick={() => handleCancelAdminBooking(booking)} className="text-xs px-2 py-1 rounded bg-rose-600 text-white font-bold">{lang === "en" ? "Cancel" : "\u53d6\u6d88"}</button>}
                     {booking.status === "CONFIRMED" && <button onClick={() => handleSendD1Notice(booking)} className="text-xs px-2 py-1 rounded bg-amber-500 text-white font-bold">{lang === "en" ? "Reminder" : "\u63d0\u9192"}</button>}
@@ -3562,7 +3555,7 @@ ${selectedItems
           </div>
         </div>
 
-        <div className="w-80 flex-none flex flex-col gap-4 overflow-y-auto">
+        <div className="w-full lg:w-80 flex-none flex flex-col gap-4 lg:overflow-y-auto">
           <div className="rounded-lg border border-rose-200 bg-white p-4 shadow-sm space-y-3">
             <div className="text-sm font-black text-slate-900 flex items-center justify-between">
               <span>{lang === "en" ? "Unavailable dates" : "\u505c\u6b62\u9810\u7d04\u65e5\u671f"}</span>
@@ -3616,7 +3609,7 @@ ${selectedItems
           )}
         </div>
       </div>
-    </div></>
+    </div>
   );
   return (
     // Root container:

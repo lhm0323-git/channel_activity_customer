@@ -50,3 +50,20 @@
 2. `cac-liff-app/src/App.jsx`
 3. `cac-liff-app/functions/index.js`
 4. `firestore.rules`
+## 2026-07-28
+
+### 完成
+- 移除手機版預約清單自動切換為現場報到簡化畫面的分流。
+- 手機版改用完整預約清單，保留篩選、排序、批次列印、CSV、單筆編輯、確認、取消、提醒與列印操作。
+- 停約日期與員工帳號管理在手機改為清單後方區塊，避免壓縮首屏清單空間。
+
+### 重要檔案
+- `cac-liff-app/src/App.jsx`
+
+### 驗證
+- `npm test` 通過。
+- `npm run build` 通過。
+
+### 目前狀態
+- 只需部署 Hosting。
+- Email 通知功能依使用者決策暫緩，待院方決定 SMTP 或核准的交易型寄信服務。

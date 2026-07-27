@@ -67,3 +67,10 @@ Functions 首次部署前：`cd functions; npm install`，並設定 `LINE_CHANNE
 - `.env*`、`node_modules/`、`dist/`、`.firebase/`
 - `cac-liff-app/artifacts/`、`cac-liff-app/tmp-*.mjs`
 - 使用者提供的 PDF 或 LINE token
+## 2026-07-28 Mobile booking management
+
+- Mobile staff booking management now renders the same booking operations as desktop instead of the former check-in-only view.
+- The mobile list is a labeled two-column responsive layout with sorting and all booking actions preserved.
+- Deployment scope: Hosting only. Do not deploy Functions or Firestore rules for this UI change.
+- Local source remains the Git/deployment source. Daily acceptance should use `https://channel-activity-customer.web.app` rather than localhost.
+- Email D-1 fallback remains deferred because the current Firestore `mail` queue has no supported delivery provider attached.
