@@ -3788,7 +3788,7 @@ ${selectedItems
 
       <div className="flex-none border-b border-slate-200 bg-white px-4 py-3 lg:px-6">
         <div className="flex flex-wrap items-center gap-3">
-          <div className="shrink-0">
+          <div className="hidden shrink-0 lg:block">
             <div className="text-sm font-black text-slate-900">{APP_TITLE}</div>
           </div>
           {mode === "public" && <div className="order-3 w-full min-w-0 lg:order-none lg:w-auto lg:flex-1"><PublicQuickLinks /></div>}

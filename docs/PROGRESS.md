@@ -191,3 +191,6 @@ Deployment completed on 2026-07-28: Functions and Hosting released successfully 
 
 ### Next
 - Verify in a real phone LIFF session that the active list scrolls through all current packages.
+## 2026-07-28 - Mobile LIFF header
+
+- The duplicate in-app title is hidden below the desktop breakpoint because LINE already supplies the LIFF top title on phones. Desktop browser pages retain the app title.

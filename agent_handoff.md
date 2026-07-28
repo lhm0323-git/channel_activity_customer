@@ -141,3 +141,6 @@ Deployment completed on 2026-07-28: Functions and Hosting released successfully 
 - Fixed the phone layout where the deleted-package panel consumed the entire 240px package selector and hid active packages.
 - `PackagesView` now gives the active list a shrinkable scroll region and hides deleted-package recovery below the desktop breakpoint.
 - Verified with `npm test` and `npm run build`; deploy Hosting before acceptance testing in LIFF.
+## 2026-07-28 - Mobile LIFF header
+
+- The duplicate in-app title is hidden below the desktop breakpoint because LINE already supplies the LIFF top title on phones. Desktop browser pages retain the app title.

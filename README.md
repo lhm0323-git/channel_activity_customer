@@ -145,3 +145,6 @@ Deployment completed on 2026-07-28: Functions and Hosting released successfully 
 ## 2026-07-28 - Mobile package tool list
 
 - The staff package tool now prioritizes active packages on phones. The deleted-package recovery panel remains available on desktop and no longer consumes the fixed mobile package-list height.
+## 2026-07-28 - Mobile LIFF header
+
+- The duplicate in-app title is hidden below the desktop breakpoint because LINE already supplies the LIFF top title on phones. Desktop browser pages retain the app title.
