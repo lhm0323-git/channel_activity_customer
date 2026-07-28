@@ -1880,7 +1880,7 @@ ${selectedItems
         </h3>
         <p className="text-xs text-slate-500 mt-1">勾選方塊以進行比較</p>
       </div>
-      <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar">
+      <div className="flex-1 min-h-0 overflow-y-auto p-2 space-y-1 custom-scrollbar">
         {Object.keys(packages).filter((name) => packageFilter === "ALL" || (packageMeta[name]?.audience || inferPackageAudienceName(name)) === packageFilter).map((name) => {
           const isComparing = compareList.includes(name);
           const isActive = packageName === name && compareList.length === 0;
@@ -1933,7 +1933,7 @@ ${selectedItems
       </div>
 
       {deletedPackageNames.length > 0 && (
-        <div className="border-t border-slate-200 bg-slate-50 p-3 max-h-[150px] overflow-y-auto custom-scrollbar flex-none">
+        <div className="hidden lg:block border-t border-slate-200 bg-slate-50 p-3 max-h-[150px] overflow-y-auto custom-scrollbar flex-none">
           <div className="mb-2 flex items-center justify-between gap-2">
             <h4 className="text-xs lg:text-[10px] font-bold text-slate-400 uppercase flex items-center gap-1">
               <Trash2 className="w-4 h-4 lg:w-3 lg:h-3" /> {t.deletedRecent} ({deletedPackageNames.length})

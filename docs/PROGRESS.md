@@ -176,3 +176,18 @@ Deployment completed on 2026-07-28: Functions and Hosting released successfully 
 - On phones, the six public shortcuts now use a fixed three-column, two-row grid. The optional Connect LINE action occupies a full third row, avoiding horizontal scrolling.
 - On desktop, shortcuts remain in one compact first-row strip.
 - Verified with `npm test` and `npm run build`; Hosting deployed successfully.
+## 2026-07-28 - Mobile package tool list
+
+### Completed
+- Fixed the staff package tool on phones: active package rows retain the available scroll area instead of being collapsed by the deleted-package panel.
+- Deleted-package restore remains a desktop-only management action.
+
+### Files
+- `cac-liff-app/src/App.jsx`
+
+### Verification
+- `npm test` passed.
+- `npm run build` passed; existing Vite chunk-size warning remains.
+
+### Next
+- Verify in a real phone LIFF session that the active list scrolls through all current packages.

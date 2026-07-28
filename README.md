@@ -142,3 +142,6 @@ Deployment completed on 2026-07-28: Functions and Hosting released successfully 
 - On phones, the six public shortcuts now use a fixed three-column, two-row grid. The optional Connect LINE action occupies a full third row, avoiding horizontal scrolling.
 - On desktop, shortcuts remain in one compact first-row strip.
 - Verified with `npm test` and `npm run build`; Hosting deployed successfully.
+## 2026-07-28 - Mobile package tool list
+
+- The staff package tool now prioritizes active packages on phones. The deleted-package recovery panel remains available on desktop and no longer consumes the fixed mobile package-list height.
