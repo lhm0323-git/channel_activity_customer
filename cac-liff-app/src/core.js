@@ -404,6 +404,21 @@ export function getVisitInstructions(selectedItems = [], lang = "zh") {
   return [...(BASE_VISIT_INSTRUCTIONS[lang] || BASE_VISIT_INSTRUCTIONS.zh), ...VISIT_INSTRUCTION_RULES.filter((rule) => rule.match.test(source)).map((rule) => rule[lang] || rule.zh)];
 }
 
+export function taipeiToday(now = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Taipei",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(now).reduce((result, part) => ({ ...result, [part.type]: part.value }), {});
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
+export function upcomingBookings(bookings = [], now = new Date()) {
+  const today = taipeiToday(now);
+  return bookings.filter((booking) => booking.status !== "CANCELLED" && String(booking.appointmentDate || "") >= today);
+}
+
 export function makeFirestoreSafeId(value) {
   return String(value || "")
     .trim()

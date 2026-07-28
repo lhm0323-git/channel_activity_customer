@@ -14,3 +14,14 @@ export async function initLiffProfile() {
   const profile = { ...await liff.getProfile(), accessToken: liff.getAccessToken() || "" };
   return { status: "READY", profile, message: `已登入 LINE：${profile.displayName}` };
 }
+export async function loginWithLine() {
+  const liffId = import.meta.env.VITE_LIFF_ID;
+  if (!liffId) throw new Error("LINE login is not configured");
+  const liff = (await import("@line/liff")).default;
+  await liff.init({ liffId });
+  if (!liff.isLoggedIn()) {
+    liff.login({ redirectUri: window.location.href });
+    return null;
+  }
+  return { ...await liff.getProfile(), accessToken: liff.getAccessToken() || "" };
+}

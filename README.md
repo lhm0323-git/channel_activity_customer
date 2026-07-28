@@ -106,3 +106,27 @@ The public SPA now renders these LIFF deep-link views on both LIFF and direct we
 - Opening `?view=my-bookings`, `?view=checkin`, or `?view=prep` inside LIFF now verifies the current LINE access token through a Cloud Function, then reclaims only bookings with that matching `lineUserId` for the current Firebase session.
 - `?view=prep` shows fixed general preparation instructions plus only the warnings that match the booking's selected examination items. The check-in serial remains on the check-in view.
 - Direct web access without LINE identity remains restricted to bookings created in that same browser session; it does not expose LINE bookings.
+## 2026-07-28 - Customer LINE binding and upcoming visit views
+
+### Completed
+- My Bookings and Visit Instructions now show only non-cancelled bookings scheduled for today or later in Asia/Taipei.
+- Visit Instructions keeps the package-specific preparation list and now shows the large check-in serial for every booking.
+- Desktop customers can choose Connect LINE before booking; email remains the fallback when LINE is unavailable.
+- Staff-created bookings deliberately omit the staff LINE identity. After saving, staff receive a one-time LIFF link to pass to the customer; opening it in the customer's LINE account securely binds that booking for My Bookings and LINE D-1 reminders.
+
+### Files
+- `cac-liff-app/src/App.jsx`
+- `cac-liff-app/src/core.js`
+- `cac-liff-app/src/core.test.js`
+- `cac-liff-app/src/liff.js`
+- `cac-liff-app/src/firebase.js`
+- `cac-liff-app/functions/index.js`
+
+### Verification
+- `npm test` passed.
+- `npm run build` passed. Existing Vite chunk-size warning remains.
+- `node --check functions/index.js` passed.
+
+### Deployment
+- Deploy Functions and Hosting together: `firebase deploy --only functions,hosting --project channel-activity-customer`.
+Deployment completed on 2026-07-28: Functions and Hosting released successfully to `https://channel-activity-customer.web.app`.

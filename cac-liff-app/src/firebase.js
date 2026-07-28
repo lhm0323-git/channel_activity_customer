@@ -105,6 +105,7 @@ export async function saveBooking(payload, { allowBlockedDate = false } = {}) {
 
   const user = await ensurePublicUser();
   const now = serverTimestamp();
+  const claimToken = payload.booking.lineUserId ? "" : Array.from(crypto.getRandomValues(new Uint8Array(24)), (byte) => byte.toString(16).padStart(2, "0")).join("");
   await setDoc(
     doc(db, "customers", payload.customer.customerId),
     { ...payload.customer, ownerUid: user.uid, createdAt: now, updatedAt: now },
@@ -113,12 +114,13 @@ export async function saveBooking(payload, { allowBlockedDate = false } = {}) {
 
   const bookingRef = await addDoc(collection(db, "bookings"), {
     ...payload.booking,
+    ...(claimToken ? { customerClaimToken: claimToken } : {}),
     ownerUid: user.uid,
     createdAt: now,
     updatedAt: now,
   });
 
-  return { bookingId: bookingRef.id, localOnly: false };
+  return { bookingId: bookingRef.id, claimToken, localOnly: false };
 }
 
 function localBlockedDates() {
@@ -230,6 +232,12 @@ export async function listMyBookings(lineAccessToken = "") {
   const q = query(collection(db, "bookings"), where("ownerUid", "==", user.uid));
   const snapshot = await getDocs(q);
   return sortBookings(snapshot.docs.map((docSnap) => ({ bookingId: docSnap.id, ...docSnap.data() })));
+}
+
+export async function claimBookingWithLine(bookingId, claimToken, accessToken) {
+  if (!db || !functions) throw new Error("LINE booking claim is unavailable");
+  await ensurePublicUser();
+  return httpsCallable(functions, "claimBookingWithLine")({ bookingId, claimToken, accessToken });
 }
 
 export async function requestBookingChange(change) {

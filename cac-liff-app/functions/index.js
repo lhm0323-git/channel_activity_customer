@@ -140,6 +140,43 @@ exports.claimMyLineBookings = onCall(async (request) => {
   if (!snapshot.empty) await batch.commit();
   return { claimed: snapshot.size };
 });
+exports.claimBookingWithLine = onCall(async (request) => {
+  if (!request.auth?.uid) throw new HttpsError("unauthenticated", "A signed-in session is required");
+  const bookingId = String(request.data?.bookingId || "").trim();
+  const claimToken = String(request.data?.claimToken || "").trim();
+  if (!bookingId || !claimToken || claimToken.length !== 48) throw new HttpsError("invalid-argument", "A valid booking claim link is required");
+  const profile = await verifyLineAccessToken(request.data?.accessToken);
+  const bookingRef = admin.firestore().doc("bookings/" + bookingId);
+  await admin.firestore().runTransaction(async (transaction) => {
+    const bookingSnap = await transaction.get(bookingRef);
+    if (!bookingSnap.exists) throw new HttpsError("not-found", "Booking not found");
+    const booking = bookingSnap.data();
+    const savedToken = String(booking.customerClaimToken || "");
+    if (savedToken.length !== claimToken.length || !crypto.timingSafeEqual(Buffer.from(savedToken), Buffer.from(claimToken))) {
+      throw new HttpsError("permission-denied", "This booking claim link is invalid or has already been used");
+    }
+    transaction.update(bookingRef, {
+      ownerUid: request.auth.uid,
+      lineUserId: profile.userId,
+      lineDisplayName: profile.displayName || "",
+      notificationChannel: "LINE",
+      customerClaimToken: admin.firestore.FieldValue.delete(),
+      lineClaimedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    transaction.set(admin.firestore().doc("customers/" + profile.userId), {
+      customerId: profile.userId,
+      name: booking.customerName || profile.displayName || "",
+      phone: booking.customerPhone || "",
+      email: booking.customerEmail || booking.email || "",
+      lineUserId: profile.userId,
+      ownerUid: request.auth.uid,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+  });
+  return { claimed: true };
+});
+
 exports.acknowledgeD1LineNotice = onCall(async (request) => {
   const bookingId = String(request.data && request.data.bookingId || "").trim();
   const ackToken = String(request.data && request.data.ackToken || "").trim();

@@ -100,3 +100,27 @@ Functions 首次部署前：`cd functions; npm install`，並設定 `LINE_CHANNE
 - `src/liff.js` keeps LIFF access token in memory as `lineProfile.accessToken`; do not persist it.
 - `?view=prep` uses `CheckInInfoPanel prepOnly`, loads the same verified customer bookings, hides serial, and shows base plus item-specific instructions.
 - Email-only cross-device booking lookup remains intentionally deferred: it needs an emailed signed lookup link or another verified email authentication path; do not expose email-based Firestore search from the client.
+## 2026-07-28 - Customer LINE binding and upcoming visit views
+
+### Completed
+- My Bookings and Visit Instructions now show only non-cancelled bookings scheduled for today or later in Asia/Taipei.
+- Visit Instructions keeps the package-specific preparation list and now shows the large check-in serial for every booking.
+- Desktop customers can choose Connect LINE before booking; email remains the fallback when LINE is unavailable.
+- Staff-created bookings deliberately omit the staff LINE identity. After saving, staff receive a one-time LIFF link to pass to the customer; opening it in the customer's LINE account securely binds that booking for My Bookings and LINE D-1 reminders.
+
+### Files
+- `cac-liff-app/src/App.jsx`
+- `cac-liff-app/src/core.js`
+- `cac-liff-app/src/core.test.js`
+- `cac-liff-app/src/liff.js`
+- `cac-liff-app/src/firebase.js`
+- `cac-liff-app/functions/index.js`
+
+### Verification
+- `npm test` passed.
+- `npm run build` passed. Existing Vite chunk-size warning remains.
+- `node --check functions/index.js` passed.
+
+### Deployment
+- Deploy Functions and Hosting together: `firebase deploy --only functions,hosting --project channel-activity-customer`.
+Deployment completed on 2026-07-28: Functions and Hosting released successfully to `https://channel-activity-customer.web.app`.

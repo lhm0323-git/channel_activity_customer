@@ -48,8 +48,9 @@ import {
   sortPublicComparisonCards,
   parseBookingImportCsv,
   parseHealthCsv,
+  upcomingBookings,
 } from "./core.js";
-import { initLiffProfile } from "./liff.js";
+import { initLiffProfile, loginWithLine } from "./liff.js";
 import {
   QUESTIONNAIRES,
   getQuestionnaireById,
@@ -64,6 +65,7 @@ import {
   deleteBookingBlockedDate,
   cancelBooking,
   checkInBooking,
+  claimBookingWithLine,
   sendD1Notice,
   confirmBooking,
   deleteManagedPackage,
@@ -309,6 +311,21 @@ function isUsableCsvData(value) {
   }
 }
 const PUBLIC_VIEWS = new Set(["packages", "addon-items", "my-bookings", "prep", "checkin", "followup", "contact"]);
+
+function readLiffQueryParam(name) {
+  if (typeof window === "undefined") return "";
+  const params = new URLSearchParams(window.location.search);
+  if (params.get(name)) return params.get(name);
+  const liffState = params.get("liff.state") || "";
+  const query = liffState.includes("?") ? liffState.slice(liffState.indexOf("?") + 1) : liffState.replace(/^#/, "");
+  return new URLSearchParams(query).get(name) || "";
+}
+
+function customerLineClaimLink(bookingId, claimToken) {
+  const liffId = import.meta.env.VITE_LIFF_ID;
+  if (!liffId || !bookingId || !claimToken) return "";
+  return `https://liff.line.me/${liffId}?view=my-bookings&claimBooking=${encodeURIComponent(bookingId)}&claimToken=${encodeURIComponent(claimToken)}`;
+}
 
 function readPublicViewFromUrl() {
   if (typeof window === "undefined") return "packages";
@@ -1329,6 +1346,19 @@ ${selectedItems
     }
   };
 
+  const handleLineLogin = async () => {
+    try {
+      setLiffMessage(lang === "en" ? "Connecting LINE..." : "正在連結 LINE...");
+      const profile = await loginWithLine();
+      if (profile) {
+        setLineProfile(profile);
+        setLiffMessage(`${lang === "en" ? "Connected LINE: " : "已連結 LINE："}${profile.displayName}`);
+      }
+    } catch (error) {
+      setLiffMessage(`${lang === "en" ? "LINE connection failed: " : "LINE 連結失敗："}${error.message}`);
+    }
+  };
+
   const handleStaffLogout = async () => {
     await signOutStaff();
     setStaffUser(null);
@@ -1353,7 +1383,7 @@ ${selectedItems
       setBookingStatus("寫入預約中...");
       const payload = buildBookingPayload({
         formData: { ...bookingForm, channel: audienceToChannel(packageMeta[packageName]?.audience || inferPackageAudienceName(packageName)) },
-        lineProfile,
+        lineProfile: staffMode ? null : lineProfile,
         packageName,
         selectedItems,
         listPrice: listPriceTotal,
@@ -1361,6 +1391,9 @@ ${selectedItems
         finalPrice,
       });
       const result = await saveBooking(payload);
+      if (staffMode && result.claimToken) {
+        window.prompt(lang === "en" ? "Send this LINE linking link to the customer:" : "請將此 LINE 綁定連結傳給客戶：", customerLineClaimLink(result.bookingId, result.claimToken));
+      }
       const bookingForChecklist = { ...payload.booking, bookingId: result.bookingId };
       await saveChecklist(result.bookingId, buildChecklistPayload(bookingForChecklist));
       setBookingStatus(result.localOnly ? `已暫存本機預約：${result.bookingId}` : `預約已建立：${result.bookingId}`);
@@ -1377,8 +1410,20 @@ ${selectedItems
   const handleLoadMyBookings = async () => {
     try {
       setMyBookingStatus(lang === "en" ? "Loading..." : "\u8b80\u53d6\u4e2d...");
+      const claimBooking = readLiffQueryParam("claimBooking");
+      const claimToken = readLiffQueryParam("claimToken");
+      if (claimBooking || claimToken) {
+        if (!lineProfile?.accessToken) throw new Error(lang === "en" ? "Open this link from the LINE official account" : "請從 LINE 官方帳號開啟此綁定連結");
+        await claimBookingWithLine(claimBooking, claimToken, lineProfile.accessToken);
+        const url = new URL(window.location.href);
+        url.searchParams.set("view", "my-bookings");
+        url.searchParams.delete("claimBooking");
+        url.searchParams.delete("claimToken");
+        url.searchParams.delete("liff.state");
+        window.history.replaceState({}, "", url);
+      }
       const bookings = await listMyBookings(lineProfile?.accessToken);
-      const activeBookings = bookings.filter((booking) => booking.status !== "CANCELLED");
+      const activeBookings = upcomingBookings(bookings);
       setMyBookings(activeBookings);
       const browserHint = lineProfile ? "" : (lang === "en" ? ". Open from the LINE official account to view LINE bookings." : "。若預約由 LINE 建立，請從官方帳號開啟本頁查詢。");
       setMyBookingStatus(`${lang === "en" ? "Loaded" : "\u5df2\u8f09\u5165"} ${activeBookings.length} ${lang === "en" ? "booking(s)" : "\u7b46\u9810\u7d04"}${browserHint}`);
@@ -2376,7 +2421,7 @@ ${selectedItems
   };
 
   const CheckInInfoPanel = ({ prepOnly = false }) => {
-    const active = myBookings.filter((booking) => booking.status !== "CANCELLED");
+    const active = upcomingBookings(myBookings);
     return (
       <div className="bg-white border border-slate-200 rounded-lg p-5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -2394,9 +2439,9 @@ ${selectedItems
                 <span className="text-lg">{booking.packageName}</span>
                 <span className="text-sm font-normal text-slate-600">{booking.appointmentDate}</span>
               </div>
-              {!prepOnly && (<div className="mt-3 rounded-lg bg-indigo-900 text-white p-4 text-center shadow-md">
+              {(<div className="mt-3 rounded-lg bg-indigo-900 text-white p-4 text-center shadow-md">
                 <div className="text-xs font-bold text-indigo-200 tracking-wider uppercase">{lang === "en" ? "Check-in serial" : "\u5831\u5230\u5e8f\u865f"}</div>
-                <div className="mt-1 text-3xl font-black tracking-widest font-mono text-amber-300">
+                <div className="mt-1 text-4xl sm:text-5xl font-black tracking-widest font-mono text-amber-300">
                   {booking.checkInSerial || (lang === "en" ? "Awaiting confirmation" : "\u5f85\u5065\u6aa2\u4e2d\u5fc3\u78ba\u8a8d")}
                 </div>
               </div>)}
@@ -2694,13 +2739,23 @@ ${selectedItems
         <form className="w-full max-w-lg rounded-lg bg-white shadow-xl" onClick={(event) => event.stopPropagation()} onSubmit={(event) => { event.preventDefault(); handleSubmitBooking(); }}>
           <div className="flex items-start justify-between border-b border-slate-100 p-4"><div><h2 className="text-lg font-black text-slate-900">{t.bookingTitle}</h2><p className="mt-1 text-sm text-slate-600">{packageName || "-"} / NT$ {Number(finalPrice || 0).toLocaleString()}</p></div><button type="button" onClick={() => setShowBookingModal(false)} className="rounded-md p-2 text-slate-500"><X className="h-5 w-5" /></button></div>
           <div className="space-y-3 p-4">
+            {staffMode ? (
+              <p className="rounded-md bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">{"\u54e1\u5de5\u4ee3\u8a02\u4e0d\u6703\u7d81\u5b9a\u767b\u5165\u54e1\u5de5\u7684 LINE\uff1b\u5132\u5b58\u5f8c\u6703\u63d0\u4f9b\u5ba2\u6236\u81ea\u884c\u9023\u7d50 LINE \u7684\u9023\u7d50\u3002"}</p>
+            ) : lineProfile ? (
+              <p className="rounded-md bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-800">{"\u5df2\u9023\u7d50 LINE\uff0c\u5c07\u4ee5 LINE \u50b3\u9001\u5230\u6aa2\u63d0\u9192\u3002"}</p>
+            ) : (
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                <span>{"\u5efa\u8b70\u5148\u9023\u7d50 LINE\uff1b\u672a\u4f7f\u7528 LINE \u8005\u53ef\u6539\u4ee5 Email \u9810\u7d04\u3002"}</span>
+                <button type="button" onClick={handleLineLogin} className="rounded bg-emerald-600 px-3 py-1.5 font-bold text-white">{"\u9023\u7d50 LINE"}</button>
+              </div>
+            )}
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <label className="block text-xs font-bold text-slate-600">{t.name}<input required className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-base font-normal" value={bookingForm.name} onChange={(e) => setBookingField("name", e.target.value)} /></label>
               <label className="block text-xs font-bold text-slate-600">{t.phone}<input required inputMode="tel" className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-base font-normal" value={bookingForm.phone} onChange={(e) => setBookingField("phone", e.target.value)} /></label>
               <label className="block text-xs font-bold text-slate-600">{t.idNumber}<input required className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-base font-normal" value={bookingForm.idNumber} onChange={(e) => setBookingField("idNumber", e.target.value)} /></label>
               <label className="block text-xs font-bold text-slate-600">
-                {t.email} {!lineProfile && <span className="text-rose-600 font-bold">* ({lang === "en" ? "Required for non-LINE" : "無 LINE 身份時必填"})</span>}
-                <input type="email" required={!lineProfile} placeholder={!lineProfile ? (lang === "en" ? "Required for email reminder" : "\u8acb\u8f38\u5165 Email \u4ee5\u63a5\u6536\u5230\u6aa2\u63d0\u9192") : ""} className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-base font-normal" value={bookingForm.email} onChange={(e) => setBookingField("email", e.target.value)} />
+                {t.email} {(!lineProfile || staffMode) && <span className="text-rose-600 font-bold">* ({lang === "en" ? "Required for non-LINE" : "無 LINE 身份時必填"})</span>}
+                <input type="email" required={!lineProfile || staffMode} placeholder={!lineProfile || staffMode ? (lang === "en" ? "Required for email reminder" : "\u8acb\u8f38\u5165 Email \u4ee5\u63a5\u6536\u5230\u6aa2\u63d0\u9192") : ""} className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-base font-normal" value={bookingForm.email} onChange={(e) => setBookingField("email", e.target.value)} />
               </label>
               <label className="block text-xs font-bold text-slate-600">{t.appointmentDate}<input required type="date" className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-base font-normal" value={bookingForm.appointmentDate} onChange={(e) => setBookingField("appointmentDate", e.target.value)} />{disabled && <span className="mt-1 block text-xs font-bold text-rose-600">{lang === "en" ? "This date is unavailable" : "\u6b64\u65e5\u671f\u66ab\u505c\u9810\u7d04"}</span>}</label>
             </div>
