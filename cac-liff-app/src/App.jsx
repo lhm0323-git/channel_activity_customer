@@ -3455,19 +3455,19 @@ ${selectedItems
 
   const AdminView = () => (
     <div className="min-h-[calc(100vh-73px)] lg:h-[calc(100vh-73px)] min-h-0 max-w-[1400px] mx-auto w-full flex flex-col gap-3 lg:gap-4 p-3 lg:p-6 lg:overflow-hidden">
-      <div className="flex-none bg-white border border-slate-200 rounded-lg p-4 flex flex-col items-stretch gap-3 lg:flex-row lg:items-end lg:justify-between">
-        <div className="flex items-end gap-3 flex-wrap">
+      <div className="admin-toolbar flex-none bg-white border border-slate-200 rounded-lg p-4 flex flex-col items-stretch gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div className="admin-toolbar-controls flex items-end gap-3 flex-wrap">
           <label className="text-xs font-bold text-slate-600">
             {t.startDate}
-            <input type="date" className="block mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm font-normal" value={adminStartDate} onChange={(e) => setAdminStartDate(e.target.value)} />
+            <input type="date" className="block mt-1 w-full min-w-0 rounded-md border border-slate-300 px-3 py-2 text-sm font-normal" value={adminStartDate} onChange={(e) => setAdminStartDate(e.target.value)} />
           </label>
           <label className="text-xs font-bold text-slate-600">
             {t.endDate}
-            <input type="date" className="block mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm font-normal" value={adminEndDate} onChange={(e) => setAdminEndDate(e.target.value)} />
+            <input type="date" className="block mt-1 w-full min-w-0 rounded-md border border-slate-300 px-3 py-2 text-sm font-normal" value={adminEndDate} onChange={(e) => setAdminEndDate(e.target.value)} />
           </label>
           <label className="text-xs font-bold text-slate-600">
             {t.adminChannel}
-            <select className="block mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm font-normal" value={adminChannel} onChange={(e) => setAdminChannel(e.target.value)}>
+            <select className="block mt-1 w-full min-w-0 rounded-md border border-slate-300 px-3 py-2 text-sm font-normal" value={adminChannel} onChange={(e) => setAdminChannel(e.target.value)}>
               <option value="ALL">{t.allChannels}</option>
               {CHANNELS.map((channel) => (
                 <option key={channel.value} value={channel.value}>{channel.label}</option>
@@ -3482,7 +3482,7 @@ ${selectedItems
             <input type="file" accept=".csv,text/csv" className="hidden" onChange={handleImportBookingCsv} />
           </label>
         </div>
-        {adminStatus && <span className="text-xs font-bold text-slate-600 bg-slate-100 px-3 py-2 rounded-md">{adminStatus}</span>}
+        {adminStatus && <span className="admin-status text-xs font-bold text-slate-600 bg-slate-100 px-3 py-2 rounded-md">{adminStatus}</span>}
       </div>
 
       <div className="flex-1 min-h-0 flex flex-col lg:flex-row gap-4 lg:overflow-hidden">
@@ -3531,7 +3531,7 @@ ${selectedItems
                 <button onClick={() => toggleAdminSort("amount")} className="rounded border border-slate-200 bg-white px-2 py-1.5 text-left">{t.amount}{adminSortMark("amount")}</button>
               </div>
               {sortedAdminBookings.length ? sortedAdminBookings.map((booking) => (
-                <div key={booking.bookingId} onClick={() => setAdminDetailBooking(booking)} className="grid grid-cols-2 lg:grid-cols-12 items-center gap-x-3 gap-y-2 px-4 py-3 text-sm cursor-pointer hover:bg-slate-50 transition-colors">
+                <div key={booking.bookingId} onClick={() => setAdminDetailBooking(booking)} className="admin-booking-row grid grid-cols-2 lg:grid-cols-12 items-center gap-x-3 gap-y-2 px-4 py-3 text-sm cursor-pointer hover:bg-slate-50 transition-colors">
                   <div className="col-span-1"><input type="checkbox" checked={selectedAdminBookingIds.includes(booking.bookingId)} onClick={(e) => e.stopPropagation()} onChange={() => toggleAdminBookingSelection(booking.bookingId)} aria-label={t.customer} /></div>
                   <div className="col-span-1 text-slate-600"><span className="lg:hidden block text-[10px] text-slate-400">{t.appointmentDate}</span>{booking.appointmentDate || "-"}</div>
                   <div className="col-span-2 font-bold text-slate-800"><span className="lg:hidden block text-[10px] font-normal text-slate-400">{t.customer}</span>{booking.customerName || booking.name || booking.customerId}</div>
@@ -3811,7 +3811,26 @@ ${selectedItems
       </>}
 
       <style>{`
-        @media (min-width: 1024px) {
+        @media (max-width: 639px) and (orientation: portrait) {
+          .admin-toolbar { padding: 0.75rem; }
+          .admin-toolbar-controls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; gap: 0.5rem; align-items: end; }
+          .admin-toolbar-controls > label, .admin-toolbar-controls > button { min-width: 0; width: 100%; }
+          .admin-toolbar-controls > label:nth-child(3) { grid-column: span 2; }
+          .admin-toolbar-controls > button, .admin-toolbar-controls > label:last-of-type { padding: 0.6rem 0.35rem; text-align: center; }
+          .admin-status { align-self: stretch; padding: 0.5rem 0.6rem; }
+          .admin-booking-row { grid-template-columns: 24px minmax(0, 1fr) minmax(0, 1fr) !important; gap: 0.25rem 0.5rem; padding: 0.65rem 0.75rem; }
+          .admin-booking-row .lg\\:hidden { display: none !important; }
+          .admin-booking-row > div:nth-child(1) { grid-column: 1; grid-row: 1 / span 6; align-self: start; }
+          .admin-booking-row > div:nth-child(2) { grid-column: 2 / span 2; grid-row: 1; }
+          .admin-booking-row > div:nth-child(3) { grid-column: 2 / span 2; grid-row: 2; }
+          .admin-booking-row > div:nth-child(4) { grid-column: 2; grid-row: 3; }
+          .admin-booking-row > div:nth-child(5) { grid-column: 3; grid-row: 3; }
+          .admin-booking-row > div:nth-child(6) { grid-column: 2 / span 2; grid-row: 4; }
+          .admin-booking-row > div:nth-child(7) { grid-column: 2; grid-row: 5; }
+          .admin-booking-row > div:nth-child(8) { grid-column: 3; grid-row: 5; }
+          .admin-booking-row > div:nth-child(9) { grid-column: 2; grid-row: 6; }
+          .admin-booking-row > div:nth-child(10) { grid-column: 3; grid-row: 6; justify-content: flex-start; }
+        }        @media (min-width: 1024px) {
           .item-grid { grid-template-columns: minmax(0, 0.75fr) minmax(0, 1.5fr) minmax(0, 3.25fr) minmax(0, 1.5fr) minmax(0, 5fr); }
           .item-grid > .item-cell { grid-column: span 1 / span 1 !important; min-width: 0; }
         }        .custom-scrollbar::-webkit-scrollbar { width: 4px; height: 4px; }

@@ -67,3 +67,18 @@
 ### 目前狀態
 - 只需部署 Hosting。
 - Email 通知功能依使用者決策暫緩，待院方決定 SMTP 或核准的交易型寄信服務。
+## 2026-07-28 - Portrait booking list density
+
+### Completed
+- Reworked the staff booking list for narrow portrait phones without changing tablet or desktop behavior.
+- Date filters now use the full available cell width; booking rows suppress repeated labels and use a compact three-column grid.
+
+### Files
+- `cac-liff-app/src/App.jsx`
+
+### Verification
+- `npm test` passed.
+- `npm run build` passed. The existing Vite chunk-size warning remains.
+
+### Next
+- Validate the deployed list on a real portrait phone and adjust only if the clinic requires larger tap targets.

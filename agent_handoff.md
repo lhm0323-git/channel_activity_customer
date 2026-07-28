@@ -74,3 +74,8 @@ Functions 首次部署前：`cd functions; npm install`，並設定 `LINE_CHANNE
 - Deployment scope: Hosting only. Do not deploy Functions or Firestore rules for this UI change.
 - Local source remains the Git/deployment source. Daily acceptance should use `https://channel-activity-customer.web.app` rather than localhost.
 - Email D-1 fallback remains deferred because the current Firestore `mail` queue has no supported delivery provider attached.
+## 2026-07-28 - Portrait mobile booking list
+
+- Source change: `cac-liff-app/src/App.jsx` adds a portrait-only breakpoint (`max-width: 639px` plus portrait orientation) for the staff booking list.
+- Narrow phones now show full dates and compact booking rows. Tablets, landscape phones, and desktop retain the prior wider list.
+- Validation: `npm test` and `npm run build` passed. Deploy Hosting only for this UI change.

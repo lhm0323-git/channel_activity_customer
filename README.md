@@ -86,3 +86,8 @@ VITE_STAFF_EMAILS=lhm0323@gmail.com
 - 現場報到簡化頁已不再作為手機版預約清單的預設畫面。
 - 本機原始碼保留作為版本控管、建置與部署來源；日常驗收使用正式網址，不再以 localhost 作業。
 - Email 提醒暫緩：目前僅能排入 Firestore `mail` 佇列，尚未串接正式寄信服務。
+## 2026-07-28 Mobile booking list
+
+- Portrait phones (under 640px) use a compact booking-list layout: full date, customer, package, phone, channel, status, notice, amount, and actions remain available without repeated field labels.
+- Landscape phones, tablets, and desktop keep the wider management layout.
+- Acceptance target remains `https://channel-activity-customer.web.app`; local source is retained only for development and deployment.
