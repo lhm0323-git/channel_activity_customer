@@ -1,5 +1,6 @@
 const crypto = require("crypto");
 const admin = require("firebase-admin");
+const { FieldValue } = require("firebase-admin/firestore");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
@@ -54,9 +55,9 @@ async function queueD1Email(doc, email) {
   await doc.ref.update({
     d1NoticeStatus: "EMAIL_QUEUED",
     d1NoticeChannel: "EMAIL",
-    d1NoticeSentAt: admin.firestore.FieldValue.serverTimestamp(),
+    d1NoticeSentAt: FieldValue.serverTimestamp(),
     d1NoticeError: null,
-    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
   });
 }
 async function pushLineMessage(token, to, message) {
@@ -72,7 +73,7 @@ async function markD1NoticeFailed(doc, error) {
   await doc.ref.update({
     d1NoticeStatus: "FAILED",
     d1NoticeError: String(error && error.message || error).slice(0, 500),
-    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
   });
 }
 
@@ -89,9 +90,9 @@ async function sendD1Notice(doc) {
         d1NoticeStatus: "SENT",
         d1NoticeChannel: "LINE",
         d1AckToken: ackToken,
-        d1NoticeSentAt: admin.firestore.FieldValue.serverTimestamp(),
+        d1NoticeSentAt: FieldValue.serverTimestamp(),
         d1NoticeError: null,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
       });
       return "LINE";
     } catch (error) {
@@ -244,7 +245,7 @@ exports.createBooking = onCall(async (request) => {
   const customerRef = db.doc("customers/" + customerId);
   const blockedRef = db.doc("bookingBlockedDates/" + appointmentDate);
   const claimToken = lineProfile ? "" : crypto.randomBytes(24).toString("hex");
-  const now = admin.firestore.FieldValue.serverTimestamp();
+  const now = FieldValue.serverTimestamp();
   const status = isStaff && ["BOOKED", "CANCELLED"].includes(text(bookingInput.status, 20)) ? text(bookingInput.status, 20) : "BOOKED";
   const booking = {
     customerId, customerName, customerPhone, customerEmail,
@@ -281,7 +282,7 @@ exports.cancelBooking = onCall(async (request) => {
     const snap = await transaction.get(bookingRef);
     if (!snap.exists) throw new HttpsError("not-found", "Booking not found");
     if (!staff && snap.data().ownerUid !== request.auth.uid) throw new HttpsError("permission-denied", "You can only cancel your own booking");
-    transaction.update(bookingRef, { status: "CANCELLED", cancelledAt: admin.firestore.FieldValue.serverTimestamp(), updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+    transaction.update(bookingRef, { status: "CANCELLED", cancelledAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
   });
   return { cancelled: true };
 });
@@ -305,7 +306,7 @@ exports.requestBookingChange = onCall(async (request) => {
       bookingId, customerName: booking.customerName || "", packageName: booking.packageName || "",
       currentAppointmentDate: booking.appointmentDate || "", requestedAppointmentDate,
       notes: text(change.notes, 2000), status: "pending", ownerUid: request.auth.uid,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(), updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(),
     });
   });
   return { requestId: requestRef.id };
@@ -327,7 +328,7 @@ exports.saveMyQuestionnaireResponse = onCall(async (request) => {
     if (booking.ownerUid !== request.auth.uid) throw new HttpsError("permission-denied", "You can only update your own questionnaire");
     transaction.set(responseRef, {
       bookingId, customerId: booking.customerId || "", questionnaireId, answers,
-      ownerUid: request.auth.uid, updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      ownerUid: request.auth.uid, updatedAt: FieldValue.serverTimestamp(),
     }, { merge: true });
   });
   return { responseId: responseRef.id };
@@ -337,7 +338,7 @@ exports.claimMyLineBookings = onCall(async (request) => {
   const profile = await verifyLineAccessToken(request.data?.accessToken);
   const snapshot = await admin.firestore().collection("bookings").where("lineUserId", "==", profile.userId).get();
   const batch = admin.firestore().batch();
-  snapshot.docs.forEach((booking) => batch.update(booking.ref, { ownerUid: request.auth.uid, updatedAt: admin.firestore.FieldValue.serverTimestamp() }));
+  snapshot.docs.forEach((booking) => batch.update(booking.ref, { ownerUid: request.auth.uid, updatedAt: FieldValue.serverTimestamp() }));
   if (!snapshot.empty) await batch.commit();
   return { claimed: snapshot.size };
 });
@@ -362,9 +363,9 @@ exports.claimBookingWithLine = onCall(async (request) => {
       lineUserId: profile.userId,
       lineDisplayName: profile.displayName || "",
       notificationChannel: "LINE",
-      customerClaimToken: admin.firestore.FieldValue.delete(),
-      lineClaimedAt: admin.firestore.FieldValue.serverTimestamp(),
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      customerClaimToken: FieldValue.delete(),
+      lineClaimedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
     });
     transaction.set(admin.firestore().doc("customers/" + profile.userId), {
       customerId: profile.userId,
@@ -373,7 +374,7 @@ exports.claimBookingWithLine = onCall(async (request) => {
       email: booking.customerEmail || booking.email || "",
       lineUserId: profile.userId,
       ownerUid: request.auth.uid,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
     }, { merge: true });
   });
   return { claimed: true };
@@ -397,9 +398,9 @@ exports.acknowledgeD1LineNotice = onCall(async (request) => {
 
   await bookingRef.update({
     d1NoticeStatus: "ACKNOWLEDGED",
-    d1AcknowledgedAt: admin.firestore.FieldValue.serverTimestamp(),
-    d1AckToken: admin.firestore.FieldValue.delete(),
-    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    d1AcknowledgedAt: FieldValue.serverTimestamp(),
+    d1AckToken: FieldValue.delete(),
+    updatedAt: FieldValue.serverTimestamp(),
   });
   return { status: "ACKNOWLEDGED" };
 });
@@ -457,8 +458,8 @@ exports.confirmBookingWithSerial = onCall(async (request) => {
     const counterSnap = await transaction.get(counterRef);
     const sequence = Number(counterSnap.exists ? counterSnap.data().nextSerial : 1) || 1;
     const checkInSerial = makeCheckInSerial(booking.appointmentDate, sequence);
-    transaction.set(counterRef, { nextSerial: sequence + 1, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
-    transaction.update(bookingRef, { status: "CONFIRMED", confirmedAt: admin.firestore.FieldValue.serverTimestamp(), checkInSerial, checkInSequence: sequence, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+    transaction.set(counterRef, { nextSerial: sequence + 1, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+    transaction.update(bookingRef, { status: "CONFIRMED", confirmedAt: FieldValue.serverTimestamp(), checkInSerial, checkInSequence: sequence, updatedAt: FieldValue.serverTimestamp() });
     return { checkInSerial };
   });
   return result;

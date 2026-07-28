@@ -158,3 +158,10 @@ Deployment completed on 2026-07-28: Functions and Hosting released successfully 
 - Added `npm run test:rules` using the official Firebase Rules test helper. It requires a local JDK because the Firestore Emulator uses Java.
 - Verification completed: `node --check functions/index.js`, `npm test` (32 checks including print XSS), and `npm run build`.
 - Staging deployment is blocked only by Firebase: `cac-health-staging` must be upgraded to Blaze before Cloud Build/Artifact Registry can deploy Gen2 Functions. Do not deploy this branch to production until staging Functions and end-to-end booking flows pass.
+## 2026-07-28 - P0 local verification complete
+
+- Staging Firestore rules deployed to `cac-health-staging` (asia-east1).
+- Passed: `npm test`, `npm run test:rules`, `npm run test:functions`, `node --check functions/index.js`, and `npm run build`.
+- Functions test proves anonymous public booking, questionnaire response, change request, and cancellation continue to work while a direct booking overwrite is denied.
+- Staging Functions/Hosting deployment remains blocked until `cac-health-staging` is upgraded to Blaze. Production remains unchanged.
+- Next: enable Blaze and Auth providers in staging, deploy Functions + Hosting, then perform browser acceptance before any production deployment.

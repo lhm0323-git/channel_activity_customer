@@ -8,6 +8,7 @@
     "build": "vite build",
     "test": "node src/core.test.js",
     "test:rules": "firebase emulators:exec --only firestore \"node src/firestore.rules.test.js\"",
+    "test:functions": "set HTTP_PROXY=&& set HTTPS_PROXY=&& set ALL_PROXY=&& set CODEX_SANDBOX_NETWORK_DISABLED=&& firebase emulators:exec --only auth,firestore,functions \"node src/functions.p0.test.js\"",
     "deploy:hosting": "npm run build && firebase deploy --only hosting"
   },
   "dependencies": {
