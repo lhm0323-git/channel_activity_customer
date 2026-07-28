@@ -451,7 +451,9 @@ export async function listPackageQuestionnaireRules() {
   const snapshot = await getDocs(collection(db, "packageQuestionnaireRules"));
   const rules = {};
   snapshot.docs.forEach((docSnap) => {
-    rules[docSnap.id] = docSnap.data().questionnaireId || "general-health";
+    const data = docSnap.data();
+    const packageName = String(data.packageName || decodeURIComponent(docSnap.id));
+    rules[packageName] = typeof data.questionnaireId === "string" ? data.questionnaireId : "";
   });
   return rules;
 }

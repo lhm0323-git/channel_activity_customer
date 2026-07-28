@@ -82,3 +82,19 @@
 
 ### Next
 - Validate the deployed list on a real portrait phone and adjust only if the clinic requires larger tap targets.
+## 2026-07-28 - Package tool name and questionnaire mapping
+
+### Completed
+- Fixed the Package Tool layout so the package name has a usable minimum width.
+- Added an explicit no-questionnaire option and preserved it in `packageQuestionnaireRules`.
+- Fixed questionnaire-rule loading to use each document's `packageName`, restoring correct mappings for existing packages.
+- Added `docs/CAC_ARCHITECTURE.md` with readable Chinese CAC architecture diagrams.
+
+### Files
+- `cac-liff-app/src/App.jsx`
+- `cac-liff-app/src/firebase.js`
+- `docs/CAC_ARCHITECTURE.md`
+
+### Verification
+- `npm test` passed.
+- `npm run build` passed; existing Vite chunk-size warning remains.

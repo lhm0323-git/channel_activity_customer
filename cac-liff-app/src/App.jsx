@@ -1059,6 +1059,7 @@ const App = () => {
       const meta = packageMeta[name] || {};
       setPackageAudience(normalizeTag(meta.audience || inferPackageAudienceName(name)));
       setPackageBodyParts(Array.isArray(meta.bodyParts) ? meta.bodyParts.map(normalizeTag).join(", ") : "");
+      setPackageQuestionnaireId(questionnaireIdForPackage(name));
       if (meta.finalPrice) setFinalPrice(meta.finalPrice);
     }
   };
@@ -1445,9 +1446,15 @@ ${selectedItems
     }
   };
 
+  const questionnaireIdForPackage = (name) => (Object.prototype.hasOwnProperty.call(questionnaireRules, name) ? questionnaireRules[name] : "general-health");
+
   const openQuestionnaireForBooking = async (booking) => {
     try {
-      const qId = questionnaireRules[booking.packageName] || "general-health";
+      const qId = questionnaireIdForPackage(booking.packageName);
+      if (!qId) {
+        setMyBookingStatus(lang === "en" ? "No questionnaire is required for this package." : "\u6b64\u5957\u9910\u672a\u8a2d\u5b9a\u5065\u5eb7\u554f\u5377\u3002");
+        return;
+      }
       const schema = getQuestionnaireById(qId, customQuestionnaires);
       const customerId = booking.customerId || booking.ownerUid || booking.customerPhone || booking.idNumber || "";
       setMyBookingStatus(lang === "en" ? "Loading questionnaire..." : "讀取問卷紀錄中...");
@@ -2192,8 +2199,8 @@ ${selectedItems
             )}
           </div>
           <div className="p-4 space-y-4">
-            <div className="flex gap-2 items-end">
-              <div className="flex-1">
+            <div className="flex flex-wrap gap-2 items-end">
+              <div className="flex-1 min-w-[180px]">
                 <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
                   套餐名稱
                 </label>
@@ -2204,15 +2211,15 @@ ${selectedItems
                   onChange={(e) => setPackageName(e.target.value)}
                 />
               </div>
-              <label className="w-28 text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+              <label className="w-20 text-[10px] uppercase font-bold text-slate-400 tracking-wider">
                 {"\u901a\u8def\u6a19\u7c64"}
                 <input placeholder="一般, 高階, A企業" className="w-full mt-1 px-2 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-700" value={packageAudience} onChange={(e) => setPackageAudience(e.target.value)} />
               </label>
-              <label className="w-36 text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+              <label className="w-28 text-[10px] uppercase font-bold text-slate-400 tracking-wider">
                 {"\u90e8\u4f4d\u6a19\u7c64"}
                 <input placeholder="心血管, 企業專案" className="w-full mt-1 px-2 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-700" value={packageBodyParts} onChange={(e) => setPackageBodyParts(e.target.value)} />
               </label>
-              <label className="w-56 text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+              <label className="min-w-[160px] flex-1 text-[10px] uppercase font-bold text-slate-400 tracking-wider">
                 <div className="flex justify-between items-center">
                   <span>對應健康問卷</span>
                   <button type="button" onClick={() => { setEditingQuestionnaireJson(JSON.stringify(getQuestionnaireById(packageQuestionnaireId, customQuestionnaires), null, 2)); setShowQuestionnaireEditorModal(true); }} className="text-[10px] text-indigo-600 underline font-bold hover:text-indigo-800">
@@ -2220,6 +2227,7 @@ ${selectedItems
                   </button>
                 </div>
                 <select className="w-full mt-1 px-2 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-700" value={packageQuestionnaireId} onChange={(e) => setPackageQuestionnaireId(e.target.value)}>
+                  <option value="">\u7121\u5c0d\u61c9\u5065\u5eb7\u554f\u5377</option>
                   {allQuestionnaires.map((q) => (
                     <option key={q.id} value={q.id}>{q.title}</option>
                   ))}
@@ -2227,7 +2235,7 @@ ${selectedItems
               </label>
               <button
                 onClick={savePackage}
-                className="px-4 py-2 bg-indigo-100 text-indigo-700 rounded-lg text-xs font-bold h-[38px] flex items-center gap-1"
+                className="shrink-0 px-4 py-2 bg-indigo-100 text-indigo-700 rounded-lg text-xs font-bold h-[38px] flex items-center gap-1"
               >
                 <Save className="w-4 h-4" /> 儲存
               </button>
@@ -2775,7 +2783,8 @@ ${selectedItems
             type="button"
             className="rounded-md border border-slate-700 bg-slate-800 px-3.5 py-2 text-xs font-bold text-white hover:bg-slate-900 flex items-center gap-1.5"
             onClick={async () => {
-              const qId = questionnaireRules[adminDetailBooking.packageName] || "general-health";
+              const qId = questionnaireIdForPackage(adminDetailBooking.packageName);
+              if (!qId) { alert(lang === "en" ? "No questionnaire is required for this package." : "\u6b64\u5957\u9910\u672a\u8a2d\u5b9a\u5065\u5eb7\u554f\u5377\u3002"); return; }
               const schema = getQuestionnaireById(qId, customQuestionnaires);
               const customerId = adminDetailBooking.customerId || adminDetailBooking.ownerUid || adminDetailBooking.customerPhone || adminDetailBooking.idNumber || "";
               const lastResp = await getLastCustomerQuestionnaireResponse(customerId, qId);

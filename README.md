@@ -91,3 +91,8 @@ VITE_STAFF_EMAILS=lhm0323@gmail.com
 - Portrait phones (under 640px) use a compact booking-list layout: full date, customer, package, phone, channel, status, notice, amount, and actions remain available without repeated field labels.
 - Landscape phones, tablets, and desktop keep the wider management layout.
 - Acceptance target remains `https://channel-activity-customer.web.app`; local source is retained only for development and deployment.
+## 2026-07-28 Package tool questionnaire settings
+
+- The Package Tool keeps the package-name field readable on narrower desktop widths by allowing the settings row to wrap.
+- Package questionnaire rules are loaded by their stored package name rather than the encoded Firestore document ID.
+- Staff can select `無對應健康問卷`; the public and staff questionnaire actions then stop instead of silently falling back to a general questionnaire.

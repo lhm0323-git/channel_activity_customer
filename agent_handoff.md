@@ -79,3 +79,9 @@ Functions 首次部署前：`cd functions; npm install`，並設定 `LINE_CHANNE
 - Source change: `cac-liff-app/src/App.jsx` adds a portrait-only breakpoint (`max-width: 639px` plus portrait orientation) for the staff booking list.
 - Narrow phones now show full dates and compact booking rows. Tablets, landscape phones, and desktop retain the prior wider list.
 - Validation: `npm test` and `npm run build` passed. Deploy Hosting only for this UI change.
+## 2026-07-28 - Package Tool questionnaire mapping
+
+- `listPackageQuestionnaireRules()` now keys rules by the stored `packageName`, not the encoded Firestore document ID.
+- The Package Tool offers `無對應健康問卷`; it is stored as an empty questionnaire id, and questionnaire actions report that no questionnaire is required.
+- The package-settings row wraps and gives the package name a `180px` minimum width.
+- Verified with `npm test` and `npm run build`. Hosting-only deployment is sufficient.
