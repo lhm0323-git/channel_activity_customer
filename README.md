@@ -171,3 +171,7 @@ Deployment completed on 2026-07-28: Functions and Hosting released successfully 
 - Isolated frontend deployed: https://cac-health-staging.web.app
 - Built with `.env.staging`; `VITE_LIFF_ID` is intentionally empty, so this staging site cannot use the production LIFF channel.
 - Firestore Rules are deployed. Functions remain pending until the staging Firebase project is upgraded to Blaze.
+
+## 2026-07-28 - Staging isolation verification
+
+- Read-only HTTP verification confirmed `https://cac-health-staging.web.app` serves a bundle configured for Firebase project `cac-health-staging`, not `channel-activity-customer`.
