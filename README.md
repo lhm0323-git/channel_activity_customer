@@ -175,3 +175,11 @@ Deployment completed on 2026-07-28: Functions and Hosting released successfully 
 ## 2026-07-28 - Staging isolation verification
 
 - Read-only HTTP verification confirmed `https://cac-health-staging.web.app` serves a bundle configured for Firebase project `cac-health-staging`, not `channel-activity-customer`.
+
+## 2026-07-28 - Staging Functions deployed
+
+- Blaze deployment completed for the isolated project: 10 Cloud Functions, Firestore Rules, Hosting, and the 09:00 Asia/Taipei scheduler are live.
+- Staging LINE secret is deliberately a non-production placeholder; it cannot send LINE messages.
+- Artifact Registry cleanup deletes staging function images older than one day.
+- Live `createBooking` returned HTTP 401 `UNAUTHENTICATED` to an unauthenticated request, confirming the public write boundary is enforced.
+- Remaining external setup: Firebase Authentication has not been initialized in staging (`CONFIGURATION_NOT_FOUND`). Enable Anonymous and Google sign-in before browser acceptance.
