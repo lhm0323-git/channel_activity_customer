@@ -99,3 +99,21 @@
 - `npm test` passed.
 - `npm run build` passed; existing Vite chunk-size warning remains.
 - Corrected the Package Tool no-questionnaire option label to 無; production build passed.
+
+## 2026-07-28 - Rich Menu public route rendering
+
+### Completed
+- Connected the existing public `prep`, `followup`, and `contact` panels to the URL view router.
+- Preserved `my-bookings` and `checkin` behavior, including optional LINE login and email fallback.
+
+### Files
+- `cac-liff-app/src/App.jsx`
+
+### Verification
+- `npm test` passed.
+- `npm run build` passed; existing Vite chunk-size warning remains.
+
+### Acceptance URLs
+- `https://channel-activity-customer.web.app/?view=prep`
+- `https://channel-activity-customer.web.app/?view=followup`
+- `https://channel-activity-customer.web.app/?view=contact`

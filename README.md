@@ -97,3 +97,7 @@ VITE_STAFF_EMAILS=lhm0323@gmail.com
 - Package questionnaire rules are loaded by their stored package name rather than the encoded Firestore document ID.
 - Staff can select `無對應健康問卷`; the public and staff questionnaire actions then stop instead of silently falling back to a general questionnaire.
 - The no-questionnaire option in Package Tool is displayed as 無.
+
+## 2026-07-28 Rich Menu public routes
+
+The public SPA now renders these LIFF deep-link views on both LIFF and direct web URLs: `prep`, `followup`, and `contact`. LINE login remains optional so a customer without LINE can book with an email contact address.

@@ -2584,6 +2584,10 @@ ${selectedItems
         <section className="mx-auto w-full max-w-6xl px-4 py-6 lg:px-6 space-y-5 flex-1 flex flex-col min-h-0">
           <MyBookingsPanel />
         </section>
+      ) : ["prep", "followup", "contact"].includes(publicView) ? (
+        <section className="mx-auto w-full max-w-6xl px-4 py-6 lg:px-6 space-y-5">
+          <PublicInfoPanel view={publicView} />
+        </section>
       ) : (
         <section className="mx-auto w-full max-w-6xl px-4 py-6 lg:px-6 space-y-5">
           <div className="bg-white border border-slate-200 rounded-lg p-4 lg:p-5">

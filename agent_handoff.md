@@ -86,3 +86,10 @@ Functions 首次部署前：`cd functions; npm install`，並設定 `LINE_CHANNE
 - The package-settings row wraps and gives the package name a `180px` minimum width.
 - Verified with `npm test` and `npm run build`. Hosting-only deployment is sufficient.
 - UI correction: the optional questionnaire select now displays 無 rather than a literal Unicode escape sequence.
+
+## 2026-07-28 - Rich Menu route repair
+
+- Fixed public URL rendering for LIFF Rich Menu deep links `?view=prep`, `?view=followup`, and `?view=contact` in `cac-liff-app/src/App.jsx`.
+- Do not make LINE login mandatory: the current booking design supports email fallback for customers without LINE login.
+- `?view=my-bookings` and `?view=checkin` remain on the existing My Bookings/check-in path.
+- Validation: `npm test` and `npm run build` passed. Deploy Hosting only.
