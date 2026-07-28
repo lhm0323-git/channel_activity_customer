@@ -2596,25 +2596,24 @@ ${selectedItems
   };
   const PublicQuickLinks = () => {
     const links = [
-      { view: "packages", label: lang === "en" ? "Find package / book" : "找方案／預約", Icon: Search },
-      { view: "my-bookings", label: lang === "en" ? "My bookings" : "我的預約／改期", Icon: CheckSquare },
-      { view: "prep", label: lang === "en" ? "Visit instructions" : "來檢須知", Icon: FileText },
-      { view: "addon-items", label: lang === "en" ? "Add-on items" : "加選項目參考表", Icon: Plus },
-      { view: "followup", label: lang === "en" ? "Report follow-up" : "報告追蹤", Icon: RefreshCw },
-      { view: "contact", label: lang === "en" ? "Contact / directions" : "聯絡交通", Icon: PhoneCall },
+      { view: "packages", label: lang === "en" ? "Find package / book" : "\u627e\u65b9\u6848 / \u9810\u7d04", compact: lang === "en" ? "Packages" : "\u627e\u65b9\u6848", Icon: Search },
+      { view: "my-bookings", label: lang === "en" ? "My bookings / changes" : "\u6211\u7684\u9810\u7d04 / \u6539\u671f", compact: lang === "en" ? "Bookings" : "\u6211\u7684\u9810\u7d04", Icon: CheckSquare },
+      { view: "prep", label: lang === "en" ? "Visit instructions" : "\u4f86\u6aa2\u9808\u77e5", compact: lang === "en" ? "Instructions" : "\u4f86\u6aa2\u9808\u77e5", Icon: FileText },
+      { view: "addon-items", label: lang === "en" ? "Add-on items" : "\u52a0\u9078\u9805\u76ee\u53c3\u8003\u8868", compact: lang === "en" ? "Add-ons" : "\u52a0\u9078\u9805\u76ee", Icon: Plus },
+      { view: "followup", label: lang === "en" ? "Report follow-up" : "\u5831\u544a\u8ffd\u8e64", compact: lang === "en" ? "Follow-up" : "\u5831\u544a\u8ffd\u8e64", Icon: RefreshCw },
+      { view: "contact", label: lang === "en" ? "Contact / directions" : "\u806f\u7d61\u4ea4\u901a", compact: lang === "en" ? "Contact" : "\u806f\u7d61\u4ea4\u901a", Icon: PhoneCall },
     ];
     return (
-      <div className="flex min-w-0 items-center gap-1.5 overflow-x-auto py-0.5 text-xs font-bold">
-        {links.map(({ view, label, Icon }) => (
-          <button key={view} type="button" onClick={() => openPublicView(view)} className={`inline-flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-2 transition-colors ${publicView === view ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-700 hover:bg-slate-200"}`}>
-            <Icon className="h-3.5 w-3.5" />{label}
+      <div className="grid grid-cols-3 gap-1.5 py-0.5 text-[11px] font-bold lg:flex lg:items-center lg:gap-1.5 lg:overflow-visible lg:text-xs">
+        {links.map(({ view, label, compact, Icon }) => (
+          <button key={view} type="button" onClick={() => openPublicView(view)} className={`inline-flex min-w-0 items-center justify-center gap-1 rounded-md px-1.5 py-2 transition-colors lg:shrink-0 lg:px-2.5 ${publicView === view ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-700 hover:bg-slate-200"}`}>
+            <Icon className="h-3.5 w-3.5 shrink-0" /><span className="truncate lg:hidden">{compact}</span><span className="hidden lg:inline">{label}</span>
           </button>
         ))}
-        {!lineProfile && <button type="button" onClick={handleLineLogin} className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-emerald-600 px-2.5 py-2 text-white hover:bg-emerald-700"><CheckCircle2 className="h-3.5 w-3.5" />{lang === "en" ? "Connect LINE" : "連結 LINE"}</button>}
+        {!lineProfile && <button type="button" onClick={handleLineLogin} className="col-span-3 inline-flex items-center justify-center gap-1 rounded-md bg-emerald-600 px-2.5 py-2 text-white hover:bg-emerald-700 lg:col-auto lg:shrink-0"><CheckCircle2 className="h-3.5 w-3.5" />{lang === "en" ? "Connect LINE" : "\u9023\u7d50 LINE"}</button>}
       </div>
     );
   };
-
   const PublicPackageView = () => (
     <main className="flex-1 overflow-y-auto bg-slate-50 flex flex-col min-h-0">
       {publicView === "addon-items" ? (
@@ -3791,10 +3790,9 @@ ${selectedItems
         <div className="flex flex-wrap items-center gap-3">
           <div className="shrink-0">
             <div className="text-sm font-black text-slate-900">{APP_TITLE}</div>
-            <div className="text-xs text-slate-500">{liffMessage}</div>
           </div>
           {mode === "public" && <div className="order-3 w-full min-w-0 lg:order-none lg:w-auto lg:flex-1"><PublicQuickLinks /></div>}
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
           <button onClick={() => setLang(lang === "zh" ? "en" : "zh")} aria-label="Switch language" className="rounded-md bg-white px-3 py-2 text-xs font-bold text-slate-600 border border-slate-200">{t.langToggle}</button>
           {staffStatus && <span className="hidden md:inline text-xs text-slate-500 max-w-[260px] truncate">{staffStatus}</span>}
           <div className="flex rounded-md border border-slate-200 overflow-hidden text-xs font-bold">

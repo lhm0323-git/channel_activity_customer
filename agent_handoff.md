@@ -130,3 +130,9 @@ Deployment completed on 2026-07-28: Functions and Hosting released successfully 
 - Added browser shortcuts matching the six LINE Rich Menu destinations: packages, my bookings, visit instructions, add-on items, report follow-up, and contact/directions.
 - Added a prominent Connect LINE action when no LINE identity is available. Browser shortcuts use the same SPA routes as LIFF, so desktop acceptance stays in the web app.
 - Verified with `npm test` and `npm run build`; Hosting deployed successfully.
+## 2026-07-28 - Responsive public shortcut layout
+
+- Removed the visible LINE status sentence below the application title to preserve header space.
+- On phones, the six public shortcuts now use a fixed three-column, two-row grid. The optional Connect LINE action occupies a full third row, avoiding horizontal scrolling.
+- On desktop, shortcuts remain in one compact first-row strip.
+- Verified with `npm test` and `npm run build`; Hosting deployed successfully.
