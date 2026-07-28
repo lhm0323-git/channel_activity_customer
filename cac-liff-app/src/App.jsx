@@ -1390,12 +1390,10 @@ ${selectedItems
         discountRate,
         finalPrice,
       });
-      const result = await saveBooking(payload);
+      const result = await saveBooking(payload, { lineAccessToken: staffMode ? "" : lineProfile?.accessToken || "" });
       if (staffMode && result.claimToken) {
         window.prompt(lang === "en" ? "Send this LINE linking link to the customer:" : "請將此 LINE 綁定連結傳給客戶：", customerLineClaimLink(result.bookingId, result.claimToken));
       }
-      const bookingForChecklist = { ...payload.booking, bookingId: result.bookingId };
-      await saveChecklist(result.bookingId, buildChecklistPayload(bookingForChecklist));
       setBookingStatus(result.localOnly ? `已暫存本機預約：${result.bookingId}` : `預約已建立：${result.bookingId}`);
       setShowBookingModal(false);
       setAdminStartDate(payload.booking.appointmentDate);
@@ -1803,8 +1801,7 @@ ${selectedItems
           finalPrice: row.finalPrice || Number(packageMeta[row.packageName]?.finalPrice) || pricing.suggestedPrice,
         });
         payload.booking.status = row.status;
-        const result = await saveBooking(payload);
-        await saveChecklist(result.bookingId, buildChecklistPayload({ ...payload.booking, bookingId: result.bookingId }));
+        const result = await saveBooking(payload, { lineAccessToken: staffMode ? "" : lineProfile?.accessToken || "" });
         imported += 1;
       }
       setAdminStatus(lang === "en" ? `CSV import complete: ${imported} rows${skipped.length ? `, skipped rows ${skipped.join(", ")}` : ""}` : `CSV \u532f\u5165\u5b8c\u6210\uff1a${imported} \u7b46${skipped.length ? `\uff0c\u8df3\u904e\u7b2c ${skipped.join(", ")} \u5217` : ""}`);

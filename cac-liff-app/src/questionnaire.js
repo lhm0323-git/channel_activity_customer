@@ -176,16 +176,20 @@ export function mergePreviousAnswers(schema, previousAnswers = {}) {
   return merged;
 }
 
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>'"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[char]);
+}
+
 export function generatePrintableQuestionnaireHtml({ booking, schema, answers }) {
-  const customerName = booking?.customerName || booking?.name || "未填寫";
-  const idNumber = booking?.idNumber || booking?.idNumberMasked || "未填寫";
-  const phone = booking?.customerPhone || booking?.phone || "未填寫";
-  const appointmentDate = booking?.appointmentDate || new Date().toISOString().slice(0, 10);
-  const packageName = booking?.packageName || "健檢套餐";
+  const customerName = escapeHtml(booking?.customerName || booking?.name || "未填寫");
+  const idNumber = escapeHtml(booking?.idNumber || booking?.idNumberMasked || "未填寫");
+  const phone = escapeHtml(booking?.customerPhone || booking?.phone || "未填寫");
+  const appointmentDate = escapeHtml(booking?.appointmentDate || new Date().toISOString().slice(0, 10));
+  const packageName = escapeHtml(booking?.packageName || "健檢套餐");
 
   let sectionsHtml = "";
   (schema?.sections || []).forEach((section) => {
-    sectionsHtml += `<div style="margin-top: 15px; border-bottom: 2px solid #1e293b; padding-bottom: 4px;"><h3 style="margin: 0; font-size: 15px; color: #1e293b;">${section.title}</h3></div>`;
+    sectionsHtml += `<div style="margin-top: 15px; border-bottom: 2px solid #1e293b; padding-bottom: 4px;"><h3 style="margin: 0; font-size: 15px; color: #1e293b;">${escapeHtml(section.title)}</h3></div>`;
     sectionsHtml += `<table style="width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 13px;">`;
     (section.questions || []).forEach((q) => {
       let ansVal = answers ? answers[q.id] : undefined;
@@ -196,8 +200,8 @@ export function generatePrintableQuestionnaireHtml({ booking, schema, answers })
       }
       sectionsHtml += `
         <tr style="border-bottom: 1px solid #e2e8f0;">
-          <td style="padding: 8px 6px; width: 55%; font-weight: bold; color: #334155; vertical-align: top;">${q.label}</td>
-          <td style="padding: 8px 6px; width: 45%; color: #0f172a; vertical-align: top; background-color: #f8fafc;">${ansVal}</td>
+          <td style="padding: 8px 6px; width: 55%; font-weight: bold; color: #334155; vertical-align: top;">${escapeHtml(q.label)}</td>
+          <td style="padding: 8px 6px; width: 45%; color: #0f172a; vertical-align: top; background-color: #f8fafc;">${escapeHtml(ansVal)}</td>
         </tr>
       `;
     });
@@ -224,7 +228,7 @@ export function generatePrintableQuestionnaireHtml({ booking, schema, answers })
       <body>
         <div class="header">
           <h1>屏東基督教醫院 健檢中心</h1>
-          <h2>${schema?.title || "受檢客戶健康問卷評估表"}</h2>
+          <h2>${escapeHtml(schema?.title || "受檢客戶健康問卷評估表")}</h2>
         </div>
         <table class="info-table">
           <tr>

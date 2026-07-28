@@ -113,13 +113,6 @@ async function sendD1Notice(doc) {
   throw new HttpsError("failed-precondition", error);
 }
 
-async function assertStaff(request) {
-  const email = String(request.auth && request.auth.token && request.auth.token.email || "").trim().toLowerCase();
-  if (!email) throw new HttpsError("unauthenticated", "Staff sign-in is required");
-  if (email === "lhm0323@gmail.com") return;
-  const staff = await admin.firestore().doc("staffUsers/" + email).get();
-  if (!staff.exists || staff.data().active === false) throw new HttpsError("permission-denied", "Staff access is required");
-}
 
 async function verifyLineAccessToken(accessToken) {
   const token = String(accessToken || "").trim();
@@ -131,6 +124,214 @@ async function verifyLineAccessToken(accessToken) {
   return profile;
 }
 
+const STATION_MAP = {
+  "\u4e00\u822c\u6aa2\u67e5": { station: "A\u7ad9 \u4e00\u822c\u6aa2\u67e5", order: 1, duration: 10 },
+  "\u7406\u5b78\u6aa2\u67e5": { station: "A\u7ad9 \u4e00\u822c\u6aa2\u67e5", order: 1, duration: 15 },
+  "\u8840\u6db2\u5e38\u898f": { station: "B\u7ad9 \u62bd\u8840", order: 2, duration: 5 },
+  "\u809d\u81bd\u529f\u80fd": { station: "B\u7ad9 \u62bd\u8840", order: 2, duration: 0 },
+  "\u814e\u529f\u80fd": { station: "B\u7ad9 \u62bd\u8840", order: 2, duration: 0 },
+  "\u8840\u8102\u80aa": { station: "B\u7ad9 \u62bd\u8840", order: 2, duration: 0 },
+  "\u7cd6\u5c3f\u75c5\u6aa2\u9a57": { station: "B\u7ad9 \u62bd\u8840", order: 2, duration: 0 },
+  "\u7532\u72c0\u817a": { station: "B\u7ad9 \u62bd\u8840", order: 2, duration: 0 },
+  "\u816b\u760d\u7be9\u6aa2": { station: "B\u7ad9 \u62bd\u8840", order: 2, duration: 0 },
+  "\u5c3f\u6db2\u6aa2\u67e5": { station: "C\u7ad9 \u5c3f\u6db2/\u7cde便", order: 3, duration: 5 },
+  "\u7cde便\u6aa2\u67e5": { station: "C\u7ad9 \u5c3f\u6db2/\u7cde便", order: 3, duration: 5 },
+  "\u7279\u6b8a\u529f\u80fd\u6aa2\u67e5": { station: "D\u7ad9 \u529f\u80fd\u6aa2\u67e5", order: 4, duration: 20 },
+  "\u5fc3\u8840\u7ba1\u6aa2\u67e5": { station: "D\u7ad9 \u529f\u80fd\u6aa2\u67e5", order: 4, duration: 15 },
+  "\u8d85\u97f3\u6ce2": { station: "E\u7ad9 \u8d85\u97f3\u6ce2", order: 5, duration: 20 },
+  "\u5f71\u50cf\u91ab\u5b78": { station: "F\u7ad9 \u5f71\u50cf\u91ab\u5b78", order: 6, duration: 15 },
+  "\u8178\u80c3\u5167\u8996\u93e1": { station: "G\u7ad9 \u5167\u8996\u93e1", order: 7, duration: 60 },
+  "\u91ab\u5e2b\u89e3\u8aaa": { station: "H\u7ad9 \u91ab\u5e2b\u89e3\u8aaa", order: 8, duration: 20 },
+};
+
+function text(value, max = 500) {
+  return String(value ?? "").trim().slice(0, max);
+}
+
+function number(value, fallback = 0) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 && parsed <= 1000000 ? parsed : fallback;
+}
+
+function validDate(value) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value + "T00:00:00Z"));
+}
+
+function validEmail(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
+async function staffEmail(request) {
+  const email = text(request.auth?.token?.email, 320).toLowerCase();
+  if (!email) return "";
+  if (email === "lhm0323@gmail.com") return email;
+  const staff = await admin.firestore().doc("staffUsers/" + email).get();
+  return staff.exists && staff.data().active !== false ? email : "";
+}
+
+async function assertStaff(request) {
+  const email = await staffEmail(request);
+  if (!email) throw new HttpsError(request.auth?.uid ? "permission-denied" : "unauthenticated", "Staff access is required");
+  return email;
+}
+
+function safeItems(value) {
+  if (!Array.isArray(value) || value.length < 1 || value.length > 100) throw new HttpsError("invalid-argument", "At least one valid item is required");
+  return value.map((item) => {
+    if (!item || typeof item !== "object") throw new HttpsError("invalid-argument", "Invalid selected item");
+    const name = text(item.name, 240);
+    if (!name) throw new HttpsError("invalid-argument", "Each selected item needs a name");
+    return {
+      id: text(item.id, 160), name, enName: text(item.enName, 240), code: text(item.code, 240),
+      category: text(item.category, 120), price: number(item.price), clinical: text(item.clinical, 1000),
+      remark: text(item.remark, 2000), outsource: Boolean(item.outsource),
+    };
+  });
+}
+
+function checklistFor(items) {
+  const groups = {};
+  items.forEach((item) => {
+    const station = STATION_MAP[item.category] || { station: "\u5176\u4ed6", order: 99, duration: 10 };
+    if (!groups[station.station]) groups[station.station] = { ...station, items: [], totalMin: 0 };
+    groups[station.station].items.push(item);
+    groups[station.station].totalMin += station.duration;
+  });
+  return {
+    stationGroups: Object.values(groups).sort((a, b) => a.order - b.order),
+    warnings: items.filter((item) => item.remark),
+    outsourceItems: items.filter((item) => item.outsource),
+  };
+}
+
+function safeAnswers(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new HttpsError("invalid-argument", "Answers must be an object");
+  const entries = Object.entries(value);
+  if (entries.length > 100) throw new HttpsError("invalid-argument", "Too many answers");
+  return Object.fromEntries(entries.map(([key, answer]) => {
+    const safeKey = text(key, 120);
+    if (!safeKey) throw new HttpsError("invalid-argument", "Invalid answer key");
+    if (Array.isArray(answer)) {
+      if (answer.length > 50) throw new HttpsError("invalid-argument", "Too many answer values");
+      return [safeKey, answer.map((item) => text(item, 300))];
+    }
+    return [safeKey, text(answer, 2000)];
+  }));
+}
+
+exports.createBooking = onCall(async (request) => {
+  if (!request.auth?.uid) throw new HttpsError("unauthenticated", "A signed-in session is required");
+  const payload = request.data?.payload;
+  if (!payload || typeof payload !== "object") throw new HttpsError("invalid-argument", "Booking payload is required");
+  const isStaff = Boolean(await staffEmail(request));
+  const customerInput = payload.customer || {};
+  const bookingInput = payload.booking || {};
+  const customerName = text(customerInput.name || bookingInput.customerName, 160);
+  const customerPhone = text(customerInput.phone || bookingInput.customerPhone, 80);
+  const customerEmail = text(customerInput.email || bookingInput.customerEmail, 320).toLowerCase();
+  const appointmentDate = text(bookingInput.appointmentDate, 10);
+  const selectedItems = safeItems(bookingInput.selectedItems);
+  if (!customerName || !customerPhone || !validDate(appointmentDate)) throw new HttpsError("invalid-argument", "Name, phone, and appointment date are required");
+  if (!isStaff && appointmentDate < taipeiDate(0)) throw new HttpsError("invalid-argument", "Appointment date must be today or later");
+
+  let lineProfile = null;
+  if (!isStaff && text(request.data?.lineAccessToken, 8192)) lineProfile = await verifyLineAccessToken(request.data.lineAccessToken);
+  if (!lineProfile && !validEmail(customerEmail)) throw new HttpsError("invalid-argument", "A valid email is required when LINE is not connected");
+
+  const db = admin.firestore();
+  const bookingRef = db.collection("bookings").doc();
+  const customerId = lineProfile ? lineProfile.userId : "customer-" + bookingRef.id;
+  const customerRef = db.doc("customers/" + customerId);
+  const blockedRef = db.doc("bookingBlockedDates/" + appointmentDate);
+  const claimToken = lineProfile ? "" : crypto.randomBytes(24).toString("hex");
+  const now = admin.firestore.FieldValue.serverTimestamp();
+  const status = isStaff && ["BOOKED", "CANCELLED"].includes(text(bookingInput.status, 20)) ? text(bookingInput.status, 20) : "BOOKED";
+  const booking = {
+    customerId, customerName, customerPhone, customerEmail,
+    idNumberMasked: text(customerInput.idNumberMasked || bookingInput.idNumberMasked, 80),
+    lineUserId: lineProfile?.userId || null, lineDisplayName: lineProfile?.displayName || "",
+    notificationChannel: lineProfile ? "LINE" : "EMAIL", channel: text(bookingInput.channel, 120) || "GENERAL",
+    appointmentDate, packageName: text(bookingInput.packageName, 200), selectedItems,
+    listPrice: number(bookingInput.listPrice), discountRate: number(bookingInput.discountRate), finalPrice: number(bookingInput.finalPrice),
+    status, notes: text(bookingInput.notes, 2000), ownerUid: request.auth.uid, createdAt: now, updatedAt: now,
+    ...(claimToken ? { customerClaimToken: claimToken } : {}),
+  };
+  await db.runTransaction(async (transaction) => {
+    const blocked = await transaction.get(blockedRef);
+    if (blocked.exists && !isStaff) throw new HttpsError("failed-precondition", "This date is unavailable");
+    transaction.set(customerRef, {
+      customerId, name: customerName, phone: customerPhone, email: customerEmail,
+      lineUserId: lineProfile?.userId || null, idNumberMasked: booking.idNumberMasked,
+      ownerUid: request.auth.uid, createdAt: now, updatedAt: now,
+    }, { merge: true });
+    transaction.set(bookingRef, booking);
+    transaction.set(db.doc("checklists/" + bookingRef.id), { bookingId: bookingRef.id, ...checklistFor(selectedItems), generatedAt: now, printedAt: null });
+  });
+  return { bookingId: bookingRef.id, claimToken };
+});
+
+exports.cancelBooking = onCall(async (request) => {
+  if (!request.auth?.uid) throw new HttpsError("unauthenticated", "A signed-in session is required");
+  const bookingId = text(request.data?.bookingId, 200);
+  if (!bookingId) throw new HttpsError("invalid-argument", "Booking ID is required");
+  const db = admin.firestore();
+  const bookingRef = db.doc("bookings/" + bookingId);
+  const staff = Boolean(await staffEmail(request));
+  await db.runTransaction(async (transaction) => {
+    const snap = await transaction.get(bookingRef);
+    if (!snap.exists) throw new HttpsError("not-found", "Booking not found");
+    if (!staff && snap.data().ownerUid !== request.auth.uid) throw new HttpsError("permission-denied", "You can only cancel your own booking");
+    transaction.update(bookingRef, { status: "CANCELLED", cancelledAt: admin.firestore.FieldValue.serverTimestamp(), updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+  });
+  return { cancelled: true };
+});
+
+exports.requestBookingChange = onCall(async (request) => {
+  if (!request.auth?.uid) throw new HttpsError("unauthenticated", "A signed-in session is required");
+  const change = request.data?.change || {};
+  const bookingId = text(change.bookingId, 200);
+  const requestedAppointmentDate = text(change.requestedAppointmentDate, 10);
+  if (!bookingId || !validDate(requestedAppointmentDate)) throw new HttpsError("invalid-argument", "Booking ID and requested date are required");
+  const db = admin.firestore();
+  const bookingRef = db.doc("bookings/" + bookingId);
+  const requestRef = db.collection("bookingChangeRequests").doc();
+  await db.runTransaction(async (transaction) => {
+    const bookingSnap = await transaction.get(bookingRef);
+    if (!bookingSnap.exists) throw new HttpsError("not-found", "Booking not found");
+    const booking = bookingSnap.data();
+    if (booking.ownerUid !== request.auth.uid) throw new HttpsError("permission-denied", "You can only change your own booking");
+    if (booking.status === "CANCELLED") throw new HttpsError("failed-precondition", "Cancelled bookings cannot be changed");
+    transaction.set(requestRef, {
+      bookingId, customerName: booking.customerName || "", packageName: booking.packageName || "",
+      currentAppointmentDate: booking.appointmentDate || "", requestedAppointmentDate,
+      notes: text(change.notes, 2000), status: "pending", ownerUid: request.auth.uid,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(), updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+  });
+  return { requestId: requestRef.id };
+});
+
+exports.saveMyQuestionnaireResponse = onCall(async (request) => {
+  if (!request.auth?.uid) throw new HttpsError("unauthenticated", "A signed-in session is required");
+  const bookingId = text(request.data?.bookingId, 200);
+  const questionnaireId = text(request.data?.questionnaireId, 160);
+  if (!bookingId || !questionnaireId) throw new HttpsError("invalid-argument", "Booking ID and questionnaire ID are required");
+  const answers = safeAnswers(request.data?.answers);
+  const db = admin.firestore();
+  const bookingRef = db.doc("bookings/" + bookingId);
+  const responseRef = db.doc("customerQuestionnaireResponses/" + bookingId + "_" + questionnaireId);
+  await db.runTransaction(async (transaction) => {
+    const bookingSnap = await transaction.get(bookingRef);
+    if (!bookingSnap.exists) throw new HttpsError("not-found", "Booking not found");
+    const booking = bookingSnap.data();
+    if (booking.ownerUid !== request.auth.uid) throw new HttpsError("permission-denied", "You can only update your own questionnaire");
+    transaction.set(responseRef, {
+      bookingId, customerId: booking.customerId || "", questionnaireId, answers,
+      ownerUid: request.auth.uid, updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+  });
+  return { responseId: responseRef.id };
+});
 exports.claimMyLineBookings = onCall(async (request) => {
   if (!request.auth?.uid) throw new HttpsError("unauthenticated", "A signed-in session is required");
   const profile = await verifyLineAccessToken(request.data?.accessToken);
@@ -157,6 +358,7 @@ exports.claimBookingWithLine = onCall(async (request) => {
     }
     transaction.update(bookingRef, {
       ownerUid: request.auth.uid,
+      customerId: profile.userId,
       lineUserId: profile.userId,
       lineDisplayName: profile.displayName || "",
       notificationChannel: "LINE",

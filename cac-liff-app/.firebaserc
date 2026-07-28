@@ -1,6 +1,7 @@
 {
   "projects": {
-    "default": "channel-activity-customer"
+    "default": "channel-activity-customer",
+    "staging": "cac-health-staging"
   },
   "targets": {},
   "etags": {}

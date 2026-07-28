@@ -379,3 +379,10 @@ run("booking CSV export/import round trips core fields", () => {
   assert.equal(rows[0].finalPrice, 8000);
   assert.equal(rows[0].notes, "line1\nline2");
 });
+run("questionnaire printing escapes customer supplied HTML", () => {
+  const schema = { id: "xss", title: "<img src=x onerror=alert(1)>", sections: [{ title: "<script>alert(1)</script>", questions: [{ id: "q1", label: "<b>Question</b>" }] }] };
+  const html = generatePrintableQuestionnaireHtml({ booking: { customerName: "<img src=x onerror=alert(1)>" }, schema, answers: { q1: "<script>alert(1)</script>" } });
+  assert.doesNotMatch(html, /<script>alert\(1\)<\/script>/);
+  assert.doesNotMatch(html, /<img src=x onerror=alert\(1\)>/);
+  assert.match(html, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+});

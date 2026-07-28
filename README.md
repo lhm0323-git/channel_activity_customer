@@ -148,3 +148,13 @@ Deployment completed on 2026-07-28: Functions and Hosting released successfully 
 ## 2026-07-28 - Mobile LIFF header
 
 - The duplicate in-app title is hidden below the desktop breakpoint because LINE already supplies the LIFF top title on phones. Desktop browser pages retain the app title.
+## 2026-07-28 - P0 security staging branch
+
+- Branch: `security-p0-staging`; production project `channel-activity-customer` has not been changed.
+- Staging Firebase project: `cac-health-staging` in `asia-east1`; staging web app configuration is local-only in `cac-liff-app/.env.staging` and is intentionally ignored by Git.
+- Public writes for `bookings`, `customers`, `checklists`, booking-change requests, and questionnaire responses now route through authenticated Cloud Functions. The function validates input, verifies any submitted LINE access token server-side, assigns `ownerUid` server-side, checks blocked dates, and creates the checklist transactionally.
+- Active staff retain direct Firestore editing. Disabled `staffUsers` (`active: false`) are denied by both Firestore Rules and callable staff checks.
+- Questionnaire print output now HTML-escapes customer, schema, question, and answer values.
+- Added `npm run test:rules` using the official Firebase Rules test helper. It requires a local JDK because the Firestore Emulator uses Java.
+- Verification completed: `node --check functions/index.js`, `npm test` (32 checks including print XSS), and `npm run build`.
+- Staging deployment is blocked only by Firebase: `cac-health-staging` must be upgraded to Blaze before Cloud Build/Artifact Registry can deploy Gen2 Functions. Do not deploy this branch to production until staging Functions and end-to-end booking flows pass.

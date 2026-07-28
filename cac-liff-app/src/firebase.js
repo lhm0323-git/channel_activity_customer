@@ -93,7 +93,7 @@ export async function signOutStaff() {
   if (auth) await signOut(auth);
 }
 
-export async function saveBooking(payload, { allowBlockedDate = false } = {}) {
+export async function saveBooking(payload, { allowBlockedDate = false, lineAccessToken = "" } = {}) {
   const appointmentDate = payload?.booking?.appointmentDate;
   if (!appointmentDate) throw new Error("Appointment date is required");
   if (!db) return saveLocalBooking(payload);
@@ -103,24 +103,10 @@ export async function saveBooking(payload, { allowBlockedDate = false } = {}) {
     throw new Error(`This date is unavailable${blockedDate.reason ? `: ${blockedDate.reason}` : ""}`);
   }
 
-  const user = await ensurePublicUser();
-  const now = serverTimestamp();
-  const claimToken = payload.booking.lineUserId ? "" : Array.from(crypto.getRandomValues(new Uint8Array(24)), (byte) => byte.toString(16).padStart(2, "0")).join("");
-  await setDoc(
-    doc(db, "customers", payload.customer.customerId),
-    { ...payload.customer, ownerUid: user.uid, createdAt: now, updatedAt: now },
-    { merge: true }
-  );
-
-  const bookingRef = await addDoc(collection(db, "bookings"), {
-    ...payload.booking,
-    ...(claimToken ? { customerClaimToken: claimToken } : {}),
-    ownerUid: user.uid,
-    createdAt: now,
-    updatedAt: now,
-  });
-
-  return { bookingId: bookingRef.id, claimToken, localOnly: false };
+  await ensurePublicUser();
+  if (!functions) throw new Error("Booking service is unavailable");
+  const result = await httpsCallable(functions, "createBooking")({ payload, lineAccessToken });
+  return { ...result.data, localOnly: false };
 }
 
 function localBlockedDates() {
@@ -242,19 +228,10 @@ export async function claimBookingWithLine(bookingId, claimToken, accessToken) {
 
 export async function requestBookingChange(change) {
   if (!db) return { localOnly: true };
-  const user = await ensurePublicUser();
-  const bookingRef = doc(db, "bookings", change.bookingId);
-  const bookingSnap = await getDoc(bookingRef);
-  if (!bookingSnap.exists()) throw new Error("Booking not found");
-  const booking = bookingSnap.data();
-  if (booking.ownerUid !== user.uid) throw new Error("You can only change your own booking");
-  const requestRef = await addDoc(collection(db, "bookingChangeRequests"), {
-    ...change,
-    ownerUid: user.uid,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  });
-  return { requestId: requestRef.id, localOnly: false };
+  await ensurePublicUser();
+  if (!functions) throw new Error("Booking service is unavailable");
+  const result = await httpsCallable(functions, "requestBookingChange")({ change });
+  return { ...result.data, localOnly: false };
 }
 
 export async function listPendingChangeRequests() {
@@ -320,12 +297,10 @@ export async function cancelBooking(bookingId) {
     localStorage.setItem("cac_local_bookings", JSON.stringify(next));
     return { localOnly: true };
   }
-  await updateDoc(doc(db, "bookings", bookingId), {
-    status: "CANCELLED",
-    cancelledAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  });
-  return { localOnly: false };
+  await ensurePublicUser();
+  if (!functions) throw new Error("Booking service is unavailable");
+  const result = await httpsCallable(functions, "cancelBooking")({ bookingId });
+  return { ...result.data, localOnly: false };
 }
 export async function sendD1Notice(bookingId) {
   if (!functions) throw new Error("Firebase is not configured");
@@ -529,17 +504,10 @@ export async function saveCustomerQuestionnaireResponse({ bookingId, customerId,
     localStorage.setItem("cac_questionnaire_responses", JSON.stringify(next));
     return { responseId: `local-${Date.now()}`, localOnly: true };
   }
-  const user = await ensurePublicUser();
-  const docId = `${bookingId}_${questionnaireId}`;
-  await setDoc(doc(db, "customerQuestionnaireResponses", docId), {
-    bookingId,
-    customerId: customerId || "",
-    questionnaireId,
-    answers: answers || {},
-    ownerUid: user.uid,
-    updatedAt: serverTimestamp(),
-  }, { merge: true });
-  return { responseId: docId, localOnly: false };
+  await ensurePublicUser();
+  if (!functions) throw new Error("Questionnaire service is unavailable");
+  const result = await httpsCallable(functions, "saveMyQuestionnaireResponse")({ bookingId, questionnaireId, answers: answers || {} });
+  return { ...result.data, localOnly: false };
 }
 
 function localManagedQuestionnaires() {

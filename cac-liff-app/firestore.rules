@@ -1,118 +1,71 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    function signedIn() {
-      return request.auth != null;
-    }
-
-    function isAdmin() {
-      return signedIn() && request.auth.token.email == 'lhm0323@gmail.com';
-    }
-
+    function signedIn() { return request.auth != null; }
+    function isAdmin() { return signedIn() && request.auth.token.email == 'lhm0323@gmail.com'; }
     function isStaff() {
       return isAdmin() || (
-        signedIn() &&
-        request.auth.token.email is string &&
-        exists(/databases/$(database)/documents/staffUsers/$(request.auth.token.email.lower()))
+        signedIn() && request.auth.token.email is string &&
+        exists(/databases/$(database)/documents/staffUsers/$(request.auth.token.email.lower())) &&
+        get(/databases/$(database)/documents/staffUsers/$(request.auth.token.email.lower())).data.active != false
       );
     }
-
-    function ownsResource() {
-      return signedIn() && resource.data.ownerUid == request.auth.uid;
-    }
-
-    function ownsNewResource() {
-      return signedIn() && request.resource.data.ownerUid == request.auth.uid;
-    }
-
-    function isBlockedBookingDate() {
-      return exists(/databases/$(database)/documents/bookingBlockedDates/$(request.resource.data.appointmentDate));
-    }
-
-    function ownerCancelsBooking() {
-      return ownsResource()
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'cancelledAt', 'updatedAt'])
-        && request.resource.data.status == 'CANCELLED';
-    }
-    function ownerAcknowledgesD1Notice() {
-      return ownsResource()
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['d1NoticeStatus', 'd1AcknowledgedAt', 'updatedAt'])
-        && request.resource.data.d1NoticeStatus == 'ACKNOWLEDGED';
-    }
+    function ownsResource() { return signedIn() && resource.data.ownerUid == request.auth.uid; }
 
     match /customers/{customerId} {
-      allow create, update: if ownsNewResource();
       allow read: if isStaff() || ownsResource();
+      allow create, update: if isStaff();
       allow delete: if false;
     }
-
     match /bookings/{bookingId} {
-      allow create: if ownsNewResource() && !isBlockedBookingDate()
-        && request.resource.data.keys().hasAll(['ownerUid', 'customerId', 'channel', 'appointmentDate', 'packageName', 'selectedItems', 'status', 'createdAt']);
       allow read: if isStaff() || ownsResource();
-      allow update: if isStaff() || ownerCancelsBooking() || ownerAcknowledgesD1Notice();
-      allow delete: if false;
+      allow update: if isStaff();
+      allow create, delete: if false;
     }
-
     match /bookingBlockedDates/{date} {
       allow read: if true;
       allow create, update, delete: if isStaff();
     }
     match /bookingChangeRequests/{requestId} {
-      allow create: if ownsNewResource()
-        && request.resource.data.status == 'pending'
-        && request.resource.data.keys().hasAll(['ownerUid', 'bookingId', 'requestedAppointmentDate', 'status', 'createdAt']);
-      allow read: if isStaff() || ownsResource();
-      allow update: if isStaff();
-      allow delete: if false;
-    }
-
-    match /checklists/{bookingId} {
-      allow create: if signedIn()
-        && request.resource.data.keys().hasAll(['bookingId', 'stationGroups', 'generatedAt'])
-        && get(/databases/$(database)/documents/bookings/$(bookingId)).data.ownerUid == request.auth.uid;
       allow read, update: if isStaff();
+      allow create, delete: if false;
+    }
+    match /checklists/{bookingId} {
+      allow read, create, update: if isStaff();
       allow delete: if false;
     }
-
     match /managedPackages/{packageId} {
       allow read: if true;
       allow create, update: if isStaff();
       allow delete: if false;
     }
-
     match /managedItems/{itemId} {
       allow read: if true;
       allow create, update: if isStaff();
       allow delete: if false;
     }
-
     match /staffUsers/{email} {
       allow read: if isStaff();
       allow create, update: if isAdmin();
       allow delete: if false;
     }
-
     match /packageQuestionnaireRules/{packageId} {
       allow read: if true;
       allow create, update: if isStaff();
       allow delete: if false;
     }
-
     match /customerQuestionnaireResponses/{responseId} {
-      allow create, update: if ownsNewResource();
       allow read: if isStaff() || ownsResource();
+      allow create, update: if isStaff();
       allow delete: if false;
     }
-
     match /managedQuestionnaires/{qId} {
       allow read: if true;
       allow create, update: if isStaff();
       allow delete: if false;
     }
-
     match /settings/{settingId} {
-      allow read: if true;
+      allow read: if isStaff() || settingId == 'publicAddonCategories';
       allow create, update: if isStaff();
       allow delete: if false;
     }
