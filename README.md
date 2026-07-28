@@ -130,3 +130,9 @@ The public SPA now renders these LIFF deep-link views on both LIFF and direct we
 ### Deployment
 - Deploy Functions and Hosting together: `firebase deploy --only functions,hosting --project channel-activity-customer`.
 Deployment completed on 2026-07-28: Functions and Hosting released successfully to `https://channel-activity-customer.web.app`.
+## 2026-07-28 - Public header shortcuts
+
+- Consolidated the public navigation into the first header row and removed the former second navigation strip.
+- Added browser shortcuts matching the six LINE Rich Menu destinations: packages, my bookings, visit instructions, add-on items, report follow-up, and contact/directions.
+- Added a prominent Connect LINE action when no LINE identity is available. Browser shortcuts use the same SPA routes as LIFF, so desktop acceptance stays in the web app.
+- Verified with `npm test` and `npm run build`; Hosting deployed successfully.
