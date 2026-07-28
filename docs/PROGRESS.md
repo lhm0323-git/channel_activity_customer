@@ -211,3 +211,9 @@ Deployment completed on 2026-07-28: Functions and Hosting released successfully 
 - Functions test proves anonymous public booking, questionnaire response, change request, and cancellation continue to work while a direct booking overwrite is denied.
 - Staging Functions/Hosting deployment remains blocked until `cac-health-staging` is upgraded to Blaze. Production remains unchanged.
 - Next: enable Blaze and Auth providers in staging, deploy Functions + Hosting, then perform browser acceptance before any production deployment.
+
+## 2026-07-28 - Staging Hosting deployed
+
+- Isolated frontend deployed: https://cac-health-staging.web.app
+- Built with `.env.staging`; `VITE_LIFF_ID` is intentionally empty, so this staging site cannot use the production LIFF channel.
+- Firestore Rules are deployed. Functions remain pending until the staging Firebase project is upgraded to Blaze.
