@@ -101,3 +101,8 @@ VITE_STAFF_EMAILS=lhm0323@gmail.com
 ## 2026-07-28 Rich Menu public routes
 
 The public SPA now renders these LIFF deep-link views on both LIFF and direct web URLs: `prep`, `followup`, and `contact`. LINE login remains optional so a customer without LINE can book with an email contact address.
+## 2026-07-28 LIFF booking recovery and personalised preparation
+
+- Opening `?view=my-bookings`, `?view=checkin`, or `?view=prep` inside LIFF now verifies the current LINE access token through a Cloud Function, then reclaims only bookings with that matching `lineUserId` for the current Firebase session.
+- `?view=prep` shows fixed general preparation instructions plus only the warnings that match the booking's selected examination items. The check-in serial remains on the check-in view.
+- Direct web access without LINE identity remains restricted to bookings created in that same browser session; it does not expose LINE bookings.

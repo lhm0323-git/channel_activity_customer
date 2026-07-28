@@ -93,3 +93,10 @@ Functions 首次部署前：`cd functions; npm install`，並設定 `LINE_CHANNE
 - Do not make LINE login mandatory: the current booking design supports email fallback for customers without LINE login.
 - `?view=my-bookings` and `?view=checkin` remain on the existing My Bookings/check-in path.
 - Validation: `npm test` and `npm run build` passed. Deploy Hosting only.
+## 2026-07-28 - LIFF personal booking recovery
+
+- Root cause of empty My Bookings: the public Firestore query was correctly restricted by anonymous `ownerUid`, but this changed between browser/session contexts.
+- `functions/index.js` now exposes `claimMyLineBookings`. It verifies the current LIFF access token with LINE Profile API before reassigning only bookings whose stored `lineUserId` matches the verified LINE user to the current Firebase session.
+- `src/liff.js` keeps LIFF access token in memory as `lineProfile.accessToken`; do not persist it.
+- `?view=prep` uses `CheckInInfoPanel prepOnly`, loads the same verified customer bookings, hides serial, and shows base plus item-specific instructions.
+- Email-only cross-device booking lookup remains intentionally deferred: it needs an emailed signed lookup link or another verified email authentication path; do not expose email-based Firestore search from the client.

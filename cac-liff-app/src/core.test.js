@@ -131,8 +131,8 @@ run("bookingCheckInCode uses a short stable code", () => {
 });
 run("visit instructions only include matching tests", () => {
   const instructions = getVisitInstructions([{ name: "\u7532\u72c0\u817a\u8d85\u97f3\u6ce2" }, { name: "\u975c\u614b\u5fc3\u96fb\u5716" }]);
-  assert.equal(instructions.length, 1);
-  assert.match(instructions[0], /\u9838\u90e8/);
+  assert.equal(instructions.length, 5);
+  assert.match(instructions.at(-1), /\u9838\u90e8/);
 });
 
 run("makeFirestoreSafeId removes Firestore path separators", () => {

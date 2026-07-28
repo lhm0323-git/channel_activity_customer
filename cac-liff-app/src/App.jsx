@@ -1377,19 +1377,21 @@ ${selectedItems
   const handleLoadMyBookings = async () => {
     try {
       setMyBookingStatus(lang === "en" ? "Loading..." : "\u8b80\u53d6\u4e2d...");
-      const bookings = await listMyBookings();
-      setMyBookings(bookings.filter((booking) => booking.status !== "CANCELLED"));
-      setMyBookingStatus(`\u5df2\u8f09\u5165 ${bookings.filter((booking) => booking.status !== "CANCELLED").length} \u7b46\u9810\u7d04`);
+      const bookings = await listMyBookings(lineProfile?.accessToken);
+      const activeBookings = bookings.filter((booking) => booking.status !== "CANCELLED");
+      setMyBookings(activeBookings);
+      const browserHint = lineProfile ? "" : (lang === "en" ? ". Open from the LINE official account to view LINE bookings." : "。若預約由 LINE 建立，請從官方帳號開啟本頁查詢。");
+      setMyBookingStatus(`${lang === "en" ? "Loaded" : "\u5df2\u8f09\u5165"} ${activeBookings.length} ${lang === "en" ? "booking(s)" : "\u7b46\u9810\u7d04"}${browserHint}`);
     } catch (error) {
       setMyBookingStatus(`\u8b80\u53d6\u5931\u6557\uff1a${error.message}`);
     }
   };
 
   useEffect(() => {
-    if (publicView === "my-bookings" || publicView === "checkin") {
+    if (["my-bookings", "checkin", "prep"].includes(publicView)) {
       handleLoadMyBookings();
     }
-  }, [publicView]);
+  }, [publicView, lineProfile]);
 
   const handleAcknowledgeD1Notice = async (bookingId, ackToken) => {
     try {
@@ -2373,13 +2375,13 @@ ${selectedItems
     );
   };
 
-  const CheckInInfoPanel = () => {
+  const CheckInInfoPanel = ({ prepOnly = false }) => {
     const active = myBookings.filter((booking) => booking.status !== "CANCELLED");
     return (
       <div className="bg-white border border-slate-200 rounded-lg p-5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
-            <h1 className="text-xl font-black text-slate-900">{lang === "en" ? "Check-in serial and visit instructions" : "\u5831\u5230\u5e8f\u865f\uff0f\u7576\u65e5\u6d41\u7a0b"}</h1>
+            <h1 className="text-xl font-black text-slate-900">{lang === "en" ? (prepOnly ? "Visit instructions" : "Check-in serial and visit instructions") : (prepOnly ? "\u4f86\u6aa2\u9808\u77e5" : "\u5831\u5230\u5e8f\u865f\uff0f\u7576\u65e5\u6d41\u7a0b")}</h1>
             <p className="mt-1 text-sm text-slate-600">{lang === "en" ? "Please bring your health insurance card or identification to the health check center." : "\u8acb\u4f9d\u9810\u7d04\u65e5\u671f\u81f3\u5c4f\u57fa\u5065\u6aa2\u4e2d\u5fc3\u5831\u5230\uff0c\u4e26\u651c\u5e36\u5065\u4fdd\u5361\u6216\u8b49\u4ef6\u6838\u5c0d\u8eab\u5206\u3002"}</p>
           </div>
           <button onClick={handleLoadMyBookings} className="rounded-md bg-slate-900 px-4 py-2 text-xs font-bold text-white self-start sm:self-auto">{lang === "en" ? "Refresh" : "\u91cd\u65b0\u6574\u7406"}</button>
@@ -2392,12 +2394,12 @@ ${selectedItems
                 <span className="text-lg">{booking.packageName}</span>
                 <span className="text-sm font-normal text-slate-600">{booking.appointmentDate}</span>
               </div>
-              <div className="mt-3 rounded-lg bg-indigo-900 text-white p-4 text-center shadow-md">
+              {!prepOnly && (<div className="mt-3 rounded-lg bg-indigo-900 text-white p-4 text-center shadow-md">
                 <div className="text-xs font-bold text-indigo-200 tracking-wider uppercase">{lang === "en" ? "Check-in serial" : "\u5831\u5230\u5e8f\u865f"}</div>
                 <div className="mt-1 text-3xl font-black tracking-widest font-mono text-amber-300">
                   {booking.checkInSerial || (lang === "en" ? "Awaiting confirmation" : "\u5f85\u5065\u6aa2\u4e2d\u5fc3\u78ba\u8a8d")}
                 </div>
-              </div>
+              </div>)}
               <ul className="mt-3 space-y-1.5 text-sm text-slate-700 font-medium">
                 {getVisitInstructions(booking.selectedItems || [], lang).map((item) => (
                   <li key={item} className="flex items-start gap-2">
@@ -2418,6 +2420,7 @@ ${selectedItems
   };
   const PublicInfoPanel = ({ view }) => {
     if (view === "checkin") return <CheckInInfoPanel />;
+    if (view === "prep") return <CheckInInfoPanel prepOnly />;
     const contactMapUrl = "https://www.google.com/maps/search/?api=1&query=%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%A4%A7%E9%80%A3%E8%B7%AF66%E8%99%9F%E6%81%A9%E6%85%88%E5%A4%A7%E6%A8%932%E6%A8%93";
     const content = {
       prep: {

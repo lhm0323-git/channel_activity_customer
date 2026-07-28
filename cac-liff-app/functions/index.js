@@ -121,6 +121,25 @@ async function assertStaff(request) {
   if (!staff.exists || staff.data().active === false) throw new HttpsError("permission-denied", "Staff access is required");
 }
 
+async function verifyLineAccessToken(accessToken) {
+  const token = String(accessToken || "").trim();
+  if (!token || token.length > 8192) throw new HttpsError("invalid-argument", "A valid LINE access token is required");
+  const response = await fetch("https://api.line.me/v2/profile", { headers: { Authorization: "Bearer " + token } });
+  if (!response.ok) throw new HttpsError("permission-denied", "LINE identity verification failed");
+  const profile = await response.json();
+  if (!profile || !profile.userId) throw new HttpsError("permission-denied", "LINE identity verification failed");
+  return profile;
+}
+
+exports.claimMyLineBookings = onCall(async (request) => {
+  if (!request.auth?.uid) throw new HttpsError("unauthenticated", "A signed-in session is required");
+  const profile = await verifyLineAccessToken(request.data?.accessToken);
+  const snapshot = await admin.firestore().collection("bookings").where("lineUserId", "==", profile.userId).get();
+  const batch = admin.firestore().batch();
+  snapshot.docs.forEach((booking) => batch.update(booking.ref, { ownerUid: request.auth.uid, updatedAt: admin.firestore.FieldValue.serverTimestamp() }));
+  if (!snapshot.empty) await batch.commit();
+  return { claimed: snapshot.size };
+});
 exports.acknowledgeD1LineNotice = onCall(async (request) => {
   const bookingId = String(request.data && request.data.bookingId || "").trim();
   const ackToken = String(request.data && request.data.ackToken || "").trim();

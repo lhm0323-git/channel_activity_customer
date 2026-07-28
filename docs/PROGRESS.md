@@ -117,3 +117,26 @@
 - `https://channel-activity-customer.web.app/?view=prep`
 - `https://channel-activity-customer.web.app/?view=followup`
 - `https://channel-activity-customer.web.app/?view=contact`
+## 2026-07-28 - LIFF booking recovery and personalised preparation
+
+### Completed
+- Diagnosed My Bookings regression: queries used Firebase anonymous `ownerUid`, so an existing LINE booking was unavailable after a changed browser/session.
+- Added `claimMyLineBookings`: the callable Function validates the LIFF access token against LINE Profile API, finds only matching `lineUserId` bookings, and assigns them to the caller's Firebase session.
+- Added the LIFF access token to in-memory profile state only; it is not stored in Firestore or local storage.
+- Reconnected `?view=prep` to the customer's active bookings, with base instructions plus package-specific warnings from `getVisitInstructions`.
+
+### Files
+- `cac-liff-app/src/liff.js`
+- `cac-liff-app/src/firebase.js`
+- `cac-liff-app/src/App.jsx`
+- `cac-liff-app/src/core.js`
+- `cac-liff-app/src/core.test.js`
+- `cac-liff-app/functions/index.js`
+
+### Verification
+- `npm test` passed.
+- `npm run build` passed; existing Vite chunk-size warning remains.
+- `node --check functions/index.js` passed.
+
+### Deployment
+- Deploy Functions and Hosting together: `firebase deploy --only functions,hosting --project channel-activity-customer`.

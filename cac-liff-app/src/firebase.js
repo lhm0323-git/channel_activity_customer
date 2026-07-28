@@ -223,9 +223,10 @@ export async function listBookingsByDate(appointmentDate, channel = "ALL") {
   return sortBookings(filterBookingsByChannel(bookings, channel));
 }
 
-export async function listMyBookings() {
+export async function listMyBookings(lineAccessToken = "") {
   if (!db) return JSON.parse(localStorage.getItem("cac_local_bookings") || "[]");
   const user = await ensurePublicUser();
+  if (lineAccessToken && functions) await httpsCallable(functions, "claimMyLineBookings")({ accessToken: lineAccessToken });
   const q = query(collection(db, "bookings"), where("ownerUid", "==", user.uid));
   const snapshot = await getDocs(q);
   return sortBookings(snapshot.docs.map((docSnap) => ({ bookingId: docSnap.id, ...docSnap.data() })));

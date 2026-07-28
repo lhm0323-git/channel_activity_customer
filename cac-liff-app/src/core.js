@@ -372,6 +372,20 @@ export function bookingCheckInCode(bookingId) {
   return String(bookingId || "").replace(/[^a-z0-9]/gi, "").slice(-6).toUpperCase() || "-";
 }
 
+const BASE_VISIT_INSTRUCTIONS = {
+  zh: [
+    "請攜帶健保 IC 卡與身分證；外籍顧客請攜帶護照或居留證。",
+    "報到地點：恩慈大樓 2 樓健檢中心。",
+    "檢查前一日晚上 10 點後請禁食，可飲少量白開水。",
+    "請穿著寬鬆、上下分開衣物及便鞋，以利各項檢查。",
+  ],
+  en: [
+    "Bring your health insurance card and identification; international visitors should bring a passport or residence permit.",
+    "Check in at the Health Examination Center, 2F, Enci Building.",
+    "Fast after 10 PM the night before; a small amount of plain water is allowed.",
+    "Wear loose, separate top and bottom clothing with comfortable shoes.",
+  ],
+};
 const VISIT_INSTRUCTION_RULES = [
   { id: "eye", zh: "\u773c\u79d1\u6aa2\u67e5\u8005\u8acb\u52ff\u914d\u6234\u96b1\u5f62\u773c\u93e1\u3002", en: "Do not wear contact lenses for eye examinations.", match: /\u773c\u58d3|\u773c\u79d1|\u8996\u529b/i },
   { id: "abi", zh: "\u56db\u80a2\u52d5\u8108\u58d3\u6aa2\u67e5\u8acb\u52ff\u7a7f\u7dca\u8eab\u9577\u8932\u53ca\u9577\u7d72\u896a\u3002", en: "Avoid tight trousers and long stockings for ABI/PWV testing.", match: /ABI|PWV|\u56db\u80a2\u52d5\u8108/i },
@@ -387,7 +401,7 @@ const VISIT_INSTRUCTION_RULES = [
 
 export function getVisitInstructions(selectedItems = [], lang = "zh") {
   const source = selectedItems.map((item) => [item.name, item.enName, item.category].filter(Boolean).join(" ")).join("\n");
-  return VISIT_INSTRUCTION_RULES.filter((rule) => rule.match.test(source)).map((rule) => rule[lang] || rule.zh);
+  return [...(BASE_VISIT_INSTRUCTIONS[lang] || BASE_VISIT_INSTRUCTIONS.zh), ...VISIT_INSTRUCTION_RULES.filter((rule) => rule.match.test(source)).map((rule) => rule[lang] || rule.zh)];
 }
 
 export function makeFirestoreSafeId(value) {
