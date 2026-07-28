@@ -1687,6 +1687,16 @@ ${selectedItems
     }
   };
 
+  const handleSetStaffActive = async (staff) => {
+    try {
+      const active = staff.active === false;
+      await saveStaffUser(staff.email, active);
+      setStaffManageStatus(lang === "en" ? `${staff.email} ${active ? "enabled" : "disabled"}` : `${staff.email}已${active ? "啟用" : "停用"}`);
+      setStaffAccounts(await listStaffUsers());
+    } catch (error) {
+      setStaffManageStatus(lang === "en" ? `Update failed: ${error.message}` : `更新失敗：${error.message}`);
+    }
+  };
   const handleSaveAdminBooking = async () => {
     if (!adminDetailBooking?.bookingId) return;
     try {
@@ -3662,7 +3672,10 @@ ${selectedItems
               </div>
               <div className="pt-2 border-t border-slate-100 flex flex-wrap gap-1.5 max-h-36 overflow-y-auto">
                 {staffAccounts.length ? staffAccounts.map((staff) => (
-                  <span key={staff.email} className="rounded bg-slate-100 px-2 py-1 text-xs font-bold text-slate-700 border border-slate-200">{staff.email}</span>
+                  <span key={staff.email} className={`inline-flex items-center gap-1 rounded border px-2 py-1 text-xs font-bold ${staff.active === false ? "border-rose-200 bg-rose-50 text-rose-700" : "border-slate-200 bg-slate-100 text-slate-700"}`}>
+                    {staff.email}
+                    {staff.email !== ADMIN_EMAIL && <button type="button" onClick={() => handleSetStaffActive(staff)} className="rounded px-1 text-[11px] underline" title={staff.active === false ? "Enable" : "Disable"}>{staff.active === false ? (lang === "en" ? "Enable" : "啟用") : (lang === "en" ? "Disable" : "停用")}</button>}
+                  </span>
                 )) : (
                   <span className="text-xs text-slate-400">{t.noStaffAccounts}</span>
                 )}

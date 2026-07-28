@@ -246,3 +246,9 @@ Deployment completed on 2026-07-28: Functions and Hosting released successfully 
 - Verified: `npm test`, `npm run build -- --mode staging`, and HTTP 200 from `https://cac-health-staging.web.app`.
 - Deployed Hosting only to staging. Production remains unchanged.
 - Remaining manual acceptance: sign in to staging with the administrator Google account, then add/disable a non-admin staff account through the existing UI and verify access is granted then denied.
+## 2026-07-28 - Staff enable and disable UI
+
+- Bootstrap administrators can now enable or disable each non-admin staff account from the existing staff account panel in the staging booking list.
+- Disabled accounts are visually marked and are denied by both the UI and Firestore Rules after the next sign-in.
+- Verified: 
+pm test, staging build, and staging Hosting deployment.

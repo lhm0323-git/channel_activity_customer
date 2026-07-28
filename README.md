@@ -201,3 +201,4 @@ Deployment completed on 2026-07-28: Functions and Hosting released successfully 
 - 員工 UI 權限讀取 Firestore `staffUsers/{email}.active`；`lhm0323@gmail.com` 是 bootstrap 管理者。
 - Staging 的 LINE token 是刻意無效的 placeholder，不能對真實客戶發送訊息。
 - 正式部署前仍須完成 staging 的 Google 員工登入、建立非管理者員工、停用後拒絕存取的互動驗收。
+- Staging 管理者可於「預約清單」的員工帳號區，對非管理者 Gmail 點選「停用」或「啟用」。停用者下次登入即無法進入後台。

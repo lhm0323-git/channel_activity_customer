@@ -403,13 +403,13 @@ export async function listStaffUsers() {
   return snapshot.docs.map((docSnap) => ({ email: docSnap.id, ...docSnap.data() }));
 }
 
-export async function saveStaffUser(email) {
+export async function saveStaffUser(email, active = true) {
   if (!db) return { localOnly: true };
   const cleanEmail = String(email || "").trim().toLowerCase();
   if (!cleanEmail || !cleanEmail.includes("@")) throw new Error("Invalid email");
   await setDoc(doc(db, "staffUsers", cleanEmail), {
     email: cleanEmail,
-    active: true,
+    active,
     updatedAt: serverTimestamp(),
   }, { merge: true });
   return { email: cleanEmail, localOnly: false };

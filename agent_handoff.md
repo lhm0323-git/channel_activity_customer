@@ -195,3 +195,7 @@ Deployment completed on 2026-07-28: Functions and Hosting released successfully 
 - Staging Hosting deployed: https://cac-health-staging.web.app. Do not deploy this branch to `channel-activity-customer` yet.
 - Passed: `npm test` and `npm run build -- --mode staging`.
 - Manual next step: log in at staging with the admin Google account; create a non-admin staff entry, verify staff tools load, then set it inactive and verify the user is refused after sign-in.
+## 2026-07-28 - Staff account activation control
+
+- Admin staff account chips now include 啟用/停用. The bootstrap administrator cannot disable itself.
+- This control writes the existing staffUsers/{email}.active field used by the frontend gate and Firestore Rules.
