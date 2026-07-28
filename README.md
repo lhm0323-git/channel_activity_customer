@@ -96,3 +96,4 @@ VITE_STAFF_EMAILS=lhm0323@gmail.com
 - The Package Tool keeps the package-name field readable on narrower desktop widths by allowing the settings row to wrap.
 - Package questionnaire rules are loaded by their stored package name rather than the encoded Firestore document ID.
 - Staff can select `無對應健康問卷`; the public and staff questionnaire actions then stop instead of silently falling back to a general questionnaire.
+- The no-questionnaire option in Package Tool is displayed as 無.

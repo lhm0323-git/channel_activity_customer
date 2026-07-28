@@ -98,3 +98,4 @@
 ### Verification
 - `npm test` passed.
 - `npm run build` passed; existing Vite chunk-size warning remains.
+- Corrected the Package Tool no-questionnaire option label to 無; production build passed.

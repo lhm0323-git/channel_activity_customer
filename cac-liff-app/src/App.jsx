@@ -2227,7 +2227,7 @@ ${selectedItems
                   </button>
                 </div>
                 <select className="w-full mt-1 px-2 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-700" value={packageQuestionnaireId} onChange={(e) => setPackageQuestionnaireId(e.target.value)}>
-                  <option value="">\u7121\u5c0d\u61c9\u5065\u5eb7\u554f\u5377</option>
+                  <option value="">無</option>
                   {allQuestionnaires.map((q) => (
                     <option key={q.id} value={q.id}>{q.title}</option>
                   ))}

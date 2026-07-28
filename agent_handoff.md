@@ -85,3 +85,4 @@ Functions 首次部署前：`cd functions; npm install`，並設定 `LINE_CHANNE
 - The Package Tool offers `無對應健康問卷`; it is stored as an empty questionnaire id, and questionnaire actions report that no questionnaire is required.
 - The package-settings row wraps and gives the package name a `180px` minimum width.
 - Verified with `npm test` and `npm run build`. Hosting-only deployment is sufficient.
+- UI correction: the optional questionnaire select now displays 無 rather than a literal Unicode escape sequence.
