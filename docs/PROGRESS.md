@@ -229,3 +229,11 @@ Deployment completed on 2026-07-28: Functions and Hosting released successfully 
 - Artifact Registry cleanup deletes staging function images older than one day.
 - Live `createBooking` returned HTTP 401 `UNAUTHENTICATED` to an unauthenticated request, confirming the public write boundary is enforced.
 - Remaining external setup: Firebase Authentication has not been initialized in staging (`CONFIGURATION_NOT_FOUND`). Enable Anonymous and Google sign-in before browser acceptance.
+
+## 2026-07-28 - Live staging P0 acceptance
+
+- Firebase Authentication staging setup verified: Anonymous sign-in succeeds.
+- Live staging acceptance passed with a timestamped test booking: callable create, owner read, direct Firestore overwrite denial, questionnaire response, reschedule request, and cancellation.
+- Test booking was cancelled at the end; booking id recorded in terminal evidence only.
+- `firebase functions:list` confirms the deployed Gen2 functions are ACTIVE. The Compute API lookup warning is non-blocking because Firebase Scheduler successfully created the job using the fallback compute service account.
+- Remaining acceptance: interactive Google staff login in staging and staff UI edit/disabled-user denial, which cannot be automated without an interactive Google account session.
