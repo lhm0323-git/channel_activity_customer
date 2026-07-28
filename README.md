@@ -191,3 +191,13 @@ Deployment completed on 2026-07-28: Functions and Hosting released successfully 
 - Test booking was cancelled at the end; booking id recorded in terminal evidence only.
 - `firebase functions:list` confirms the deployed Gen2 functions are ACTIVE. The Compute API lookup warning is non-blocking because Firebase Scheduler successfully created the job using the fallback compute service account.
 - Remaining acceptance: interactive Google staff login in staging and staff UI edit/disabled-user denial, which cannot be automated without an interactive Google account session.
+
+## P0 安全修補驗收環境
+
+正式環境目前維持不變。P0 修補在隔離的 staging Firebase 專案驗收：`https://cac-health-staging.web.app`。
+
+- Staging 已啟用 Anonymous 與 Google Authentication，且 Function、Rules、Hosting 已部署。
+- 民眾建立/取消/改期預約與問卷寫入均改由 Callable Cloud Functions 執行；Firestore Rules 不接受民眾直接覆寫預約或問卷。
+- 員工 UI 權限讀取 Firestore `staffUsers/{email}.active`；`lhm0323@gmail.com` 是 bootstrap 管理者。
+- Staging 的 LINE token 是刻意無效的 placeholder，不能對真實客戶發送訊息。
+- 正式部署前仍須完成 staging 的 Google 員工登入、建立非管理者員工、停用後拒絕存取的互動驗收。

@@ -237,3 +237,12 @@ Deployment completed on 2026-07-28: Functions and Hosting released successfully 
 - Test booking was cancelled at the end; booking id recorded in terminal evidence only.
 - `firebase functions:list` confirms the deployed Gen2 functions are ACTIVE. The Compute API lookup warning is non-blocking because Firebase Scheduler successfully created the job using the fallback compute service account.
 - Remaining acceptance: interactive Google staff login in staging and staff UI edit/disabled-user denial, which cannot be automated without an interactive Google account session.
+
+## 2026-07-28 - Staging staff access gate
+
+- Firebase Authentication in `cac-health-staging` is now enabled for Anonymous and Google sign-in.
+- Replaced the browser-build staff email allowlist with the existing `staffUsers/{email}` `active` record as the UI gate. `lhm0323@gmail.com` remains the bootstrap administrator.
+- This matches the deployed Firestore Rules: a disabled staff record cannot edit data or enter the staff UI after the next sign-in.
+- Verified: `npm test`, `npm run build -- --mode staging`, and HTTP 200 from `https://cac-health-staging.web.app`.
+- Deployed Hosting only to staging. Production remains unchanged.
+- Remaining manual acceptance: sign in to staging with the administrator Google account, then add/disable a non-admin staff account through the existing UI and verify access is granted then denied.

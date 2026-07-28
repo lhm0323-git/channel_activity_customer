@@ -100,18 +100,22 @@ import {
   watchStaffAuth,
 } from "./firebase.js";
 
-const STAFF_EMAILS = String(import.meta.env.VITE_STAFF_EMAILS || "")
-  .split(",")
-  .map((email) => email.trim().toLowerCase())
-  .filter(Boolean);
+const ADMIN_EMAIL = "lhm0323@gmail.com";
 
-function canUseStaffTools(user) {
-  if (!user?.email) return false;
-  if (STAFF_EMAILS.length === 0) return import.meta.env.DEV;
-  return STAFF_EMAILS.includes(user.email.toLowerCase());
+function isAdminEmail(user) {
+  return user?.email?.toLowerCase() === ADMIN_EMAIL;
 }
 
-const ADMIN_EMAIL = "lhm0323@gmail.com";
+async function canUseStaffTools(user) {
+  if (!user?.email) return false;
+  if (isAdminEmail(user)) return true;
+  try {
+    const record = await getStaffUser(user.email);
+    return Boolean(record && record.active !== false);
+  } catch {
+    return false;
+  }
+}
 const CHANNEL_LABELS_EN = { HIGH_END: "Premium", CORPORATE: "Corporate", LABOR: "Labor", GENERAL: "General" };
 
 function channelLabel(value, lang = "zh") {
@@ -742,7 +746,7 @@ const App = () => {
           setStaffStatus("");
           return;
         }
-        const allowed = canUseStaffTools(user) || Boolean(await getStaffUser(user.email));
+        const allowed = await canUseStaffTools(user);
         if (!active) return;
         if (!allowed) {
           setStaffUser(null);
@@ -1331,7 +1335,7 @@ ${selectedItems
     try {
       setStaffStatus("\u767b\u5165\u4e2d...");
       const user = await signInStaff();
-      const allowed = canUseStaffTools(user) || Boolean(await getStaffUser(user.email));
+      const allowed = await canUseStaffTools(user);
       if (!allowed) {
         await signOutStaff();
         setStaffStatus("\u6b64 Google \u5e33\u865f\u672a\u6388\u6b0a\u4f7f\u7528\u5167\u90e8\u5de5\u5177");
