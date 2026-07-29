@@ -215,3 +215,8 @@ Deployment completed on 2026-07-28: Functions and Hosting released successfully 
 - Phase 2 is deployed in staging: `PUBLIC`, `INTERNAL`, `INVITE_ONLY` managed packages; callable public package list; server-validated invitation token; expiring invite link/QR and immediate revoke control; public 30-day blocked-date notice.
 - Verification passed: `node --check functions/index.js`, `npm test`, `npm run test:rules`, `npm run test:functions`, and `npm run build -- --mode staging`.
 - Pending acceptance: sign in as a staging admin; verify a disabled staff account is denied, audit list is admin-only, and invite-only package visibility/revocation works in a non-staff browser. Email delivery and Phase 3 PITR/backups are deliberately deferred.
+
+## 2026-07-29 Staging public page repair
+
+- If the public page reports `listPublicManagedPackages is not defined`, verify the three Phase 2 wrappers are imported from `src/firebase.js` in `src/App.jsx`.
+- The corrected bundle was deployed Hosting-only to staging after `npm test` and `npm run build -- --mode staging` passed.

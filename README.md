@@ -216,3 +216,5 @@ Deployment completed on 2026-07-28: Functions and Hosting released successfully 
 - Phase 1：角色/停用員工、LINE 綁定、報告狀態與預約操作稽核皆已部署 staging。管理者可在「稽核紀錄」查看確認、取消、提醒、後台編修的操作者、時間與欄位摘要。
 - Phase 2：套餐可設定民眾公開、僅內部、邀請制；邀請制可設定到期日並產生預約連結與 QR。公開找方案會列出未來 30 日停約日。
 - 驗收與部署必須同時使用 `functions`、`firestore:rules`、`hosting`；不可只部署 Hosting。Email 寄送服務與 PITR 仍延後。
+
+- 2026-07-29 修復：公共套餐頁需匯入 `listPublicManagedPackages`、邀請產生與撤銷 wrapper；staging Hosting 已更新。

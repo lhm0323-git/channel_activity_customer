@@ -284,3 +284,9 @@ pm test, staging build, and staging Hosting deployment.
 ### Next handoff
 - Perform browser acceptance using a staging administrator account: role changes, audit list visibility, public/internal/invite-only package visibility, invite expiry/revocation, and booking rejection after revocation.
 - Email delivery and Phase 3 PITR/backups remain intentionally deferred.
+
+## 2026-07-29 - Staging public page import repair
+
+- Root cause: `App.jsx` called `listPublicManagedPackages`, `createPackageInvite`, and `revokePackageInvite` without importing their existing `firebase.js` wrappers.
+- Added the three imports, then passed `npm test` and `npm run build -- --mode staging`.
+- Hosting-only fix deployed to `https://cac-health-staging.web.app`; no Functions, Rules, or production deployment was required.
