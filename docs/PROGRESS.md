@@ -290,3 +290,9 @@ pm test, staging build, and staging Hosting deployment.
 - Root cause: `App.jsx` called `listPublicManagedPackages`, `createPackageInvite`, and `revokePackageInvite` without importing their existing `firebase.js` wrappers.
 - Added the three imports, then passed `npm test` and `npm run build -- --mode staging`.
 - Hosting-only fix deployed to `https://cac-health-staging.web.app`; no Functions, Rules, or production deployment was required.
+
+## 2026-07-29 - Concise public package copy
+
+- Chinese public package page removes the generic explanatory subtitle.
+- The title is now 「選擇需要的健檢方案」 and blocked dates render only when present as 「未來30日內停約日為：」.
+- Verified with staging build and deployed Hosting-only to `https://cac-health-staging.web.app`.

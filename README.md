@@ -218,3 +218,5 @@ Deployment completed on 2026-07-28: Functions and Hosting released successfully 
 - 驗收與部署必須同時使用 `functions`、`firestore:rules`、`hosting`；不可只部署 Hosting。Email 寄送服務與 PITR 仍延後。
 
 - 2026-07-29 修復：公共套餐頁需匯入 `listPublicManagedPackages`、邀請產生與撤銷 wrapper；staging Hosting 已更新。
+
+- 公開「找方案」中文標題為「選擇需要的健檢方案」；有停約日才顯示「未來30日內停約日為：」。

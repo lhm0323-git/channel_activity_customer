@@ -138,7 +138,7 @@ const TEXT = {
     adminTab: "\u9810\u7d04\u6e05\u55ae",
     staffLogin: "\u54e1\u5de5\u767b\u5165",
     logout: "\u767b\u51fa",
-    publicTitle: "\u9078\u64c7\u9069\u5408\u7684\u5065\u6aa2\u65b9\u6848",
+    publicTitle: "\u9078\u64c7\u9700\u8981\u7684\u5065\u6aa2\u65b9\u6848",
     publicSubtitle: "\u4f9d\u8eab\u5206\u5225\u3001\u6027\u5225\u8207\u60f3\u4e86\u89e3\u7684\u6aa2\u67e5\u90e8\u4f4d\u7be9\u9078\u3002\u9019\u88e1\u53ea\u986f\u793a\u5957\u9910\u8cc7\u8a0a\uff0c\u4e0d\u63d0\u4f9b\u55ae\u9805\u52a0\u9078\u3002",
     audience: "\u8eab\u5206\u5225",
     sex: "\u6027\u5225",
@@ -2766,7 +2766,7 @@ ${selectedItems
         <section className="mx-auto w-full max-w-6xl px-4 py-6 lg:px-6 space-y-5">
           <div className="bg-white border border-slate-200 rounded-lg p-4 lg:p-5">
             <h1 className="text-xl lg:text-2xl font-black text-slate-900">{t.publicTitle}</h1>
-            <p className="mt-2 text-sm text-slate-600">{t.publicSubtitle}</p>{publicBlockedDates.length > 0 && <p className="mt-2 text-sm font-bold text-rose-700">{lang === "en" ? "Unavailable dates in the next 30 days: " : "未來 30 日內停約日："}{publicBlockedDates.join("、")}</p>}
+            {lang === "en" && <p className="mt-2 text-sm text-slate-600">{t.publicSubtitle}</p>}{publicBlockedDates.length > 0 && <p className="mt-2 text-sm font-bold text-rose-700">{lang === "en" ? "Unavailable dates in the next 30 days: " : "未來30日內停約日為："}{publicBlockedDates.join("、")}</p>}
             <div className="mt-4 grid grid-cols-3 gap-2 lg:gap-3">
               <label className="text-xs font-bold text-slate-600">
                 {t.audience}

@@ -220,3 +220,8 @@ Deployment completed on 2026-07-28: Functions and Hosting released successfully 
 
 - If the public page reports `listPublicManagedPackages is not defined`, verify the three Phase 2 wrappers are imported from `src/firebase.js` in `src/App.jsx`.
 - The corrected bundle was deployed Hosting-only to staging after `npm test` and `npm run build -- --mode staging` passed.
+
+## 2026-07-29 Public package copy
+
+- Keep the Chinese public package title as 「選擇需要的健檢方案」. Do not restore the generic subtitle.
+- Only show the blocked-date sentence when there are dates within 30 days: 「未來30日內停約日為：」.
