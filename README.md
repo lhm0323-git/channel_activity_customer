@@ -202,3 +202,11 @@ Deployment completed on 2026-07-28: Functions and Hosting released successfully 
 - Staging 的 LINE token 是刻意無效的 placeholder，不能對真實客戶發送訊息。
 - 正式部署前仍須完成 staging 的 Google 員工登入、建立非管理者員工、停用後拒絕存取的互動驗收。
 - Staging 管理者可於「預約清單」的員工帳號區，對非管理者 Gmail 點選「停用」或「啟用」。停用者下次登入即無法進入後台。
+
+## 2026-07-29 - Report status staging MVP
+
+- Added a separate staff `報告管理` tab. The booking list and booking-edit modal no longer contain report status or care-manager notes.
+- Staff can set `處理中` / `已完成，請至中心領取` / `已寄發` / `請個管師聯繫`, plus an internal care-manager note. The LIFF `報告追蹤` view exposes only the customer-visible status for that owner; it never exposes the note or a report file.
+- The Phase 1-3 implementation plan now defers PITR, backups, and final report file storage to Phase 3 after real bookings begin. No PITR or scheduled backup cost is enabled during trial.
+- Verified: `npm test`, `npm run build -- --mode staging`, and Hosting deployment to `https://cac-health-staging.web.app`.
+- Production `channel-activity-customer` remains unchanged. Next: staff acceptance in staging, then decide whether to promote the P0 and report-status changes to production.

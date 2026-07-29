@@ -585,6 +585,7 @@ const App = () => {
   const [showBookingModal, setShowBookingModal] = useState(false);
   const [bookingStatus, setBookingStatus] = useState("");
   const [myBookings, setMyBookings] = useState([]);
+  const [reportBookings, setReportBookings] = useState([]);
   const [myBookingStatus, setMyBookingStatus] = useState("");
   const [ackHandled, setAckHandled] = useState(false);
   const [changeDates, setChangeDates] = useState({});
@@ -637,6 +638,7 @@ const App = () => {
   const [adminBookings, setAdminBookings] = useState([]);
   const [adminSort, setAdminSort] = useState({ key: "createdAt", direction: "asc" });
   const [adminDetailBooking, setAdminDetailBooking] = useState(null);
+  const [reportDetailBooking, setReportDetailBooking] = useState(null);
   const [selectedAdminBookingIds, setSelectedAdminBookingIds] = useState([]);
   const [pendingChanges, setPendingChanges] = useState([]);
   const [adminStatus, setAdminStatus] = useState("");
@@ -1329,7 +1331,7 @@ ${selectedItems
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#039;");
 
-  const staffMode = mode === "staff" || mode === "admin";
+  const staffMode = mode === "staff" || mode === "admin" || mode === "reports";
 
   const handleStaffLogin = async () => {
     try {
@@ -1427,6 +1429,7 @@ ${selectedItems
       const bookings = await listMyBookings(lineProfile?.accessToken);
       const activeBookings = upcomingBookings(bookings);
       setMyBookings(activeBookings);
+      setReportBookings(bookings.filter((booking) => booking.status !== "CANCELLED"));
       const browserHint = lineProfile ? "" : (lang === "en" ? ". Open from the LINE official account to view LINE bookings." : "。若預約由 LINE 建立，請從官方帳號開啟本頁查詢。");
       setMyBookingStatus(`${lang === "en" ? "Loaded" : "\u5df2\u8f09\u5165"} ${activeBookings.length} ${lang === "en" ? "booking(s)" : "\u7b46\u9810\u7d04"}${browserHint}`);
     } catch (error) {
@@ -1435,7 +1438,7 @@ ${selectedItems
   };
 
   useEffect(() => {
-    if (["my-bookings", "checkin", "prep"].includes(publicView)) {
+    if (["my-bookings", "checkin", "prep", "followup"].includes(publicView)) {
       handleLoadMyBookings();
     }
   }, [publicView, lineProfile]);
@@ -1522,6 +1525,12 @@ ${selectedItems
     }
   };
   const statusLabel = (status) => ({ BOOKED: t.booked, CONFIRMED: t.confirmed, RESCHEDULED: t.rescheduled, CANCELLED: t.cancelled }[status] || status || t.booked);
+  const reportStatusLabel = (status) => ({
+    PENDING: lang === "en" ? "Processing" : "處理中",
+    READY_FOR_PICKUP: lang === "en" ? "Ready for pickup" : "已完成，請至中心領取",
+    MAILED: lang === "en" ? "Mailed" : "已寄發",
+    FOLLOW_UP_REQUIRED: lang === "en" ? "Care manager follow-up" : "請個管師聯繫",
+  }[status || "PENDING"]);
   const noticeLabel = (booking) => {
     if (booking.d1AcknowledgedAt) return lang === "en" ? "Acknowledged" : "\u5df2\u56de\u8986";
     if (booking.d1NoticeSentAt) return lang === "en" ? "Sent" : "\u5df2\u767c\u9001";
@@ -1737,6 +1746,20 @@ ${selectedItems
     }
   };
 
+  const handleSaveReportBooking = async () => {
+    if (!reportDetailBooking?.bookingId) return;
+    try {
+      await updateBooking(reportDetailBooking.bookingId, {
+        reportStatus: reportDetailBooking.reportStatus || "PENDING",
+        reportInternalNote: reportDetailBooking.reportInternalNote || "",
+      });
+      setAdminStatus(lang === "en" ? "Report status updated" : "報告狀態已更新");
+      setReportDetailBooking(null);
+      handleLoadAdminBookings();
+    } catch (error) {
+      setAdminStatus(lang === "en" ? `Report update failed: ${error.message}` : `報告更新失敗：${error.message}`);
+    }
+  };
   const handlePrintSelectedBookings = () => {
     if (!selectedAdminBookings.length) {
       setAdminStatus(lang === "en" ? "Select customers to print first" : "\u8acb\u5148\u52fe\u9078\u8981\u5217\u5370\u7684\u5ba2\u6236");
@@ -2474,9 +2497,22 @@ ${selectedItems
       </div>
     );
   };
+  const ReportFollowUpPanel = () => {
+    const reports = [...reportBookings].sort((a, b) => String(b.appointmentDate || "").localeCompare(String(a.appointmentDate || "")));
+    return (
+      <div className="bg-white border border-slate-200 rounded-lg p-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div><h1 className="text-xl font-black text-slate-900">{lang === "en" ? "Report follow-up" : "報告追蹤"}</h1><p className="mt-1 text-sm text-slate-600">{lang === "en" ? "View report processing status. Contact the health check center for details." : "查看報告處理狀態；詳細內容請洽健檢中心。"}</p></div>
+          <button onClick={handleLoadMyBookings} className="rounded-md bg-slate-900 px-4 py-2 text-xs font-bold text-white self-start">{lang === "en" ? "Refresh" : "重新整理"}</button>
+        </div>
+        <div className="mt-4 space-y-3">{reports.length ? reports.map((booking) => <div key={booking.bookingId} className="rounded-lg border border-slate-200 bg-slate-50 p-4"><div className="flex items-start justify-between gap-3"><div><div className="font-black text-slate-900">{booking.packageName || "-"}</div><div className="mt-1 text-sm text-slate-600">{booking.appointmentDate || "-"}</div></div><span className="rounded bg-indigo-100 px-2 py-1 text-xs font-bold text-indigo-800">{reportStatusLabel(booking.reportStatus)}</span></div></div>) : <div className="rounded-lg border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500">{lang === "en" ? "No report records found." : "目前沒有可查詢的報告紀錄。"}</div>}</div>
+      </div>
+    );
+  };
   const PublicInfoPanel = ({ view }) => {
     if (view === "checkin") return <CheckInInfoPanel />;
     if (view === "prep") return <CheckInInfoPanel prepOnly />;
+    if (view === "followup") return <ReportFollowUpPanel />;
     const contactMapUrl = "https://www.google.com/maps/search/?api=1&query=%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%A4%A7%E9%80%A3%E8%B7%AF66%E8%99%9F%E6%81%A9%E6%85%88%E5%A4%A7%E6%A8%932%E6%A8%93";
     const content = {
       prep: {
@@ -2867,6 +2903,22 @@ ${selectedItems
     </div>
   ) : null;
 
+  const ReportDetailModal = () => reportDetailBooking ? (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setReportDetailBooking(null)}>
+      <div className="w-full max-w-xl rounded-lg border border-slate-200 bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-start justify-between gap-4 border-b border-slate-100 p-4">
+          <div><h2 className="text-lg font-black text-slate-900">{lang === "en" ? "Report management" : "報告管理"}</h2><p className="mt-1 text-sm text-slate-500">{reportDetailBooking.customerName || reportDetailBooking.name || t.unnamed} · {reportDetailBooking.packageName || "-"} · {reportDetailBooking.appointmentDate || "-"}</p></div>
+          <button className="rounded-md bg-slate-100 p-2 text-slate-500" onClick={() => setReportDetailBooking(null)} aria-label={t.closeBooking}><X className="h-4 w-4" /></button>
+        </div>
+        <div className="space-y-4 p-4">
+          <label className="block text-xs font-bold text-slate-600">{lang === "en" ? "Status visible to customer" : "民眾可見的報告狀態"}<select className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-normal" value={reportDetailBooking.reportStatus || "PENDING"} onChange={(e) => setReportDetailBooking({ ...reportDetailBooking, reportStatus: e.target.value })}><option value="PENDING">{reportStatusLabel("PENDING")}</option><option value="READY_FOR_PICKUP">{reportStatusLabel("READY_FOR_PICKUP")}</option><option value="MAILED">{reportStatusLabel("MAILED")}</option><option value="FOLLOW_UP_REQUIRED">{reportStatusLabel("FOLLOW_UP_REQUIRED")}</option></select></label>
+          <label className="block text-xs font-bold text-slate-600">{lang === "en" ? "Care manager internal note" : "個管師內部備註"}<textarea className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-normal" rows="5" value={reportDetailBooking.reportInternalNote || ""} onChange={(e) => setReportDetailBooking({ ...reportDetailBooking, reportInternalNote: e.target.value })} /></label>
+          <p className="text-xs text-slate-500">{lang === "en" ? "Internal notes are not shown in the customer LIFF page." : "此備註不會顯示於民眾的 LINE 報告追蹤頁。"}</p>
+        </div>
+        <div className="flex justify-end gap-2 border-t border-slate-100 p-4"><button className="rounded-md border border-slate-200 px-4 py-2 text-xs font-bold text-slate-700" onClick={() => setReportDetailBooking(null)}>{lang === "en" ? "Close" : "關閉"}</button><button className="rounded-md bg-emerald-600 px-4 py-2 text-xs font-bold text-white" onClick={handleSaveReportBooking}>{t.saveChanges}</button></div>
+      </div>
+    </div>
+  ) : null;
   const QuestionnaireModal = () => {
     if (!activeQuestionnaireModal) return null;
     const { booking, schema, answers, status, previousLoaded } = activeQuestionnaireModal;
@@ -3525,6 +3577,27 @@ ${selectedItems
     );
   };
 
+  const ReportManagementView = () => {
+    const reports = sortedAdminBookings.filter((booking) => booking.status !== "CANCELLED");
+    return (
+      <div className="min-h-[calc(100vh-73px)] max-w-[1200px] mx-auto w-full p-3 lg:p-6">
+        <div className="rounded-lg border border-slate-200 bg-white p-4">
+          <div className="mb-4"><h1 className="text-lg font-black text-slate-900">{lang === "en" ? "Report management" : "報告管理"}</h1><p className="mt-1 text-xs text-slate-500">{lang === "en" ? "Update customer-visible report status and internal care-manager notes." : "更新民眾可見的報告狀態與個管師內部備註。"}</p></div>
+          <div className="flex flex-wrap items-end gap-3">
+            <label className="text-xs font-bold text-slate-600">{t.startDate}<input type="date" className="mt-1 block rounded-md border border-slate-300 px-3 py-2 text-sm font-normal" value={adminStartDate} onChange={(e) => setAdminStartDate(e.target.value)} /></label>
+            <label className="text-xs font-bold text-slate-600">{t.endDate}<input type="date" className="mt-1 block rounded-md border border-slate-300 px-3 py-2 text-sm font-normal" value={adminEndDate} onChange={(e) => setAdminEndDate(e.target.value)} /></label>
+            <label className="text-xs font-bold text-slate-600">{t.adminChannel}<select className="mt-1 block rounded-md border border-slate-300 px-3 py-2 text-sm font-normal" value={adminChannel} onChange={(e) => setAdminChannel(e.target.value)}><option value="ALL">{t.allChannels}</option>{CHANNELS.map((channel) => <option key={channel.value} value={channel.value}>{channel.label}</option>)}</select></label>
+            <button onClick={handleLoadAdminBookings} className="rounded-md bg-slate-900 px-4 py-2 text-sm font-bold text-white">{t.load}</button>
+            {adminStatus && <span className="text-xs font-bold text-slate-500">{adminStatus}</span>}
+          </div>
+        </div>
+        <div className="mt-4 overflow-hidden rounded-lg border border-slate-200 bg-white">
+          <div className="grid grid-cols-[1fr_1fr_auto] gap-3 border-b border-slate-200 bg-slate-100 px-4 py-3 text-xs font-bold text-slate-600 sm:grid-cols-[120px_1fr_1fr_160px]"><span>{t.appointmentDate}</span><span>{t.customer}</span><span className="hidden sm:block">{t.package}</span><span className="text-right">{lang === "en" ? "Report status" : "報告狀態"}</span></div>
+          <div className="divide-y divide-slate-100">{reports.length ? reports.map((booking) => <button key={booking.bookingId} type="button" onClick={() => setReportDetailBooking(booking)} className="grid w-full grid-cols-[1fr_1fr_auto] gap-3 px-4 py-3 text-left text-sm hover:bg-slate-50 sm:grid-cols-[120px_1fr_1fr_160px]"><span className="text-slate-600">{booking.appointmentDate || "-"}</span><span className="font-bold text-slate-800">{booking.customerName || booking.name || booking.customerId}</span><span className="hidden text-slate-600 sm:block">{booking.packageName || "-"}</span><span className="text-right text-xs font-bold text-indigo-700">{reportStatusLabel(booking.reportStatus)}</span></button>) : <div className="p-12 text-center text-sm text-slate-400">{lang === "en" ? "No report records loaded." : "尚未載入可管理的報告紀錄。"}</div>}</div>
+        </div>
+      </div>
+    );
+  };
   const AdminView = () => (
     <div className="min-h-[calc(100vh-73px)] lg:h-[calc(100vh-73px)] min-h-0 max-w-[1400px] mx-auto w-full flex flex-col gap-3 lg:gap-4 p-3 lg:p-6 lg:overflow-hidden">
       <div className="admin-toolbar flex-none bg-white border border-slate-200 rounded-lg p-4 flex flex-col items-stretch gap-3 lg:flex-row lg:items-end lg:justify-between">
@@ -3795,6 +3868,7 @@ ${selectedItems
       )}
       {comparisonDetailCard && <PackageDetailModal card={comparisonDetailCard} />}
       {adminDetailBooking && AdminBookingDetailModal()}
+      {reportDetailBooking && ReportDetailModal()}
       {showBookingModal && BookingModal()}
       {activeQuestionnaireModal && QuestionnaireModal()}
       {showQuestionnaireEditorModal && QuestionnaireEditorModal()}
@@ -3815,6 +3889,7 @@ ${selectedItems
               <>
                 <button onClick={() => setStaffMode("staff")} className={`px-3 py-2 ${mode === "staff" ? "bg-slate-900 text-white" : "bg-white text-slate-600"}`}>{t.staffTab}</button>
                 <button onClick={() => setStaffMode("admin")} className={`px-3 py-2 ${mode === "admin" ? "bg-slate-900 text-white" : "bg-white text-slate-600"}`}>{t.adminTab}</button>
+                <button onClick={() => setStaffMode("reports")} className={`px-3 py-2 ${mode === "reports" ? "bg-slate-900 text-white" : "bg-white text-slate-600"}`}>{lang === "en" ? "Reports" : "報告管理"}</button>
               </>
             )}
           </div>
@@ -3827,7 +3902,7 @@ ${selectedItems
       </div>
       </div>
 
-      {staffMode && !staffUser ? PublicPackageView() : mode === "admin" ? AdminView() : mode === "public" ? PublicPackageView() : <>
+      {staffMode && !staffUser ? PublicPackageView() : mode === "admin" ? AdminView() : mode === "reports" ? ReportManagementView() : mode === "public" ? PublicPackageView() : <>
       {/* Desktop Layout (Hidden on Mobile) */}
       <div className="hidden lg:grid h-full max-w-[1920px] mx-auto w-full grid-cols-12 gap-6 p-6 items-stretch">
         <div className="col-span-2 h-full min-h-0">

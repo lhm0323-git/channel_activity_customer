@@ -199,3 +199,11 @@ Deployment completed on 2026-07-28: Functions and Hosting released successfully 
 
 - Admin staff account chips now include 啟用/停用. The bootstrap administrator cannot disable itself.
 - This control writes the existing staffUsers/{email}.active field used by the frontend gate and Firestore Rules.
+
+## 2026-07-29 - Report status staging MVP
+
+- Added a separate staff `報告管理` tab. The booking list and booking-edit modal no longer contain report status or care-manager notes.
+- Staff can set `處理中` / `已完成，請至中心領取` / `已寄發` / `請個管師聯繫`, plus an internal care-manager note. The LIFF `報告追蹤` view exposes only the customer-visible status for that owner; it never exposes the note or a report file.
+- The Phase 1-3 implementation plan now defers PITR, backups, and final report file storage to Phase 3 after real bookings begin. No PITR or scheduled backup cost is enabled during trial.
+- Verified: `npm test`, `npm run build -- --mode staging`, and Hosting deployment to `https://cac-health-staging.web.app`.
+- Production `channel-activity-customer` remains unchanged. Next: staff acceptance in staging, then decide whether to promote the P0 and report-status changes to production.
