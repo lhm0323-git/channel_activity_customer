@@ -17,6 +17,8 @@ try {
     await setDoc(doc(db, "bookings", "staff-edit"), { ownerUid: "patient-uid", customerName: "Patient" });
     await setDoc(doc(db, "staffUsers", "staff@example.com"), { email: "staff@example.com", active: true });
     await setDoc(doc(db, "staffUsers", "disabled@example.com"), { email: "disabled@example.com", active: false });
+    await setDoc(doc(db, "auditLogs", "booking-update"), { bookingId: "staff-edit", action: "UPDATE" });
+    await setDoc(doc(db, "managedPackages", "internal-package"), { name: "Internal package", visibility: "INTERNAL" });
   });
 
   await assertSucceeds(getDoc(doc(patient, "bookings", "owned-booking")));
@@ -28,10 +30,15 @@ try {
 
   const staff = testEnv.authenticatedContext("staff-uid", { email: "staff@example.com" }).firestore();
   const disabledStaff = testEnv.authenticatedContext("disabled-uid", { email: "disabled@example.com" }).firestore();
-  await assertSucceeds(updateDoc(doc(staff, "bookings", "staff-edit"), { notes: "staff correction" }));
+  const bootstrapAdmin = testEnv.authenticatedContext("admin-uid", { email: "lhm0323@gmail.com" }).firestore();
+  await assertFails(updateDoc(doc(staff, "bookings", "staff-edit"), { notes: "staff correction" }));
   await assertFails(updateDoc(doc(disabledStaff, "bookings", "staff-edit"), { notes: "should fail" }));
+  await assertSucceeds(getDoc(doc(bootstrapAdmin, "auditLogs", "booking-update")));
+  await assertFails(getDoc(doc(staff, "auditLogs", "booking-update")));
+  await assertFails(getDoc(doc(patient, "managedPackages", "internal-package")));
+  await assertSucceeds(getDoc(doc(staff, "managedPackages", "internal-package")));
 
-  console.log("ok - Firestore P0 rules block public writes and retain active staff editing");
+  console.log("ok - Firestore rules block direct booking writes, restrict audit logs, and hide managed packages from the public");
 } finally {
   await testEnv.cleanup();
 }

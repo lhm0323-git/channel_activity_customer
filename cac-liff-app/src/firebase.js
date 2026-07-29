@@ -8,7 +8,9 @@ import {
   getDoc,
   getDocs,
   getFirestore,
+  limit,
   onSnapshot,
+  orderBy,
   query,
   runTransaction,
   serverTimestamp,
@@ -258,32 +260,24 @@ export async function getBookingById(bookingId) {
   return snapshot.exists() ? { bookingId: snapshot.id, ...snapshot.data() } : null;
 }
 
-export async function checkInBooking(bookingId, staffEmail) {
+function requireStaffFunction() {
+  if (!functions) throw new Error("Firebase is not configured");
+  const user = auth?.currentUser;
+  if (!user || user.isAnonymous) throw new Error("Staff sign-in is required");
+}
+
+export async function checkInBooking(bookingId) {
   if (!db) return { localOnly: true, alreadyCheckedIn: false };
-  const bookingRef = doc(db, "bookings", bookingId);
-  return runTransaction(db, async (transaction) => {
-    const snapshot = await transaction.get(bookingRef);
-    if (!snapshot.exists()) throw new Error("Booking not found");
-    const booking = snapshot.data();
-    if (booking.status === "CANCELLED") throw new Error("Cancelled booking cannot check in");
-    if (booking.checkInStatus === "CHECKED_IN") return { alreadyCheckedIn: true, booking: { bookingId: snapshot.id, ...booking } };
-    transaction.update(bookingRef, {
-      checkInStatus: "CHECKED_IN",
-      checkedInAt: serverTimestamp(),
-      checkedInBy: String(staffEmail || ""),
-      updatedAt: serverTimestamp(),
-    });
-    return { alreadyCheckedIn: false, booking: { bookingId: snapshot.id, ...booking, checkInStatus: "CHECKED_IN", checkedInBy: String(staffEmail || "") } };
-  });
+  requireStaffFunction();
+  const result = await httpsCallable(functions, "checkInBookingAsStaff")({ bookingId });
+  return { ...result.data, localOnly: false };
 }
 
 export async function updateBooking(bookingId, fields) {
   if (!db) return { localOnly: true };
-  await updateDoc(doc(db, "bookings", bookingId), {
-    ...fields,
-    updatedAt: serverTimestamp(),
-  });
-  return { localOnly: false };
+  requireStaffFunction();
+  const result = await httpsCallable(functions, "updateBookingAsStaff")({ bookingId, fields });
+  return { ...result.data, localOnly: false };
 }
 
 export async function cancelBooking(bookingId) {
@@ -322,23 +316,10 @@ export async function confirmBooking(bookingId) {
 }
 
 export async function approveChangeRequest(request) {
-  if (!db) return;
-  const now = serverTimestamp();
-  await updateDoc(doc(db, "bookings", request.bookingId), {
-    appointmentDate: request.requestedAppointmentDate,
-    status: "BOOKED",
-    checkInSerial: null,
-    checkInSequence: null,
-    d1NoticeSentAt: null,
-    d1AcknowledgedAt: null,
-    d1NoticeStatus: null,
-    updatedAt: now,
-  });
-  await updateDoc(doc(db, "bookingChangeRequests", request.requestId), {
-    status: "approved",
-    approvedAt: now,
-    updatedAt: now,
-  });
+  if (!db) return { localOnly: true };
+  requireStaffFunction();
+  const result = await httpsCallable(functions, "approveBookingChangeAsStaff")({ requestId: request.requestId });
+  return { ...result.data, localOnly: false };
 }
 
 export async function listManagedPackages() {
@@ -347,7 +328,13 @@ export async function listManagedPackages() {
   return snapshot.docs.map((docSnap) => ({ docId: docSnap.id, ...docSnap.data() }));
 }
 
-export async function saveManagedPackage({ name, itemIds, audience, bodyParts = [], finalPrice }) {
+export async function listPublicManagedPackages(inviteToken = "") {
+  if (!functions) return { packages: [], restrictedPackageIds: [] };
+  const result = await httpsCallable(functions, "getPublicManagedPackages")({ inviteToken });
+  return { packages: result.data?.packages || [], restrictedPackageIds: result.data?.restrictedPackageIds || [] };
+}
+
+export async function saveManagedPackage({ name, itemIds, audience, bodyParts = [], finalPrice, visibility = "PUBLIC" }) {
   if (!db) return { localOnly: true };
   await setDoc(doc(db, "managedPackages", packageDocId(name)), {
     name,
@@ -355,10 +342,23 @@ export async function saveManagedPackage({ name, itemIds, audience, bodyParts = 
     audience,
     bodyParts,
     finalPrice: Number(finalPrice) || 0,
+    visibility: ["PUBLIC", "INTERNAL", "INVITE_ONLY"].includes(visibility) ? visibility : "PUBLIC",
     deleted: false,
     updatedAt: serverTimestamp(),
   }, { merge: true });
   return { localOnly: false };
+}
+
+export async function createPackageInvite(packageName, expiresOn = "") {
+  requireStaffFunction();
+  const result = await httpsCallable(functions, "createPackageInvite")({ packageName, expiresOn });
+  return result.data;
+}
+
+export async function revokePackageInvite(token) {
+  requireStaffFunction();
+  const result = await httpsCallable(functions, "revokePackageInvite")({ token });
+  return result.data;
 }
 
 function managedItemDocId(id) {
@@ -397,19 +397,25 @@ export async function getStaffUser(email) {
   return snap.exists() ? { email: cleanEmail, ...snap.data() } : null;
 }
 
+export async function listAuditLogs(maxRows = 100) {
+  if (!db) return [];
+  const snapshot = await getDocs(query(collection(db, "auditLogs"), orderBy("createdAt", "desc"), limit(maxRows)));
+  return snapshot.docs.map((docSnap) => ({ auditId: docSnap.id, ...docSnap.data() }));
+}
 export async function listStaffUsers() {
   if (!db) return [];
   const snapshot = await getDocs(collection(db, "staffUsers"));
   return snapshot.docs.map((docSnap) => ({ email: docSnap.id, ...docSnap.data() }));
 }
 
-export async function saveStaffUser(email, active = true) {
+export async function saveStaffUser(email, active = true, role = "STAFF") {
   if (!db) return { localOnly: true };
   const cleanEmail = String(email || "").trim().toLowerCase();
   if (!cleanEmail || !cleanEmail.includes("@")) throw new Error("Invalid email");
   await setDoc(doc(db, "staffUsers", cleanEmail), {
     email: cleanEmail,
     active,
+    role: role === "ADMIN" ? "ADMIN" : "STAFF",
     updatedAt: serverTimestamp(),
   }, { merge: true });
   return { email: cleanEmail, localOnly: false };

@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from "react";
+import QRCode from "qrcode";
 import {
   Search,
   Plus,
@@ -72,6 +73,7 @@ import {
   getLastCustomerQuestionnaireResponse,
   getStaffUser,
   listBookingBlockedDates,
+  listAuditLogs,
   listBookingsByRange,
   listManagedPackages,
   listManagedItems,
@@ -106,14 +108,14 @@ function isAdminEmail(user) {
   return user?.email?.toLowerCase() === ADMIN_EMAIL;
 }
 
-async function canUseStaffTools(user) {
-  if (!user?.email) return false;
-  if (isAdminEmail(user)) return true;
+async function getStaffAccess(user) {
+  if (!user?.email) return null;
+  if (isAdminEmail(user)) return { role: "ADMIN" };
   try {
     const record = await getStaffUser(user.email);
-    return Boolean(record && record.active !== false);
+    return record && record.active !== false ? { role: record.role === "ADMIN" ? "ADMIN" : "STAFF" } : null;
   } catch {
-    return false;
+    return null;
   }
 }
 const CHANNEL_LABELS_EN = { HIGH_END: "Premium", CORPORATE: "Corporate", LABOR: "Labor", GENERAL: "General" };
@@ -323,6 +325,10 @@ function readLiffQueryParam(name) {
   const liffState = params.get("liff.state") || "";
   const query = liffState.includes("?") ? liffState.slice(liffState.indexOf("?") + 1) : liffState.replace(/^#/, "");
   return new URLSearchParams(query).get(name) || "";
+}
+
+function managedPackageDocId(name) {
+  return encodeURIComponent(String(name || "")).replace(/\./g, "%2E");
 }
 
 function customerLineClaimLink(bookingId, claimToken) {
@@ -592,6 +598,7 @@ const App = () => {
   const [changeNotes, setChangeNotes] = useState({});
   const [mode, setMode] = useState("public");
   const [publicView, setPublicView] = useState(readPublicViewFromUrl);
+  const inviteToken = readLiffQueryParam("invite");
 
   const allQuestionnaires = useMemo(() => [...customQuestionnaires, ...QUESTIONNAIRES], [customQuestionnaires]);
 
@@ -616,9 +623,11 @@ const App = () => {
   }, []);
   const [lang, setLang] = useState("zh");
   const [staffUser, setStaffUser] = useState(null);
+  const [staffRole, setStaffRole] = useState("");
   const [staffStatus, setStaffStatus] = useState("");
   const t = TEXT[lang];
   const [publicFilters, setPublicFilters] = useState({ audience: "全部", sex: "不限", bodyPart: "全部" });
+  const [restrictedPackageIds, setRestrictedPackageIds] = useState([]);
   const [publicPackageLayout, setPublicPackageLayout] = useState("cards");
   const [comparisonSort, setComparisonSort] = useState({ key: "price", direction: "asc" });
   const [expandedPackageName, setExpandedPackageName] = useState(null);
@@ -643,7 +652,10 @@ const App = () => {
   const [pendingChanges, setPendingChanges] = useState([]);
   const [adminStatus, setAdminStatus] = useState("");
   const [staffAccounts, setStaffAccounts] = useState([]);
+  const [auditLogs, setAuditLogs] = useState([]);
+  const [auditStatus, setAuditStatus] = useState("");
   const [newStaffEmail, setNewStaffEmail] = useState("");
+  const [newStaffRole, setNewStaffRole] = useState("STAFF");
   const [staffManageStatus, setStaffManageStatus] = useState("");
   const [blockedBookingDates, setBlockedBookingDates] = useState([]);
   const [blockedDate, setBlockedDate] = useState("");
@@ -713,7 +725,9 @@ const App = () => {
 
   useEffect(() => {
     let cancelled = false;
-    listManagedPackages().then((managed) => {
+    (staffUser ? listManagedPackages() : listPublicManagedPackages(inviteToken)).then((result) => {
+      const managed = Array.isArray(result) ? result : result.packages;
+      setRestrictedPackageIds(staffUser ? [] : (result.restrictedPackageIds || []));
       if (cancelled) return;
       const active = {};
       const deleted = {};
@@ -729,6 +743,8 @@ const App = () => {
           audience: normalizeTag(pkg.audience || inferPackageAudienceName(pkg.name)),
           bodyParts: Array.isArray(pkg.bodyParts) ? pkg.bodyParts.map(normalizeTag) : [],
           finalPrice: Number(pkg.finalPrice) || 0,
+          visibility: pkg.visibility || "PUBLIC",
+          inviteOnlyGranted: Boolean(pkg.inviteOnlyGranted),
         };
       });
       if (Object.keys(active).length) setUserPackages((current) => ({ ...current, ...active }));
@@ -736,7 +752,7 @@ const App = () => {
       setPackageMeta((current) => ({ ...current, ...meta }));
     }).catch((error) => console.warn("Managed package load failed", error));
     return () => { cancelled = true; };
-  }, []);
+  }, [staffUser, inviteToken]);
 
   useEffect(() => {
     let active = true;
@@ -745,18 +761,21 @@ const App = () => {
         if (!user?.email) {
           if (!active) return;
           setStaffUser(null);
+          setStaffRole("");
           setStaffStatus("");
           return;
         }
-        const allowed = await canUseStaffTools(user);
+        const access = await getStaffAccess(user);
         if (!active) return;
-        if (!allowed) {
+        if (!access) {
           setStaffUser(null);
+          setStaffRole("");
           setStaffStatus("\u6b64 Google \u5e33\u865f\u672a\u6388\u6b0a\u4f7f\u7528\u5167\u90e8\u5de5\u5177");
           setMode("public");
           return;
         }
         setStaffUser(user);
+        setStaffRole(access.role);
         setStaffStatus(`\u5df2\u767b\u5165\uff1a${user.email}`);
       })();
     });
@@ -970,8 +989,16 @@ const App = () => {
   }, [publicPackageCards, packageBodyParts]);
 
   const visiblePublicPackageCards = useMemo(() => {
-    return filterPublicPackageCards(publicPackageCards, publicFilters);
-  }, [publicPackageCards, publicFilters]);
+    const allowed = publicPackageCards.filter((card) => staffUser || !restrictedPackageIds.includes(managedPackageDocId(card.name)) || packageMeta[card.name]?.inviteOnlyGranted);
+    return filterPublicPackageCards(allowed, publicFilters);
+  }, [publicPackageCards, publicFilters, staffUser, restrictedPackageIds, packageMeta]);
+
+  const publicBlockedDates = useMemo(() => {
+    const today = new Date();
+    const start = today.toISOString().slice(0, 10);
+    const end = new Date(today.getTime() + 30 * 86400000).toISOString().slice(0, 10);
+    return blockedBookingDates.filter((entry) => entry.date >= start && entry.date <= end).map((entry) => entry.date);
+  }, [blockedBookingDates]);
 
   const selectedItems = useMemo(() => {
     return parsedItems.filter((item) => selectedIds.includes(item.id));
@@ -1082,6 +1109,7 @@ const App = () => {
       const meta = packageMeta[name] || {};
       setPackageAudience(normalizeTag(meta.audience || inferPackageAudienceName(name)));
       setPackageBodyParts(Array.isArray(meta.bodyParts) ? meta.bodyParts.map(normalizeTag).join(", ") : "");
+      setPackageVisibility(meta.visibility || "PUBLIC");
       setPackageQuestionnaireId(questionnaireIdForPackage(name));
       if (meta.finalPrice) setFinalPrice(meta.finalPrice);
     }
@@ -1182,13 +1210,13 @@ const App = () => {
     const bodyParts = splitTags(packageBodyParts);
     const newUserPackages = { ...userPackages, [packageName]: selectedIds };
     setUserPackages(newUserPackages);
-    setPackageMeta((current) => ({ ...current, [packageName]: { audience: packageAudience.trim(), bodyParts, finalPrice: Number(finalPrice) || 0 } }));
+    setPackageMeta((current) => ({ ...current, [packageName]: { audience: packageAudience.trim(), bodyParts, finalPrice: Number(finalPrice) || 0, visibility: packageVisibility } }));
     localStorage.setItem(
       "health_planner_user_packages_v3",
       JSON.stringify(newUserPackages)
     );
 
-    await saveManagedPackage({ name: packageName, itemIds: selectedIds, audience: packageAudience.trim(), bodyParts, finalPrice });
+    await saveManagedPackage({ name: packageName, itemIds: selectedIds, audience: packageAudience.trim(), bodyParts, finalPrice, visibility: packageVisibility });
     await savePackageQuestionnaireRule(packageName, packageQuestionnaireId);
     setQuestionnaireRules((current) => ({ ...current, [packageName]: packageQuestionnaireId }));
 
@@ -1196,6 +1224,28 @@ const App = () => {
     setTimeout(() => setSavedMessage(""), 3000);
   };
 
+  const handleCreatePackageInvite = async () => {
+    try {
+      if (packageVisibility !== "INVITE_ONLY") throw new Error("請先將套餐設定為「邀請制」並儲存");
+      const result = await createPackageInvite(packageName, packageInviteExpiry);
+      const link = `${window.location.origin}/?invite=${encodeURIComponent(result.token)}`;
+      setPackageInviteLink(link);
+      setPackageInviteQr(await QRCode.toDataURL(link, { width: 320, margin: 1 }));
+      await navigator.clipboard?.writeText(link);
+      setSavedMessage("邀請連結已建立並複製");
+    } catch (error) {
+      setSavedMessage(`邀請連結建立失敗：${error.message}`);
+    }
+  };
+
+  const handleRevokePackageInvite = async () => {
+    const token = new URL(packageInviteLink).searchParams.get("invite");
+    if (!token) return;
+    await revokePackageInvite(token);
+    setPackageInviteLink("");
+    setPackageInviteQr("");
+    setSavedMessage("邀請連結已撤銷");
+  };
   const deletePackage = (e, name) => {
     e.stopPropagation();
     if (window.confirm(`確定要移除「${name}」套餐嗎？`)) {
@@ -1331,20 +1381,21 @@ ${selectedItems
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#039;");
 
-  const staffMode = mode === "staff" || mode === "admin" || mode === "reports";
+  const staffMode = mode === "staff" || mode === "admin" || mode === "reports" || mode === "audit";
 
   const handleStaffLogin = async () => {
     try {
       setStaffStatus("\u767b\u5165\u4e2d...");
       const user = await signInStaff();
-      const allowed = await canUseStaffTools(user);
-      if (!allowed) {
+      const access = await getStaffAccess(user);
+      if (!access) {
         await signOutStaff();
         setStaffStatus("\u6b64 Google \u5e33\u865f\u672a\u6388\u6b0a\u4f7f\u7528\u5167\u90e8\u5de5\u5177");
         setMode("public");
         return;
       }
       setStaffUser(user);
+        setStaffRole(access.role);
       setStaffStatus(`\u5df2\u767b\u5165\uff1a${user.email}`);
       setMode("staff");
     } catch (error) {
@@ -1368,6 +1419,7 @@ ${selectedItems
   const handleStaffLogout = async () => {
     await signOutStaff();
     setStaffUser(null);
+          setStaffRole("");
     setStaffStatus("");
     setMode("public");
   };
@@ -1396,6 +1448,7 @@ ${selectedItems
         discountRate,
         finalPrice,
       });
+      if (inviteToken) payload.booking.inviteToken = inviteToken;
       const result = await saveBooking(payload, { lineAccessToken: staffMode ? "" : lineProfile?.accessToken || "" });
       if (staffMode && result.claimToken) {
         window.prompt(lang === "en" ? "Send this LINE linking link to the customer:" : "請將此 LINE 綁定連結傳給客戶：", customerLineClaimLink(result.bookingId, result.claimToken));
@@ -1676,7 +1729,7 @@ ${selectedItems
     setSelectedAdminBookingIds(allAdminBookingsSelected ? [] : adminBookings.map((booking) => booking.bookingId).filter(Boolean));
   };
 
-  const isAdminUser = staffUser?.email?.toLowerCase() === ADMIN_EMAIL;
+  const isAdminUser = staffRole === "ADMIN";
 
   useEffect(() => {
     if (!isAdminUser) return;
@@ -1685,10 +1738,22 @@ ${selectedItems
       .catch((error) => setStaffManageStatus(lang === "en" ? `Load staff failed: ${error.message}` : `\u8b80\u53d6\u54e1\u5de5\u5931\u6557\uff1a${error.message}`));
   }, [isAdminUser, lang]);
 
+  const handleLoadAuditLogs = async () => {
+    try {
+      setAuditStatus(lang === "en" ? "Loading..." : "讀取中...");
+      const logs = await listAuditLogs();
+      setAuditLogs(logs);
+      setAuditStatus(lang === "en" ? `Loaded ${logs.length} audit records` : `已載入 ${logs.length} 筆稽核紀錄`);
+    } catch (error) {
+      setAuditStatus(lang === "en" ? `Audit load failed: ${error.message}` : `稽核紀錄讀取失敗：${error.message}`);
+    }
+  };
+
   const handleAddStaffUser = async () => {
     try {
-      const result = await saveStaffUser(newStaffEmail);
+      const result = await saveStaffUser(newStaffEmail, true, newStaffRole);
       setNewStaffEmail("");
+      setNewStaffRole("STAFF");
       setStaffManageStatus(lang === "en" ? `Added ${result.email}` : `\u5df2\u65b0\u589e\uff1a${result.email}`);
       setStaffAccounts(await listStaffUsers());
     } catch (error) {
@@ -1699,13 +1764,23 @@ ${selectedItems
   const handleSetStaffActive = async (staff) => {
     try {
       const active = staff.active === false;
-      await saveStaffUser(staff.email, active);
+      await saveStaffUser(staff.email, active, staff.role);
       setStaffManageStatus(lang === "en" ? `${staff.email} ${active ? "enabled" : "disabled"}` : `${staff.email}已${active ? "啟用" : "停用"}`);
       setStaffAccounts(await listStaffUsers());
     } catch (error) {
       setStaffManageStatus(lang === "en" ? `Update failed: ${error.message}` : `更新失敗：${error.message}`);
     }
   };
+  const handleSetStaffRole = async (staff, role) => {
+    try {
+      await saveStaffUser(staff.email, staff.active !== false, role);
+      setStaffManageStatus(lang === "en" ? `${staff.email} role updated` : `${staff.email} 權限已更新`);
+      setStaffAccounts(await listStaffUsers());
+    } catch (error) {
+      setStaffManageStatus(lang === "en" ? `Role update failed: ${error.message}` : `權限更新失敗：${error.message}`);
+    }
+  };
+
   const handleSaveAdminBooking = async () => {
     if (!adminDetailBooking?.bookingId) return;
     try {
@@ -1836,9 +1911,8 @@ ${selectedItems
           listPrice: pricing.listPrice,
           discountRate: pricing.discountRate,
           finalPrice: row.finalPrice || Number(packageMeta[row.packageName]?.finalPrice) || pricing.suggestedPrice,
-        });
-        payload.booking.status = row.status;
-        const result = await saveBooking(payload, { lineAccessToken: staffMode ? "" : lineProfile?.accessToken || "" });
+        });        payload.booking.status = row.status;
+        await saveBooking(payload, { lineAccessToken: "" });
         imported += 1;
       }
       setAdminStatus(lang === "en" ? `CSV import complete: ${imported} rows${skipped.length ? `, skipped rows ${skipped.join(", ")}` : ""}` : `CSV \u532f\u5165\u5b8c\u6210\uff1a${imported} \u7b46${skipped.length ? `\uff0c\u8df3\u904e\u7b2c ${skipped.join(", ")} \u5217` : ""}`);
@@ -2300,6 +2374,12 @@ ${selectedItems
                 {"\u90e8\u4f4d\u6a19\u7c64"}
                 <input placeholder="心血管, 企業專案" className="w-full mt-1 px-2 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-700" value={packageBodyParts} onChange={(e) => setPackageBodyParts(e.target.value)} />
               </label>
+              <label className="w-28 text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+                可見範圍
+                <select className="w-full mt-1 px-2 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-700" value={packageVisibility} onChange={(e) => setPackageVisibility(e.target.value)}>
+                  <option value="PUBLIC">民眾公開</option><option value="INTERNAL">僅內部工具</option><option value="INVITE_ONLY">邀請制</option>
+                </select>
+              </label>
               <label className="min-w-[160px] flex-1 text-[10px] uppercase font-bold text-slate-400 tracking-wider">
                 <div className="flex justify-between items-center">
                   <span>對應健康問卷</span>
@@ -2319,8 +2399,14 @@ ${selectedItems
                 className="shrink-0 px-4 py-2 bg-indigo-100 text-indigo-700 rounded-lg text-xs font-bold h-[38px] flex items-center gap-1"
               >
                 <Save className="w-4 h-4" /> 儲存
-              </button>
-            </div>
+              </button>            </div>
+
+            {packageVisibility === "INVITE_ONLY" && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+                <div className="flex flex-wrap items-end gap-2"><label className="font-bold">到期日<input type="date" value={packageInviteExpiry} onChange={(e) => setPackageInviteExpiry(e.target.value)} className="ml-2 rounded border border-amber-300 bg-white px-2 py-1" /></label><button type="button" onClick={handleCreatePackageInvite} className="rounded bg-amber-600 px-3 py-1.5 font-bold text-white">產生預約連結 / QR</button>{packageInviteLink && <button type="button" onClick={handleRevokePackageInvite} className="rounded border border-rose-300 bg-white px-3 py-1.5 font-bold text-rose-700">撤銷</button>}</div>
+                {packageInviteLink && <div className="mt-3 flex flex-wrap items-center gap-3"><img src={packageInviteQr} alt="企業套餐預約 QR" className="h-24 w-24 rounded bg-white p-1" /><div className="min-w-0 flex-1"><p className="break-all text-slate-700">{packageInviteLink}</p><button type="button" onClick={() => navigator.clipboard?.writeText(packageInviteLink)} className="mt-1 underline">複製連結</button></div></div>}
+              </div>
+            )}
 
             <div className="space-y-2 pt-2">
               <div className="flex justify-between items-baseline border-b border-dashed border-slate-200 pb-2">
@@ -2677,23 +2763,23 @@ ${selectedItems
         <section className="mx-auto w-full max-w-6xl px-4 py-6 lg:px-6 space-y-5">
           <div className="bg-white border border-slate-200 rounded-lg p-4 lg:p-5">
             <h1 className="text-xl lg:text-2xl font-black text-slate-900">{t.publicTitle}</h1>
-            <p className="mt-2 text-sm text-slate-600">{t.publicSubtitle}</p>
-            <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <p className="mt-2 text-sm text-slate-600">{t.publicSubtitle}</p>{publicBlockedDates.length > 0 && <p className="mt-2 text-sm font-bold text-rose-700">{lang === "en" ? "Unavailable dates in the next 30 days: " : "未來 30 日內停約日："}{publicBlockedDates.join("、")}</p>}
+            <div className="mt-4 grid grid-cols-3 gap-2 lg:gap-3">
               <label className="text-xs font-bold text-slate-600">
                 {t.audience}
-                <select className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal" value={publicFilters.audience} onChange={(e) => setPublicFilter("audience", e.target.value)}>
+                <select className="mt-1 w-full rounded-md border border-slate-300 bg-white px-2 py-2 text-sm font-normal" value={publicFilters.audience} onChange={(e) => setPublicFilter("audience", e.target.value)}>
                   {availableAudiences.map((value) => <option key={value} value={value}>{optionLabel(value, lang)}</option>)}
                 </select>
               </label>
               <label className="text-xs font-bold text-slate-600">
                 {t.sex}
-                <select className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal" value={publicFilters.sex} onChange={(e) => setPublicFilter("sex", e.target.value)}>
+                <select className="mt-1 w-full rounded-md border border-slate-300 bg-white px-2 py-2 text-sm font-normal" value={publicFilters.sex} onChange={(e) => setPublicFilter("sex", e.target.value)}>
                   {PUBLIC_SEXES.map((value) => <option key={value} value={value}>{optionLabel(value, lang)}</option>)}
                 </select>
               </label>
               <label className="text-xs font-bold text-slate-600">
                 {t.bodyPart}
-                <select className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal" value={publicFilters.bodyPart} onChange={(e) => setPublicFilter("bodyPart", e.target.value)}>
+                <select className="mt-1 w-full rounded-md border border-slate-300 bg-white px-2 py-2 text-sm font-normal" value={publicFilters.bodyPart} onChange={(e) => setPublicFilter("bodyPart", e.target.value)}>
                   {availableBodyParts.map((value) => <option key={value} value={value}>{optionLabel(value, lang)}</option>)}
                 </select>
               </label>
@@ -3577,6 +3663,15 @@ ${selectedItems
     );
   };
 
+  const AuditLogView = () => (
+    <div className="min-h-[calc(100vh-73px)] max-w-[1200px] mx-auto w-full p-3 lg:p-6">
+      <div className="rounded-lg border border-slate-200 bg-white p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3"><div><h1 className="text-lg font-black text-slate-900">{lang === "en" ? "Audit log" : "稽核紀錄"}</h1><p className="mt-1 text-xs text-slate-500">{lang === "en" ? "Booking operation trace. Customer personal content is not recorded here." : "預約操作追溯；此處不記錄客戶個資與備註內容。"}</p></div><button onClick={handleLoadAuditLogs} className="rounded-md bg-slate-900 px-4 py-2 text-sm font-bold text-white">{lang === "en" ? "Load" : "讀取"}</button></div>
+        {auditStatus && <p className="mt-3 text-xs font-bold text-slate-500">{auditStatus}</p>}
+      </div>
+      <div className="mt-4 overflow-hidden rounded-lg border border-slate-200 bg-white"><div className="grid grid-cols-[130px_1fr_1fr] gap-3 border-b border-slate-200 bg-slate-100 px-4 py-3 text-xs font-bold text-slate-600 sm:grid-cols-[170px_130px_1fr_1fr]"><span>{lang === "en" ? "Time" : "時間"}</span><span>{lang === "en" ? "Action" : "動作"}</span><span>{lang === "en" ? "Operator" : "操作者"}</span><span className="hidden sm:block">{lang === "en" ? "Changed fields" : "差異摘要"}</span></div><div className="divide-y divide-slate-100">{auditLogs.length ? auditLogs.map((entry) => <div key={entry.auditId} className="grid grid-cols-[130px_1fr_1fr] gap-3 px-4 py-3 text-xs sm:grid-cols-[170px_130px_1fr_1fr]"><span className="text-slate-500">{entry.createdAt?.toDate ? entry.createdAt.toDate().toLocaleString() : "-"}</span><span className="font-bold text-indigo-700">{entry.action || "-"}</span><span className="truncate text-slate-700">{entry.actorEmail || entry.actorRole || "-"}</span><span className="hidden text-slate-500 sm:block">{(entry.changedFields || []).join(", ") || "-"}</span></div>) : <div className="p-12 text-center text-sm text-slate-400">{lang === "en" ? "Load audit records to view the trace." : "請讀取稽核紀錄。"}</div>}</div></div>
+    </div>
+  );
   const ReportManagementView = () => {
     const reports = sortedAdminBookings.filter((booking) => booking.status !== "CANCELLED");
     return (
@@ -3739,7 +3834,10 @@ ${selectedItems
                 <span className="text-xs text-slate-500 font-bold">{staffAccounts.length} 人</span>
               </div>
               <div className="space-y-2">
-                <input type="email" className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm font-normal" placeholder={t.staffEmailPlaceholder} value={newStaffEmail} onChange={(e) => setNewStaffEmail(e.target.value)} />
+                <div className="grid grid-cols-[1fr_auto] gap-2">
+                  <input type="email" className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm font-normal" placeholder={t.staffEmailPlaceholder} value={newStaffEmail} onChange={(e) => setNewStaffEmail(e.target.value)} />
+                  <select className="rounded-md border border-slate-300 px-2 py-1.5 text-xs font-bold" value={newStaffRole} onChange={(e) => setNewStaffRole(e.target.value)}><option value="STAFF">{lang === "en" ? "Staff" : "員工"}</option><option value="ADMIN">{lang === "en" ? "Admin" : "管理者"}</option></select>
+                </div>
                 <button onClick={handleAddStaffUser} className="w-full rounded-md bg-slate-900 px-3 py-2 text-sm font-bold text-white">{t.addStaff}</button>
                 {staffManageStatus && <p className="text-xs text-slate-500">{staffManageStatus}</p>}
               </div>
@@ -3747,7 +3845,8 @@ ${selectedItems
                 {staffAccounts.length ? staffAccounts.map((staff) => (
                   <span key={staff.email} className={`inline-flex items-center gap-1 rounded border px-2 py-1 text-xs font-bold ${staff.active === false ? "border-rose-200 bg-rose-50 text-rose-700" : "border-slate-200 bg-slate-100 text-slate-700"}`}>
                     {staff.email}
-                    {staff.email !== ADMIN_EMAIL && <button type="button" onClick={() => handleSetStaffActive(staff)} className="rounded px-1 text-[11px] underline" title={staff.active === false ? "Enable" : "Disable"}>{staff.active === false ? (lang === "en" ? "Enable" : "啟用") : (lang === "en" ? "Disable" : "停用")}</button>}
+                    <span className="rounded bg-white/70 px-1 text-[10px]">{staff.email === ADMIN_EMAIL || staff.role === "ADMIN" ? "ADMIN" : "STAFF"}</span>
+                    {staff.email !== ADMIN_EMAIL && <><button type="button" onClick={() => handleSetStaffActive(staff)} className="rounded px-1 text-[11px] underline" title={staff.active === false ? "Enable" : "Disable"}>{staff.active === false ? (lang === "en" ? "Enable" : "啟用") : (lang === "en" ? "Disable" : "停用")}</button><button type="button" onClick={() => handleSetStaffRole(staff, staff.role === "ADMIN" ? "STAFF" : "ADMIN")} className="rounded px-1 text-[11px] underline">{staff.role === "ADMIN" ? (lang === "en" ? "Make staff" : "改為員工") : (lang === "en" ? "Make admin" : "升為管理者")}</button></>}
                   </span>
                 )) : (
                   <span className="text-xs text-slate-400">{t.noStaffAccounts}</span>
@@ -3890,6 +3989,7 @@ ${selectedItems
                 <button onClick={() => setStaffMode("staff")} className={`px-3 py-2 ${mode === "staff" ? "bg-slate-900 text-white" : "bg-white text-slate-600"}`}>{t.staffTab}</button>
                 <button onClick={() => setStaffMode("admin")} className={`px-3 py-2 ${mode === "admin" ? "bg-slate-900 text-white" : "bg-white text-slate-600"}`}>{t.adminTab}</button>
                 <button onClick={() => setStaffMode("reports")} className={`px-3 py-2 ${mode === "reports" ? "bg-slate-900 text-white" : "bg-white text-slate-600"}`}>{lang === "en" ? "Reports" : "報告管理"}</button>
+                {isAdminUser && <button onClick={() => setStaffMode("audit")} className={`px-3 py-2 ${mode === "audit" ? "bg-slate-900 text-white" : "bg-white text-slate-600"}`}>{lang === "en" ? "Audit" : "稽核紀錄"}</button>}
               </>
             )}
           </div>
@@ -3902,7 +4002,7 @@ ${selectedItems
       </div>
       </div>
 
-      {staffMode && !staffUser ? PublicPackageView() : mode === "admin" ? AdminView() : mode === "reports" ? ReportManagementView() : mode === "public" ? PublicPackageView() : <>
+      {staffMode && !staffUser ? PublicPackageView() : mode === "admin" ? AdminView() : mode === "reports" ? ReportManagementView() : mode === "audit" ? AuditLogView() : mode === "public" ? PublicPackageView() : <>
       {/* Desktop Layout (Hidden on Mobile) */}
       <div className="hidden lg:grid h-full max-w-[1920px] mx-auto w-full grid-cols-12 gap-6 p-6 items-stretch">
         <div className="col-span-2 h-full min-h-0">

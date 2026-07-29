@@ -207,3 +207,11 @@ Deployment completed on 2026-07-28: Functions and Hosting released successfully 
 - The Phase 1-3 implementation plan now defers PITR, backups, and final report file storage to Phase 3 after real bookings begin. No PITR or scheduled backup cost is enabled during trial.
 - Verified: `npm test`, `npm run build -- --mode staging`, and Hosting deployment to `https://cac-health-staging.web.app`.
 - Production `channel-activity-customer` remains unchanged. Next: staff acceptance in staging, then decide whether to promote the P0 and report-status changes to production.
+## 2026-07-29 Staging Phase 1/2
+
+- Current branch: `security-p0-staging`.
+- Staging: `https://cac-health-staging.web.app` / Firebase project `cac-health-staging`. Do not deploy this branch to production without explicit approval.
+- Phase 1 is deployed in staging: active `ADMIN`/`STAFF` records, staff LINE separation, report-status tab, and Cloud Function audit entries for confirm/cancel/remind/staff-edit. Audit records are admin-only and store field summaries, not personal values.
+- Phase 2 is deployed in staging: `PUBLIC`, `INTERNAL`, `INVITE_ONLY` managed packages; callable public package list; server-validated invitation token; expiring invite link/QR and immediate revoke control; public 30-day blocked-date notice.
+- Verification passed: `node --check functions/index.js`, `npm test`, `npm run test:rules`, `npm run test:functions`, and `npm run build -- --mode staging`.
+- Pending acceptance: sign in as a staging admin; verify a disabled staff account is denied, audit list is admin-only, and invite-only package visibility/revocation works in a non-staff browser. Email delivery and Phase 3 PITR/backups are deliberately deferred.

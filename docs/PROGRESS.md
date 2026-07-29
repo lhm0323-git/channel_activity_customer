@@ -260,3 +260,27 @@ pm test, staging build, and staging Hosting deployment.
 - The Phase 1-3 implementation plan now defers PITR, backups, and final report file storage to Phase 3 after real bookings begin. No PITR or scheduled backup cost is enabled during trial.
 - Verified: `npm test`, `npm run build -- --mode staging`, and Hosting deployment to `https://cac-health-staging.web.app`.
 - Production `channel-activity-customer` remains unchanged. Next: staff acceptance in staging, then decide whether to promote the P0 and report-status changes to production.
+## 2026-07-29 - Phase 1/2 staging completion
+
+### Completed
+- Phase 1 added Cloud Function audit records for booking confirmation, cancellation, D-1/manual reminder, and staff edits. `auditLogs` is readable only by administrators and stores the operator, timestamp, action, and field-name summary without before/after personal values.
+- Staff accounts support `ADMIN` / `STAFF` roles and active status. Bootstrap admin remains `lhm0323@gmail.com`.
+- Phase 2 adds managed package visibility: `PUBLIC`, `INTERNAL`, and `INVITE_ONLY`. Public clients receive package data through a callable function, while booking creation validates the visibility and invitation token server-side.
+- Staff can generate an expiring invite link and QR for an invite-only package, then revoke the currently generated link. The public package view now shows blocked dates within 30 days and uses a compact three-column filter grid on phones.
+
+### Important files
+- `cac-liff-app/functions/index.js`
+- `cac-liff-app/firestore.rules`
+- `cac-liff-app/src/App.jsx`
+- `cac-liff-app/src/firebase.js`
+- `cac-liff-app/src/firestore.rules.test.js`
+- `健檢中心三層數位系統 Implementation Plan v2.1（2026 下半年）.md`
+
+### Verification and deployment
+- Passed: `node --check functions/index.js`, `npm test`, `npm run test:rules`, `npm run test:functions`, `npm run build -- --mode staging`.
+- Deployed Functions, Firestore Rules, and Hosting to `cac-health-staging`: `https://cac-health-staging.web.app`.
+- Production `channel-activity-customer` remains unchanged.
+
+### Next handoff
+- Perform browser acceptance using a staging administrator account: role changes, audit list visibility, public/internal/invite-only package visibility, invite expiry/revocation, and booking rejection after revocation.
+- Email delivery and Phase 3 PITR/backups remain intentionally deferred.

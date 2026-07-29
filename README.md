@@ -210,3 +210,9 @@ Deployment completed on 2026-07-28: Functions and Hosting released successfully 
 - The Phase 1-3 implementation plan now defers PITR, backups, and final report file storage to Phase 3 after real bookings begin. No PITR or scheduled backup cost is enabled during trial.
 - Verified: `npm test`, `npm run build -- --mode staging`, and Hosting deployment to `https://cac-health-staging.web.app`.
 - Production `channel-activity-customer` remains unchanged. Next: staff acceptance in staging, then decide whether to promote the P0 and report-status changes to production.
+## 2026-07-29 Staging Phase 1/2
+
+- 驗收環境：`https://cac-health-staging.web.app`；production `channel-activity-customer` 未變更。
+- Phase 1：角色/停用員工、LINE 綁定、報告狀態與預約操作稽核皆已部署 staging。管理者可在「稽核紀錄」查看確認、取消、提醒、後台編修的操作者、時間與欄位摘要。
+- Phase 2：套餐可設定民眾公開、僅內部、邀請制；邀請制可設定到期日並產生預約連結與 QR。公開找方案會列出未來 30 日停約日。
+- 驗收與部署必須同時使用 `functions`、`firestore:rules`、`hosting`；不可只部署 Hosting。Email 寄送服務與 PITR 仍延後。

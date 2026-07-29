@@ -77,7 +77,7 @@ async function markD1NoticeFailed(doc, error) {
   });
 }
 
-async function sendD1Notice(doc) {
+async function sendD1Notice(doc, actor = { role: "SYSTEM" }) {
   const booking = doc.data();
   const email = String(booking.customerEmail || booking.email || "").trim();
   if (booking.status === "CANCELLED") throw new HttpsError("failed-precondition", "Cancelled bookings cannot receive reminders");
@@ -94,6 +94,7 @@ async function sendD1Notice(doc) {
         d1NoticeError: null,
         updatedAt: FieldValue.serverTimestamp(),
       });
+      await writeBookingAuditRecord({ action: "SEND_D1_NOTICE", bookingId: doc.id, actor, before: booking, after: { ...booking, d1NoticeStatus: "SENT" } });
       return "LINE";
     } catch (error) {
       if (!email) {
@@ -106,6 +107,7 @@ async function sendD1Notice(doc) {
 
   if (email) {
     await queueD1Email(doc, email);
+    await writeBookingAuditRecord({ action: "SEND_D1_NOTICE", bookingId: doc.id, actor, before: booking, after: { ...booking, d1NoticeStatus: "EMAIL_QUEUED" } });
     return "EMAIL";
   }
 
@@ -162,18 +164,60 @@ function validEmail(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
 
-async function staffEmail(request) {
+const BOOTSTRAP_ADMIN_EMAIL = "lhm0323@gmail.com";
+
+async function staffProfile(request) {
   const email = text(request.auth?.token?.email, 320).toLowerCase();
-  if (!email) return "";
-  if (email === "lhm0323@gmail.com") return email;
+  if (!email) return null;
+  if (email === BOOTSTRAP_ADMIN_EMAIL) return { email, role: "ADMIN" };
   const staff = await admin.firestore().doc("staffUsers/" + email).get();
-  return staff.exists && staff.data().active !== false ? email : "";
+  if (!staff.exists || staff.data().active === false) return null;
+  return { email, role: staff.data().role === "ADMIN" ? "ADMIN" : "STAFF" };
+}
+
+async function staffEmail(request) {
+  return (await staffProfile(request))?.email || "";
 }
 
 async function assertStaff(request) {
-  const email = await staffEmail(request);
-  if (!email) throw new HttpsError(request.auth?.uid ? "permission-denied" : "unauthenticated", "Staff access is required");
-  return email;
+  const profile = await staffProfile(request);
+  if (!profile) throw new HttpsError(request.auth?.uid ? "permission-denied" : "unauthenticated", "Staff access is required");
+  return profile;
+}
+
+async function assertAdmin(request) {
+  const profile = await assertStaff(request);
+  if (profile.role !== "ADMIN") throw new HttpsError("permission-denied", "Administrator access is required");
+  return profile;
+}
+
+const AUDIT_VALUE_FIELDS = new Set(["appointmentDate", "packageName", "status", "finalPrice", "reportStatus", "d1NoticeStatus", "checkInSerial", "checkInStatus"]);
+
+function auditSummary(before = {}, after = {}) {
+  const changedFields = Object.keys(after).filter((key) => JSON.stringify(before[key] ?? null) !== JSON.stringify(after[key] ?? null));
+  const changes = {};
+  changedFields.forEach((key) => {
+    if (AUDIT_VALUE_FIELDS.has(key)) changes[key] = { before: before[key] ?? null, after: after[key] ?? null };
+    if (key === "selectedItems") changes.selectedItemCount = { before: Array.isArray(before.selectedItems) ? before.selectedItems.length : 0, after: Array.isArray(after.selectedItems) ? after.selectedItems.length : 0 };
+  });
+  return { changedFields, changes };
+}
+
+function writeBookingAudit(transaction, db, { action, bookingId, actor, before = {}, after = {} }) {
+  const summary = auditSummary(before, after);
+  transaction.set(db.collection("auditLogs").doc(), {
+    resourceType: "BOOKING", bookingId, action,
+    actorEmail: actor?.email || "", actorUid: actor?.uid || "", actorRole: actor?.role || "CUSTOMER",
+    ...summary, createdAt: FieldValue.serverTimestamp(),
+  });
+}
+async function writeBookingAuditRecord({ action, bookingId, actor, before = {}, after = {} }) {
+  const summary = auditSummary(before, after);
+  await admin.firestore().collection("auditLogs").add({
+    resourceType: "BOOKING", bookingId, action,
+    actorEmail: actor?.email || "", actorUid: actor?.uid || "", actorRole: actor?.role || "SYSTEM",
+    ...summary, createdAt: FieldValue.serverTimestamp(),
+  });
 }
 
 function safeItems(value) {
@@ -220,11 +264,37 @@ function safeAnswers(value) {
   }));
 }
 
+function managedPackageId(name) {
+  return encodeURIComponent(text(name, 200)).replace(/\./g, "%2E");
+}
+
+function packageVisibility(value) {
+  return ["PUBLIC", "INTERNAL", "INVITE_ONLY"].includes(value) ? value : "PUBLIC";
+}
+
+function inviteIsActive(invite, packageName) {
+  return invite && invite.active !== false && invite.packageName === packageName &&
+    (!invite.expiresOn || invite.expiresOn >= taipeiDate(0));
+}
+
+async function assertPackageBookingAccess(transaction, db, bookingInput, isStaff) {
+  const packageName = text(bookingInput.packageName, 200);
+  const packageSnap = await transaction.get(db.doc("managedPackages/" + managedPackageId(packageName)));
+  if (!packageSnap.exists || packageSnap.data().deleted) return;
+  const visibility = packageVisibility(packageSnap.data().visibility);
+  if (visibility === "INTERNAL" && !isStaff) throw new HttpsError("permission-denied", "This package is only available through the health center");
+  if (visibility === "INVITE_ONLY" && !isStaff) {
+    const inviteToken = text(bookingInput.inviteToken, 160);
+    const inviteSnap = inviteToken ? await transaction.get(db.doc("packageInvites/" + inviteToken)) : null;
+    if (!inviteSnap?.exists || !inviteIsActive(inviteSnap.data(), packageName)) throw new HttpsError("permission-denied", "This invitation link is invalid or expired");
+  }
+}
 exports.createBooking = onCall(async (request) => {
   if (!request.auth?.uid) throw new HttpsError("unauthenticated", "A signed-in session is required");
   const payload = request.data?.payload;
   if (!payload || typeof payload !== "object") throw new HttpsError("invalid-argument", "Booking payload is required");
-  const isStaff = Boolean(await staffEmail(request));
+  const actor = await staffProfile(request) || { uid: request.auth.uid, role: "CUSTOMER" };
+  const isStaff = Boolean(actor.email);
   const customerInput = payload.customer || {};
   const bookingInput = payload.booking || {};
   const customerName = text(customerInput.name || bookingInput.customerName, 160);
@@ -259,6 +329,7 @@ exports.createBooking = onCall(async (request) => {
   };
   await db.runTransaction(async (transaction) => {
     const blocked = await transaction.get(blockedRef);
+    await assertPackageBookingAccess(transaction, db, bookingInput, isStaff);
     if (blocked.exists && !isStaff) throw new HttpsError("failed-precondition", "This date is unavailable");
     transaction.set(customerRef, {
       customerId, name: customerName, phone: customerPhone, email: customerEmail,
@@ -267,6 +338,7 @@ exports.createBooking = onCall(async (request) => {
     }, { merge: true });
     transaction.set(bookingRef, booking);
     transaction.set(db.doc("checklists/" + bookingRef.id), { bookingId: bookingRef.id, ...checklistFor(selectedItems), generatedAt: now, printedAt: null });
+    writeBookingAudit(transaction, db, { action: "CREATE", bookingId: bookingRef.id, actor, after: booking });
   });
   return { bookingId: bookingRef.id, claimToken };
 });
@@ -277,12 +349,15 @@ exports.cancelBooking = onCall(async (request) => {
   if (!bookingId) throw new HttpsError("invalid-argument", "Booking ID is required");
   const db = admin.firestore();
   const bookingRef = db.doc("bookings/" + bookingId);
-  const staff = Boolean(await staffEmail(request));
+  const actor = await staffProfile(request) || { uid: request.auth.uid, role: "CUSTOMER" };
   await db.runTransaction(async (transaction) => {
     const snap = await transaction.get(bookingRef);
     if (!snap.exists) throw new HttpsError("not-found", "Booking not found");
-    if (!staff && snap.data().ownerUid !== request.auth.uid) throw new HttpsError("permission-denied", "You can only cancel your own booking");
-    transaction.update(bookingRef, { status: "CANCELLED", cancelledAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
+    const booking = snap.data();
+    if (!actor.email && booking.ownerUid !== request.auth.uid) throw new HttpsError("permission-denied", "You can only cancel your own booking");
+    const patch = { status: "CANCELLED", cancelledAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() };
+    transaction.update(bookingRef, patch);
+    writeBookingAudit(transaction, db, { action: "CANCEL", bookingId, actor, before: booking, after: { ...booking, ...patch } });
   });
   return { cancelled: true };
 });
@@ -380,6 +455,47 @@ exports.claimBookingWithLine = onCall(async (request) => {
   return { claimed: true };
 });
 
+exports.getPublicManagedPackages = onCall(async (request) => {
+  const inviteToken = text(request.data?.inviteToken, 160);
+  const db = admin.firestore();
+  const [packageSnapshot, inviteSnapshot] = await Promise.all([
+    db.collection("managedPackages").get(),
+    inviteToken ? db.doc("packageInvites/" + inviteToken).get() : Promise.resolve(null),
+  ]);
+  const allPackages = packageSnapshot.docs.map((snap) => ({ docId: snap.id, ...snap.data() }));
+  const packages = allPackages.filter((pkg) => pkg.name && !pkg.deleted && packageVisibility(pkg.visibility) === "PUBLIC");
+  const restrictedPackageIds = allPackages.filter((pkg) => pkg.name && !pkg.deleted && packageVisibility(pkg.visibility) !== "PUBLIC").map((pkg) => pkg.docId);
+  if (inviteSnapshot?.exists && inviteIsActive(inviteSnapshot.data(), inviteSnapshot.data().packageName)) {
+    const invitePackage = await db.doc("managedPackages/" + managedPackageId(inviteSnapshot.data().packageName)).get();
+    if (invitePackage.exists && !invitePackage.data().deleted) {
+      packages.push({ docId: invitePackage.id, ...invitePackage.data(), inviteOnlyGranted: true });
+      const index = restrictedPackageIds.indexOf(invitePackage.id);
+      if (index >= 0) restrictedPackageIds.splice(index, 1);
+    }
+  }
+  return { packages, restrictedPackageIds };
+});
+
+exports.createPackageInvite = onCall(async (request) => {
+  const actor = await assertStaff(request);
+  const packageName = text(request.data?.packageName, 200);
+  const expiresOn = text(request.data?.expiresOn, 10);
+  if (!packageName || (expiresOn && !validDate(expiresOn))) throw new HttpsError("invalid-argument", "Package name and valid expiry date are required");
+  const db = admin.firestore();
+  const packageSnap = await db.doc("managedPackages/" + managedPackageId(packageName)).get();
+  if (!packageSnap.exists || packageSnap.data().deleted) throw new HttpsError("not-found", "Package not found");
+  const token = crypto.randomBytes(18).toString("hex");
+  await db.doc("packageInvites/" + token).set({ packageName, active: true, expiresOn: expiresOn || "", createdBy: actor.email, createdAt: FieldValue.serverTimestamp() });
+  return { token, packageName, expiresOn };
+});
+
+exports.revokePackageInvite = onCall(async (request) => {
+  const actor = await assertStaff(request);
+  const token = text(request.data?.token, 160);
+  if (!token) throw new HttpsError("invalid-argument", "Invitation token is required");
+  await admin.firestore().doc("packageInvites/" + token).set({ active: false, revokedBy: actor.email, revokedAt: FieldValue.serverTimestamp() }, { merge: true });
+  return { revoked: true };
+});
 exports.acknowledgeD1LineNotice = onCall(async (request) => {
   const bookingId = String(request.data && request.data.bookingId || "").trim();
   const ackToken = String(request.data && request.data.ackToken || "").trim();
@@ -406,15 +522,15 @@ exports.acknowledgeD1LineNotice = onCall(async (request) => {
 });
 
 exports.sendD1LineNotice = onCall({ secrets: [lineChannelAccessToken] }, async (request) => {
-  await assertStaff(request);
+  const actor = await assertStaff(request);
   const bookingId = String(request.data && request.data.bookingId || "").trim();
   if (!bookingId) throw new HttpsError("invalid-argument", "bookingId is required");
   const booking = await admin.firestore().doc("bookings/" + bookingId).get();
   if (!booking.exists) throw new HttpsError("not-found", "Booking not found");
   if (booking.data().appointmentDate !== taipeiDate(1)) throw new HttpsError("failed-precondition", "Only tomorrow bookings can receive a D-1 reminder");
   if (booking.data().status !== "CONFIRMED" || !booking.data().checkInSerial) throw new HttpsError("failed-precondition", "Confirm booking and assign a check-in serial first");
-  await sendD1Notice(booking);
-  return { status: "SENT" };
+  const channel = await sendD1Notice(booking, actor);
+  return { status: channel };
 });
 
 exports.sendD1LineNotices = onSchedule({ schedule: "0 9 * * *", timeZone: "Asia/Taipei", secrets: [lineChannelAccessToken] }, async () => {
@@ -438,16 +554,131 @@ exports.sendD1LineNotices = onSchedule({ schedule: "0 9 * * *", timeZone: "Asia/
   console.info("D1 scheduler target=" + targetDate + " " + JSON.stringify(summary));
 });
 
+const STAFF_BOOKING_STATUSES = new Set(["BOOKED", "CONFIRMED", "RESCHEDULED", "CANCELLED"]);
+const REPORT_STATUSES = new Set(["PENDING", "READY_FOR_PICKUP", "MAILED", "FOLLOW_UP_REQUIRED"]);
+
+function hasOwn(input, key) {
+  return Object.prototype.hasOwnProperty.call(input, key);
+}
+
+function safeStaffBookingPatch(input) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) throw new HttpsError("invalid-argument", "Booking fields are required");
+  const patch = {};
+  if (hasOwn(input, "customerName")) patch.customerName = text(input.customerName, 160);
+  if (hasOwn(input, "customerPhone")) patch.customerPhone = text(input.customerPhone, 80);
+  if (hasOwn(input, "customerEmail")) {
+    const email = text(input.customerEmail, 320).toLowerCase();
+    if (email && !validEmail(email)) throw new HttpsError("invalid-argument", "Invalid customer email");
+    patch.customerEmail = email;
+  }
+  if (hasOwn(input, "appointmentDate")) {
+    const date = text(input.appointmentDate, 10);
+    if (!validDate(date)) throw new HttpsError("invalid-argument", "Invalid appointment date");
+    patch.appointmentDate = date;
+  }
+  if (hasOwn(input, "channel")) patch.channel = text(input.channel, 120) || "GENERAL";
+  if (hasOwn(input, "packageName")) patch.packageName = text(input.packageName, 200);
+  if (hasOwn(input, "status")) {
+    const status = text(input.status, 20);
+    if (!STAFF_BOOKING_STATUSES.has(status)) throw new HttpsError("invalid-argument", "Invalid booking status");
+    patch.status = status;
+  }
+  if (hasOwn(input, "notes")) patch.notes = text(input.notes, 2000);
+  if (hasOwn(input, "finalPrice")) patch.finalPrice = number(input.finalPrice);
+  if (hasOwn(input, "listPrice")) patch.listPrice = number(input.listPrice);
+  if (hasOwn(input, "discountRate")) patch.discountRate = number(input.discountRate);
+  if (hasOwn(input, "selectedItems")) patch.selectedItems = safeItems(input.selectedItems);
+  if (hasOwn(input, "reportStatus")) {
+    const status = text(input.reportStatus, 40);
+    if (!REPORT_STATUSES.has(status)) throw new HttpsError("invalid-argument", "Invalid report status");
+    patch.reportStatus = status;
+  }
+  if (hasOwn(input, "reportInternalNote")) patch.reportInternalNote = text(input.reportInternalNote, 4000);
+  if (!Object.keys(patch).length) throw new HttpsError("invalid-argument", "No editable booking fields supplied");
+  return patch;
+}
+
+exports.updateBookingAsStaff = onCall(async (request) => {
+  const actor = await assertStaff(request);
+  const bookingId = text(request.data?.bookingId, 200);
+  if (!bookingId) throw new HttpsError("invalid-argument", "bookingId is required");
+  const patch = safeStaffBookingPatch(request.data?.fields);
+  const db = admin.firestore();
+  const bookingRef = db.doc("bookings/" + bookingId);
+  await db.runTransaction(async (transaction) => {
+    const bookingSnap = await transaction.get(bookingRef);
+    if (!bookingSnap.exists) throw new HttpsError("not-found", "Booking not found");
+    const booking = bookingSnap.data();
+    if (booking.status === "CANCELLED" && patch.status !== "CANCELLED") throw new HttpsError("failed-precondition", "Cancelled bookings cannot be edited");
+    const dateChanged = patch.appointmentDate && patch.appointmentDate !== booking.appointmentDate;
+    const nextPatch = {
+      ...patch,
+      ...(dateChanged ? { status: "BOOKED", checkInSerial: null, checkInSequence: null, d1NoticeSentAt: null, d1AcknowledgedAt: null, d1NoticeStatus: null } : {}),
+      updatedAt: FieldValue.serverTimestamp(),
+    };
+    transaction.update(bookingRef, nextPatch);
+    if (nextPatch.selectedItems) transaction.set(db.doc("checklists/" + bookingId), { bookingId, ...checklistFor(nextPatch.selectedItems), generatedAt: FieldValue.serverTimestamp(), printedAt: null }, { merge: true });
+    if (booking.customerId) transaction.set(db.doc("customers/" + booking.customerId), {
+      name: nextPatch.customerName ?? booking.customerName ?? "", phone: nextPatch.customerPhone ?? booking.customerPhone ?? "",
+      email: nextPatch.customerEmail ?? booking.customerEmail ?? "", updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
+    writeBookingAudit(transaction, db, { action: "UPDATE", bookingId, actor, before: booking, after: { ...booking, ...nextPatch } });
+  });
+  return { updated: true };
+});
+exports.approveBookingChangeAsStaff = onCall(async (request) => {
+  const actor = await assertStaff(request);
+  const requestId = text(request.data?.requestId, 200);
+  if (!requestId) throw new HttpsError("invalid-argument", "requestId is required");
+  const db = admin.firestore();
+  const changeRef = db.doc("bookingChangeRequests/" + requestId);
+  await db.runTransaction(async (transaction) => {
+    const changeSnap = await transaction.get(changeRef);
+    if (!changeSnap.exists) throw new HttpsError("not-found", "Change request not found");
+    const change = changeSnap.data();
+    const bookingRef = db.doc("bookings/" + text(change.bookingId, 200));
+    const bookingSnap = await transaction.get(bookingRef);
+    if (!bookingSnap.exists) throw new HttpsError("not-found", "Booking not found");
+    const booking = bookingSnap.data();
+    if (change.status !== "pending") throw new HttpsError("failed-precondition", "Change request is no longer pending");
+    if (!validDate(change.requestedAppointmentDate)) throw new HttpsError("invalid-argument", "Invalid requested appointment date");
+    const patch = { appointmentDate: change.requestedAppointmentDate, status: "BOOKED", checkInSerial: null, checkInSequence: null, d1NoticeSentAt: null, d1AcknowledgedAt: null, d1NoticeStatus: null, updatedAt: FieldValue.serverTimestamp() };
+    transaction.update(bookingRef, patch);
+    transaction.update(changeRef, { status: "approved", approvedAt: FieldValue.serverTimestamp(), approvedBy: actor.email, updatedAt: FieldValue.serverTimestamp() });
+    writeBookingAudit(transaction, db, { action: "APPROVE_CHANGE", bookingId: bookingRef.id, actor, before: booking, after: { ...booking, ...patch } });
+  });
+  return { approved: true };
+});
+
+exports.checkInBookingAsStaff = onCall(async (request) => {
+  const actor = await assertStaff(request);
+  const bookingId = text(request.data?.bookingId, 200);
+  if (!bookingId) throw new HttpsError("invalid-argument", "bookingId is required");
+  const db = admin.firestore();
+  const bookingRef = db.doc("bookings/" + bookingId);
+  return db.runTransaction(async (transaction) => {
+    const snap = await transaction.get(bookingRef);
+    if (!snap.exists) throw new HttpsError("not-found", "Booking not found");
+    const booking = snap.data();
+    if (booking.status === "CANCELLED") throw new HttpsError("failed-precondition", "Cancelled booking cannot check in");
+    if (booking.checkInStatus === "CHECKED_IN") return { alreadyCheckedIn: true };
+    const patch = { checkInStatus: "CHECKED_IN", checkedInAt: FieldValue.serverTimestamp(), checkedInBy: actor.email, updatedAt: FieldValue.serverTimestamp() };
+    transaction.update(bookingRef, patch);
+    writeBookingAudit(transaction, db, { action: "CHECK_IN", bookingId, actor, before: booking, after: { ...booking, ...patch } });
+    return { alreadyCheckedIn: false };
+  });
+});
 function makeCheckInSerial(date, sequence) {
   return String(date || "").slice(5).replace("-", "") + "-" + String(sequence).padStart(3, "0");
 }
 
 exports.confirmBookingWithSerial = onCall(async (request) => {
-  await assertStaff(request);
+  const actor = await assertStaff(request);
   const bookingId = String(request.data && request.data.bookingId || "").trim();
   if (!bookingId) throw new HttpsError("invalid-argument", "bookingId is required");
-  const bookingRef = admin.firestore().doc("bookings/" + bookingId);
-  const result = await admin.firestore().runTransaction(async (transaction) => {
+  const db = admin.firestore();
+  const bookingRef = db.doc("bookings/" + bookingId);
+  const result = await db.runTransaction(async (transaction) => {
     const bookingSnap = await transaction.get(bookingRef);
     if (!bookingSnap.exists) throw new HttpsError("not-found", "Booking not found");
     const booking = bookingSnap.data();
@@ -459,7 +690,9 @@ exports.confirmBookingWithSerial = onCall(async (request) => {
     const sequence = Number(counterSnap.exists ? counterSnap.data().nextSerial : 1) || 1;
     const checkInSerial = makeCheckInSerial(booking.appointmentDate, sequence);
     transaction.set(counterRef, { nextSerial: sequence + 1, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
-    transaction.update(bookingRef, { status: "CONFIRMED", confirmedAt: FieldValue.serverTimestamp(), checkInSerial, checkInSequence: sequence, updatedAt: FieldValue.serverTimestamp() });
+    const patch = { status: "CONFIRMED", confirmedAt: FieldValue.serverTimestamp(), checkInSerial, checkInSequence: sequence, updatedAt: FieldValue.serverTimestamp() };
+    transaction.update(bookingRef, patch);
+    writeBookingAudit(transaction, db, { action: "CONFIRM", bookingId, actor, before: booking, after: { ...booking, ...patch } });
     return { checkInSerial };
   });
   return result;

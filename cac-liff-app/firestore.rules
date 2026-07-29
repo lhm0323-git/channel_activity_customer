@@ -2,14 +2,18 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() { return request.auth != null; }
-    function isAdmin() { return signedIn() && request.auth.token.email == 'lhm0323@gmail.com'; }
-    function isStaff() {
-      return isAdmin() || (
-        signedIn() && request.auth.token.email is string &&
+    function hasStaffRecord() {
+      return signedIn() && request.auth.token.email is string &&
         exists(/databases/$(database)/documents/staffUsers/$(request.auth.token.email.lower())) &&
-        get(/databases/$(database)/documents/staffUsers/$(request.auth.token.email.lower())).data.active != false
+        get(/databases/$(database)/documents/staffUsers/$(request.auth.token.email.lower())).data.active != false;
+    }
+    function isAdmin() {
+      return signedIn() && (
+        request.auth.token.email == 'lhm0323@gmail.com' ||
+        (hasStaffRecord() && get(/databases/$(database)/documents/staffUsers/$(request.auth.token.email.lower())).data.role == 'ADMIN')
       );
     }
+    function isStaff() { return isAdmin() || hasStaffRecord(); }
     function ownsResource() { return signedIn() && resource.data.ownerUid == request.auth.uid; }
 
     match /customers/{customerId} {
@@ -19,8 +23,11 @@ service cloud.firestore {
     }
     match /bookings/{bookingId} {
       allow read: if isStaff() || ownsResource();
-      allow update: if isStaff();
-      allow create, delete: if false;
+      allow create, update, delete: if false;
+    }
+    match /auditLogs/{auditId} {
+      allow read: if isAdmin();
+      allow create, update, delete: if false;
     }
     match /bookingBlockedDates/{date} {
       allow read: if true;
@@ -35,9 +42,12 @@ service cloud.firestore {
       allow delete: if false;
     }
     match /managedPackages/{packageId} {
-      allow read: if true;
+      allow read: if isStaff();
       allow create, update: if isStaff();
       allow delete: if false;
+    }
+    match /packageInvites/{token} {
+      allow read, create, update, delete: if false;
     }
     match /managedItems/{itemId} {
       allow read: if true;
