@@ -94,7 +94,7 @@ async function sendD1Notice(doc, actor = { role: "SYSTEM" }) {
         d1NoticeError: null,
         updatedAt: FieldValue.serverTimestamp(),
       });
-      await writeBookingAuditRecord({ action: "SEND_D1_NOTICE", bookingId: doc.id, actor, before: booking, after: { ...booking, d1NoticeStatus: "SENT" } });
+      if (actor?.email) await writeBookingAuditRecord({ action: "SEND_D1_NOTICE", bookingId: doc.id, actor });
       return "LINE";
     } catch (error) {
       if (!email) {
@@ -107,7 +107,7 @@ async function sendD1Notice(doc, actor = { role: "SYSTEM" }) {
 
   if (email) {
     await queueD1Email(doc, email);
-    await writeBookingAuditRecord({ action: "SEND_D1_NOTICE", bookingId: doc.id, actor, before: booking, after: { ...booking, d1NoticeStatus: "EMAIL_QUEUED" } });
+    if (actor?.email) await writeBookingAuditRecord({ action: "SEND_D1_NOTICE", bookingId: doc.id, actor });
     return "EMAIL";
   }
 
@@ -191,35 +191,20 @@ async function assertAdmin(request) {
   return profile;
 }
 
-const AUDIT_VALUE_FIELDS = new Set(["appointmentDate", "packageName", "status", "finalPrice", "reportStatus", "d1NoticeStatus", "checkInSerial", "checkInStatus"]);
-
-function auditSummary(before = {}, after = {}) {
-  const changedFields = Object.keys(after).filter((key) => JSON.stringify(before[key] ?? null) !== JSON.stringify(after[key] ?? null));
-  const changes = {};
-  changedFields.forEach((key) => {
-    if (AUDIT_VALUE_FIELDS.has(key)) changes[key] = { before: before[key] ?? null, after: after[key] ?? null };
-    if (key === "selectedItems") changes.selectedItemCount = { before: Array.isArray(before.selectedItems) ? before.selectedItems.length : 0, after: Array.isArray(after.selectedItems) ? after.selectedItems.length : 0 };
-  });
-  return { changedFields, changes };
-}
-
-function writeBookingAudit(transaction, db, { action, bookingId, actor, before = {}, after = {} }) {
-  const summary = auditSummary(before, after);
+function writeBookingAudit(transaction, db, { action, bookingId, actor }) {
   transaction.set(db.collection("auditLogs").doc(), {
     resourceType: "BOOKING", bookingId, action,
     actorEmail: actor?.email || "", actorUid: actor?.uid || "", actorRole: actor?.role || "CUSTOMER",
-    ...summary, createdAt: FieldValue.serverTimestamp(),
+    createdAt: FieldValue.serverTimestamp(),
   });
 }
-async function writeBookingAuditRecord({ action, bookingId, actor, before = {}, after = {} }) {
-  const summary = auditSummary(before, after);
+async function writeBookingAuditRecord({ action, bookingId, actor }) {
   await admin.firestore().collection("auditLogs").add({
     resourceType: "BOOKING", bookingId, action,
     actorEmail: actor?.email || "", actorUid: actor?.uid || "", actorRole: actor?.role || "SYSTEM",
-    ...summary, createdAt: FieldValue.serverTimestamp(),
+    createdAt: FieldValue.serverTimestamp(),
   });
 }
-
 function safeItems(value) {
   if (!Array.isArray(value) || value.length < 1 || value.length > 100) throw new HttpsError("invalid-argument", "At least one valid item is required");
   return value.map((item) => {
@@ -338,7 +323,6 @@ exports.createBooking = onCall(async (request) => {
     }, { merge: true });
     transaction.set(bookingRef, booking);
     transaction.set(db.doc("checklists/" + bookingRef.id), { bookingId: bookingRef.id, ...checklistFor(selectedItems), generatedAt: now, printedAt: null });
-    writeBookingAudit(transaction, db, { action: "CREATE", bookingId: bookingRef.id, actor, after: booking });
   });
   return { bookingId: bookingRef.id, claimToken };
 });
@@ -664,7 +648,6 @@ exports.checkInBookingAsStaff = onCall(async (request) => {
     if (booking.checkInStatus === "CHECKED_IN") return { alreadyCheckedIn: true };
     const patch = { checkInStatus: "CHECKED_IN", checkedInAt: FieldValue.serverTimestamp(), checkedInBy: actor.email, updatedAt: FieldValue.serverTimestamp() };
     transaction.update(bookingRef, patch);
-    writeBookingAudit(transaction, db, { action: "CHECK_IN", bookingId, actor, before: booking, after: { ...booking, ...patch } });
     return { alreadyCheckedIn: false };
   });
 });

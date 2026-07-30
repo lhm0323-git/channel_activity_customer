@@ -222,3 +222,9 @@ Deployment completed on 2026-07-28: Functions and Hosting released successfully 
 - 公開「找方案」中文標題為「選擇需要的健檢方案」；有停約日才顯示「未來30日內停約日為：」。
 
 - Staging acceptance data: `STAGING-Test-01` to `STAGING-Test-06` are safe-to-delete records dated 2026-08-04 through 2026-08-09.
+## 2026-07-30 - 稽核紀錄精簡
+
+- 新增稽核只保留「時間、動作、對應預約、操作者」；不再寫入欄位差異、前後值、客戶個資或備註。
+- 僅保留人工可追溯操作：後台確認、取消、編修、改期核准與人工提醒；建立預約、排程 D-1 通知與現場報到不再新增紀錄。
+- 管理者仍可由稽核列點開對應預約；既有舊稽核資料不回寫或刪除。PITR/TTL 保留至正式營運前另行決定。
+- 2026-07-30 staging deployed: Functions updated and Hosting version `c8ab09c932a90d38` released to `https://cac-health-staging.web.app`; production remains unchanged.
