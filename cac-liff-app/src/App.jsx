@@ -71,6 +71,7 @@ import {
   confirmBooking,
   deleteManagedPackage,
   getLastCustomerQuestionnaireResponse,
+  getBookingById,
   getStaffUser,
   listBookingBlockedDates,
   listAuditLogs,
@@ -559,6 +560,10 @@ const App = () => {
   const [packageMeta, setPackageMeta] = useState({});
   const [packageAudience, setPackageAudience] = useState("\u4e00\u822c");
   const [packageBodyParts, setPackageBodyParts] = useState("");
+  const [packageVisibility, setPackageVisibility] = useState("PUBLIC");
+  const [packageInviteExpiry, setPackageInviteExpiry] = useState("");
+  const [packageInviteLink, setPackageInviteLink] = useState("");
+  const [packageInviteQr, setPackageInviteQr] = useState("");
   const [packageFilter, setPackageFilter] = useState("ALL");
   const [showCsvInput, setShowCsvInput] = useState(false);
 
@@ -1745,7 +1750,10 @@ ${selectedItems
     try {
       setAuditStatus(lang === "en" ? "Loading..." : "讀取中...");
       const logs = await listAuditLogs();
-      setAuditLogs(logs);
+      const bookingIds = [...new Set(logs.map((entry) => entry.bookingId).filter(Boolean))];
+      const linkedBookings = await Promise.all(bookingIds.map(async (bookingId) => [bookingId, await getBookingById(bookingId)]));
+      const byBookingId = Object.fromEntries(linkedBookings);
+      setAuditLogs(logs.map((entry) => ({ ...entry, booking: byBookingId[entry.bookingId] || null })));
       setAuditStatus(lang === "en" ? `Loaded ${logs.length} audit records` : `已載入 ${logs.length} 筆稽核紀錄`);
     } catch (error) {
       setAuditStatus(lang === "en" ? `Audit load failed: ${error.message}` : `稽核紀錄讀取失敗：${error.message}`);
@@ -3672,7 +3680,7 @@ ${selectedItems
         <div className="flex flex-wrap items-center justify-between gap-3"><div><h1 className="text-lg font-black text-slate-900">{lang === "en" ? "Audit log" : "稽核紀錄"}</h1><p className="mt-1 text-xs text-slate-500">{lang === "en" ? "Booking operation trace. Customer personal content is not recorded here." : "預約操作追溯；此處不記錄客戶個資與備註內容。"}</p></div><button onClick={handleLoadAuditLogs} className="rounded-md bg-slate-900 px-4 py-2 text-sm font-bold text-white">{lang === "en" ? "Load" : "讀取"}</button></div>
         {auditStatus && <p className="mt-3 text-xs font-bold text-slate-500">{auditStatus}</p>}
       </div>
-      <div className="mt-4 overflow-hidden rounded-lg border border-slate-200 bg-white"><div className="grid grid-cols-[130px_1fr_1fr] gap-3 border-b border-slate-200 bg-slate-100 px-4 py-3 text-xs font-bold text-slate-600 sm:grid-cols-[170px_130px_1fr_1fr]"><span>{lang === "en" ? "Time" : "時間"}</span><span>{lang === "en" ? "Action" : "動作"}</span><span>{lang === "en" ? "Operator" : "操作者"}</span><span className="hidden sm:block">{lang === "en" ? "Changed fields" : "差異摘要"}</span></div><div className="divide-y divide-slate-100">{auditLogs.length ? auditLogs.map((entry) => <div key={entry.auditId} className="grid grid-cols-[130px_1fr_1fr] gap-3 px-4 py-3 text-xs sm:grid-cols-[170px_130px_1fr_1fr]"><span className="text-slate-500">{entry.createdAt?.toDate ? entry.createdAt.toDate().toLocaleString() : "-"}</span><span className="font-bold text-indigo-700">{entry.action || "-"}</span><span className="truncate text-slate-700">{entry.actorEmail || entry.actorRole || "-"}</span><span className="hidden text-slate-500 sm:block">{(entry.changedFields || []).join(", ") || "-"}</span></div>) : <div className="p-12 text-center text-sm text-slate-400">{lang === "en" ? "Load audit records to view the trace." : "請讀取稽核紀錄。"}</div>}</div></div>
+<div className="mt-4 overflow-hidden rounded-lg border border-slate-200 bg-white"><div className="grid grid-cols-[130px_1fr_1fr] gap-3 border-b border-slate-200 bg-slate-100 px-4 py-3 text-xs font-bold text-slate-600 sm:grid-cols-[170px_130px_1.4fr_1fr_1fr]"><span>{lang === "en" ? "Time" : "時間"}</span><span>{lang === "en" ? "Action" : "動作"}</span><span>{lang === "en" ? "Booking" : "對應預約"}</span><span>{lang === "en" ? "Operator" : "操作者"}</span><span className="hidden sm:block">{lang === "en" ? "Changed fields" : "差異摘要"}</span></div><div className="divide-y divide-slate-100">{auditLogs.length ? auditLogs.map((entry) => <button type="button" key={entry.auditId} onClick={() => entry.booking && setAdminDetailBooking(entry.booking)} className="grid w-full grid-cols-[130px_1fr_1fr] gap-3 px-4 py-3 text-left text-xs hover:bg-slate-50 sm:grid-cols-[170px_130px_1.4fr_1fr_1fr]"><span className="text-slate-500">{entry.createdAt?.toDate ? entry.createdAt.toDate().toLocaleString() : "-"}</span><span className="font-bold text-indigo-700">{entry.action || "-"}</span><span className="truncate text-slate-700">{entry.booking ? `${entry.booking.appointmentDate || "-"} / ${entry.booking.customerName || entry.booking.name || "-"} / ${entry.booking.packageName || "-"}` : entry.bookingId || "-"}</span><span className="hidden sm:block truncate text-slate-700">{entry.actorEmail || entry.actorRole || "-"}</span><span className="hidden text-slate-500 sm:block">{(entry.changedFields || []).join(", ") || "-"}</span></button>) : <div className="p-12 text-center text-sm text-slate-400">{lang === "en" ? "Load audit records to view the trace." : "請讀取稽核紀錄。"}</div>}</div></div>
     </div>
   );
   const ReportManagementView = () => {

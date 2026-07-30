@@ -220,3 +220,5 @@ Deployment completed on 2026-07-28: Functions and Hosting released successfully 
 - 2026-07-29 修復：公共套餐頁需匯入 `listPublicManagedPackages`、邀請產生與撤銷 wrapper；staging Hosting 已更新。
 
 - 公開「找方案」中文標題為「選擇需要的健檢方案」；有停約日才顯示「未來30日內停約日為：」。
+
+- Staging acceptance data: `STAGING-Test-01` to `STAGING-Test-06` are safe-to-delete records dated 2026-08-04 through 2026-08-09.

@@ -296,3 +296,11 @@ pm test, staging build, and staging Hosting deployment.
 - Chinese public package page removes the generic explanatory subtitle.
 - The title is now 「選擇需要的健檢方案」 and blocked dates render only when present as 「未來30日內停約日為：」.
 - Verified with staging build and deployed Hosting-only to `https://cac-health-staging.web.app`.
+
+## 2026-07-30 - Package visibility and audit acceptance repair
+
+- Fixed missing React state for package visibility and invite expiry/link/QR, which caused `packageVisibility is not defined` in Package Tool.
+- Audit Log now reads the matching booking only when an administrator loads the trace, displaying appointment date, customer, and package; each row opens that booking's detail modal. Personal values remain outside `auditLogs` itself.
+- Hosting deployed to staging after `npm test` and `npm run build -- --mode staging` passed.
+- Seeded six safe-to-delete Function-created records: `STAGING-Test-01` through `STAGING-Test-06`, dated 2026-08-04 to 2026-08-09. They create matching `CREATE` audit entries.
+- Staging intentionally has no production LIFF ID or valid LINE Messaging token, so real LINE binding and D-1 LINE delivery are not acceptance-testable there.

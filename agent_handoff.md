@@ -225,3 +225,10 @@ Deployment completed on 2026-07-28: Functions and Hosting released successfully 
 
 - Keep the Chinese public package title as 「選擇需要的健檢方案」. Do not restore the generic subtitle.
 - Only show the blocked-date sentence when there are dates within 30 days: 「未來30日內停約日為：」.
+
+## 2026-07-30 Package and audit acceptance repair
+
+- Package Tool requires `packageVisibility`, `packageInviteExpiry`, `packageInviteLink`, and `packageInviteQr` state in `App.jsx`; do not remove them.
+- Audit rows resolve the booking live for administrators rather than copying customer details into `auditLogs`.
+- Staging has six safe-to-delete test bookings, `STAGING-Test-01` to `STAGING-Test-06`, dated 2026-08-04 through 2026-08-09.
+- Staging deliberately cannot test real LINE binding or D-1 LINE delivery because `VITE_LIFF_ID` is unset and its Messaging token is not production-valid.
