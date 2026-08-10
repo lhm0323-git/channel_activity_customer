@@ -307,3 +307,8 @@ Deployment completed on 2026-07-28: Functions and Hosting released successfully 
 - The persisted import error was not a Firebase token issue. In production createBooking, the valid-email check lacked the non-staff guard and therefore rejected staff CSV rows with blank Email.
 - Fixed and deployed: `if (!isStaff && !lineProfile && !validEmail(customerEmail))`. Production revision: createbooking-00004-dab.
 - Staff CSV rows still require active staff/admin verification through assertStaff. Public self-service bookings remain required to supply LINE or Email.
+
+## 2026-08-10 - CSV import verification complete
+
+- Regression test added in src/functions.p0.test.js. It signs in a simulated staff email, seeds active staffUsers in the emulator, and successfully creates a STAFF_CSV booking with no Email/LINE ID.
+- Passed: npm test and npm run test:functions. Production createBooking revision remains createbooking-00004-dab.

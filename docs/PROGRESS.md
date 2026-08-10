@@ -387,3 +387,9 @@ pm test, staging build, and staging Hosting deployment.
 - Deployment: production createBooking revision createbooking-00004-dab is ACTIVE.
 - Verification: node --check functions/index.js, npm test, npm run build, and production Function deployment passed.
 - Acceptance: import C:/Users/xray/Documents/1.csv as an active staff user; its date range requires an end date of 2026-08-12 or later to display imported rows.
+
+## 2026-08-10 - CSV import end-to-end emulator verification
+
+- Added Functions emulator coverage in src/functions.p0.test.js: a simulated active email staff account creates a STAFF_CSV booking with blank customer Email and LINE ID.
+- Result: passed. The created booking retained an empty customerEmail and used the backend staff authorization path.
+- This verifies the actual callable authorization and persistence behavior without creating production test bookings.

@@ -1,6 +1,7 @@
 ﻿import assert from "node:assert/strict";
 import { initializeApp, deleteApp } from "firebase/app";
-import { getAuth, connectAuthEmulator, signInAnonymously } from "firebase/auth";
+import { getAuth, connectAuthEmulator, signInAnonymously, createUserWithEmailAndPassword, signOut } from "firebase/auth";
+import { createRequire } from "node:module";
 import { getFunctions, connectFunctionsEmulator, httpsCallable } from "firebase/functions";
 import { getFirestore, connectFirestoreEmulator, doc, getDoc, setDoc, terminate } from "firebase/firestore";
 
@@ -11,6 +12,10 @@ const functions = getFunctions(app, "us-central1");
 connectAuthEmulator(auth, "http://127.0.0.1:9099", { disableWarnings: true });
 connectFirestoreEmulator(db, "127.0.0.1", 8080);
 connectFunctionsEmulator(functions, "127.0.0.1", 5001);
+
+const require = createRequire(import.meta.url);
+const admin = require("../functions/node_modules/firebase-admin");
+const adminApp = admin.initializeApp({ projectId: "channel-activity-customer" }, "p0-admin");
 
 await signInAnonymously(auth);
 const createBooking = httpsCallable(functions, "createBooking");
@@ -47,6 +52,28 @@ const cancelled = await cancelBooking({ bookingId });
 assert.equal(cancelled.data.cancelled, true);
 const afterCancel = await getDoc(doc(db, "bookings", bookingId));
 assert.equal(afterCancel.data().status, "CANCELLED");
+const staffEmail = "csv-staff@example.com";
+await signOut(auth);
+await createUserWithEmailAndPassword(auth, staffEmail, "csv-import-test-password");
+await admin.firestore(adminApp).doc("staffUsers/" + staffEmail).set({ email: staffEmail, active: true, role: "STAFF" });
+const createStaffImport = httpsCallable(functions, "createBooking");
+const imported = await createStaffImport({
+  payload: {
+    customer: { name: "CSV staff import", phone: "0999000000", email: "", idNumberMasked: "" },
+    booking: {
+      source: "STAFF_CSV", appointmentDate: "2099-01-03", channel: "GENERAL", packageName: "P0 CSV Package",
+      selectedItems: [{ id: "item-2", name: "P0 CSV Item", category: "test", price: 200 }],
+      listPrice: 200, discountRate: 0, finalPrice: 200, notes: "",
+    },
+  },
+  lineAccessToken: "",
+});
+assert.ok(imported.data.bookingId);
+const importedBooking = await getDoc(doc(db, "bookings", imported.data.bookingId));
+assert.equal(importedBooking.data().customerEmail, "");
+assert.equal(importedBooking.data().notificationChannel, "EMAIL");
+console.log("ok - active staff CSV import accepts blank Email and LINE ID");
+await admin.app("p0-admin").delete();
 console.log("ok - P0 Functions create, questionnaire, reschedule, and cancel retain public workflow");
 await terminate(db);
 await deleteApp(app);

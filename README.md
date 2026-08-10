@@ -289,3 +289,7 @@ Deployment completed on 2026-07-28: Functions and Hosting released successfully 
 ## 2026-08-10 - CSV import Email validation correction
 
 - Corrected createBooking so the Email requirement applies only to non-staff self-service bookings without a LINE identity. Verified staff CSV imports may omit both Email and LINE ID.
+
+### CSV import regression coverage
+
+- The Functions emulator test creates an active staff account and proves that a STAFF_CSV booking with blank customer Email and LINE ID is accepted. This prevents the public no-LINE Email requirement from regressing into the staff CSV workflow.
