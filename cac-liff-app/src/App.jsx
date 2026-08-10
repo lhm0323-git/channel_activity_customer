@@ -1937,6 +1937,7 @@ ${selectedItems
           finalPrice: row.finalPrice || Number(packageMeta[row.packageName]?.finalPrice) || pricing.suggestedPrice,
         });
         payload.booking.status = row.status;
+        payload.booking.source = "STAFF_CSV";
         try {
           await saveBooking(payload, { lineAccessToken: "", requireStaffSession: true });
           results.push({ rowNumber: row.rowNumber, name: row.name, success: true, message: "???" });

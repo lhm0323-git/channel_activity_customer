@@ -372,3 +372,10 @@ pm test, staging build, and staging Hosting deployment.
 - Files: cac-liff-app/src/firebase.js, cac-liff-app/src/App.jsx.
 - Verification: npm test, npm run build, and production Hosting deployment passed.
 - Next: sign out and sign back in through Staff Login once, then re-import 1.csv; review the per-row CSV import log.
+
+## 2026-08-10 - Server-enforced CSV import
+
+- Completed: CSV rows include the STAFF_CSV source marker. Cloud Function createBooking requires assertStaff for that marker and permits blank customer Email and LINE only after active staff/admin verification.
+- Files: cac-liff-app/functions/index.js, cac-liff-app/src/App.jsx.
+- Verification: node --check functions/index.js, npm test, npm run build, production Function ACTIVE revision createbooking-00003-buk, and Hosting deployment passed.
+- Acceptance: import C:/Users/xray/Documents/1.csv while signed in through Staff Login, then set the booking-list end date to 2026-08-12 or later.

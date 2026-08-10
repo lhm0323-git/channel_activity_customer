@@ -278,10 +278,13 @@ exports.createBooking = onCall(async (request) => {
   if (!request.auth?.uid) throw new HttpsError("unauthenticated", "A signed-in session is required");
   const payload = request.data?.payload;
   if (!payload || typeof payload !== "object") throw new HttpsError("invalid-argument", "Booking payload is required");
-  const actor = await staffProfile(request) || { uid: request.auth.uid, role: "CUSTOMER" };
-  const isStaff = Boolean(actor.email);
   const customerInput = payload.customer || {};
   const bookingInput = payload.booking || {};
+  const isStaffImport = bookingInput.source === "STAFF_CSV";
+  const actor = isStaffImport
+    ? await assertStaff(request)
+    : await staffProfile(request) || { uid: request.auth.uid, role: "CUSTOMER" };
+  const isStaff = Boolean(actor.email);
   const customerName = text(customerInput.name || bookingInput.customerName, 160);
   const customerPhone = text(customerInput.phone || bookingInput.customerPhone, 80);
   const customerEmail = text(customerInput.email || bookingInput.customerEmail, 320).toLowerCase();

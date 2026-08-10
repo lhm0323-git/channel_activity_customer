@@ -294,3 +294,10 @@ Deployment completed on 2026-07-28: Functions and Hosting released successfully 
 - CSV import intentionally accepts blank customer Email and LINE ID. It still requires a currently authenticated Google staff session; if it reports the new staff-login message, use the app Logout then Staff Login with an active staff account.
 - Deployed Hosting version: 9a3f4ff9bd4e1787.
 - Validation passed: npm test and npm run build.
+
+## 2026-08-10 - CSV import email validation repair
+
+- CSV imports no longer rely on the public createBooking contact rule. Each CSV row has source STAFF_CSV; production createBooking performs assertStaff first, then permits blank Email/LINE ID.
+- Public self-service booking remains unchanged and still requires a connected LINE identity or valid Email.
+- Production Function: createBooking revision createbooking-00003-buk; Hosting release version a6a66d4c6807e062.
+- Verify by importing C:/Users/xray/Documents/1.csv after Staff Login. Its rows are dated 2026-08-12, so the booking list must include that date.
