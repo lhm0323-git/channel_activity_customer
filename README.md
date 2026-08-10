@@ -285,3 +285,7 @@ Deployment completed on 2026-07-28: Functions and Hosting released successfully 
 
 - CSV rows are now marked as staff imports. The Create Booking Cloud Function runs assertStaff before accepting an import with blank Email or LINE ID.
 - This keeps the public booking rule unchanged: a self-service booking without LINE still requires a valid Email.
+
+## 2026-08-10 - CSV import Email validation correction
+
+- Corrected createBooking so the Email requirement applies only to non-staff self-service bookings without a LINE identity. Verified staff CSV imports may omit both Email and LINE ID.

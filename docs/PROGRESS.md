@@ -379,3 +379,11 @@ pm test, staging build, and staging Hosting deployment.
 - Files: cac-liff-app/functions/index.js, cac-liff-app/src/App.jsx.
 - Verification: node --check functions/index.js, npm test, npm run build, production Function ACTIVE revision createbooking-00003-buk, and Hosting deployment passed.
 - Acceptance: import C:/Users/xray/Documents/1.csv while signed in through Staff Login, then set the booking-list end date to 2026-08-12 or later.
+
+## 2026-08-10 - CSV import root-cause correction
+
+- Root cause: createBooking computed isStaff but did not include it in the Email validation condition, causing every no-LINE booking, including CSV imports, to require Email.
+- Fixed condition: only non-staff bookings without LINE require a valid Email.
+- Deployment: production createBooking revision createbooking-00004-dab is ACTIVE.
+- Verification: node --check functions/index.js, npm test, npm run build, and production Function deployment passed.
+- Acceptance: import C:/Users/xray/Documents/1.csv as an active staff user; its date range requires an end date of 2026-08-12 or later to display imported rows.

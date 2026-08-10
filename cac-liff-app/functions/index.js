@@ -295,7 +295,7 @@ exports.createBooking = onCall(async (request) => {
 
   let lineProfile = null;
   if (!isStaff && text(request.data?.lineAccessToken, 8192)) lineProfile = await verifyLineAccessToken(request.data.lineAccessToken);
-  if (!lineProfile && !validEmail(customerEmail)) throw new HttpsError("invalid-argument", "A valid email is required when LINE is not connected");
+  if (!isStaff && !lineProfile && !validEmail(customerEmail)) throw new HttpsError("invalid-argument", "A valid email is required when LINE is not connected");
 
   const db = admin.firestore();
   const bookingRef = db.collection("bookings").doc();

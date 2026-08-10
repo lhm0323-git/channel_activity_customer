@@ -301,3 +301,9 @@ Deployment completed on 2026-07-28: Functions and Hosting released successfully 
 - Public self-service booking remains unchanged and still requires a connected LINE identity or valid Email.
 - Production Function: createBooking revision createbooking-00003-buk; Hosting release version a6a66d4c6807e062.
 - Verify by importing C:/Users/xray/Documents/1.csv after Staff Login. Its rows are dated 2026-08-12, so the booking list must include that date.
+
+## 2026-08-10 - CSV import actual root cause fixed
+
+- The persisted import error was not a Firebase token issue. In production createBooking, the valid-email check lacked the non-staff guard and therefore rejected staff CSV rows with blank Email.
+- Fixed and deployed: `if (!isStaff && !lineProfile && !validEmail(customerEmail))`. Production revision: createbooking-00004-dab.
+- Staff CSV rows still require active staff/admin verification through assertStaff. Public self-service bookings remain required to supply LINE or Email.
