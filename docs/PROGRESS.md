@@ -325,3 +325,9 @@ pm test, staging build, and staging Hosting deployment.
 - Root cause: the booking list defaulted to creation-time sorting, so an appointment could appear far from its scheduled date when a broad range was loaded.
 - Changed `src/App.jsx` to default the staff booking list to appointment date ascending.
 - Verified: `npm test`, production Vite build, and Hosting deployment to `https://channel-activity-customer.web.app`.
+
+## 2026-08-10 - Cancelled booking action cleanup
+
+- Cancelled bookings no longer render confirm, cancel, reminder, or print controls in the staff booking list.
+- Verified with `npm test`, production build, and Hosting deployment.
+- Diagnosis for staff booking edits: production log shows Cloud Run rejects the `updateBookingAsStaff` callable CORS preflight with HTTP 403 before application code runs. The endpoint retains `assertStaff` but needs explicit public callable invoker configuration; this IAM change is pending approval.

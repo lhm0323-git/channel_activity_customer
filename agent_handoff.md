@@ -251,3 +251,9 @@ Deployment completed on 2026-07-28: Functions and Hosting released successfully 
 
 - Firestore did not lose the 2026-08-03 booking. Both tested query ranges returned it.
 - Staff booking list now defaults to appointment date ascending instead of creation-time order. Production Hosting release completed at 2026-08-10 14:04 Taipei.
+
+## 2026-08-10 Staff booking edit diagnosis
+
+- Production `updateBookingAsStaff` is not reachable from browsers: Cloud Run rejects unauthenticated CORS preflight requests before the Firebase callable handler executes.
+- Do not weaken Firestore Rules. The narrowly scoped fix is an explicit public invoker for this one callable endpoint, with existing `assertStaff` retained. Await explicit approval before applying IAM exposure.
+- Cancelled booking rows now have no operations buttons; Hosting release completed at 2026-08-10 14:33 Taipei.

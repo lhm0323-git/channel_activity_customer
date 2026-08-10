@@ -240,3 +240,7 @@ Deployment completed on 2026-07-28: Functions and Hosting released successfully 
 ## Booking list ordering - 2026-08-10
 
 - The staff booking list now defaults to appointment date ascending. Firestore range queries were verified to return the 2026-08-03 booking for both `2026-07-01..2026-08-10` and `2026-08-01..2026-08-10`; the earlier confusion was presentation order, not missing data.
+
+## Known issue - 2026-08-10
+
+- Staff booking edits are currently blocked before reaching application code because the Gen2 callable endpoint `updateBookingAsStaff` rejects browser CORS preflight requests. The required remediation is an explicit public callable invoker for this endpoint while retaining its existing `assertStaff` authorization. This IAM change is pending explicit approval.

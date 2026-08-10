@@ -3793,10 +3793,10 @@ ${selectedItems
                   <div className="col-span-1 text-slate-600"><span className="lg:hidden block text-[10px] text-slate-400">{t.notice}</span>{noticeLabel(booking)}</div>
                   <div className="col-span-1 font-mono text-slate-700"><span className="lg:hidden block font-sans text-[10px] text-slate-400">{t.amount}</span>NT$ {Number(booking.finalPrice || 0).toLocaleString()}</div>
                   <div className="col-span-1 text-right flex flex-wrap items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-                    {booking.status === "CONFIRMED" ? null : <button onClick={() => handleConfirmBooking(booking)} className="text-xs px-2 py-1 rounded bg-emerald-600 text-white font-bold">{t.confirm}</button>}
+                    {booking.status !== "CONFIRMED" && booking.status !== "CANCELLED" && <button onClick={() => handleConfirmBooking(booking)} className="text-xs px-2 py-1 rounded bg-emerald-600 text-white font-bold">{t.confirm}</button>}
                     {booking.status !== "CANCELLED" && <button onClick={() => handleCancelAdminBooking(booking)} className="text-xs px-2 py-1 rounded bg-rose-600 text-white font-bold">{lang === "en" ? "Cancel" : "\u53d6\u6d88"}</button>}
                     {booking.status === "CONFIRMED" && <button onClick={() => handleSendD1Notice(booking)} className="text-xs px-2 py-1 rounded bg-amber-500 text-white font-bold">{lang === "en" ? "Reminder" : "\u63d0\u9192"}</button>}
-                    <button onClick={() => printBookings([booking])} className="text-xs px-2 py-1 rounded bg-slate-900 text-white font-bold">{t.print}</button>
+                    {booking.status !== "CANCELLED" && <button onClick={() => printBookings([booking])} className="text-xs px-2 py-1 rounded bg-slate-900 text-white font-bold">{t.print}</button>}
                   </div>
                 </div>
               )) : (
