@@ -257,3 +257,9 @@ Deployment completed on 2026-07-28: Functions and Hosting released successfully 
 - Production `updateBookingAsStaff` is not reachable from browsers: Cloud Run rejects unauthenticated CORS preflight requests before the Firebase callable handler executes.
 - Do not weaken Firestore Rules. The narrowly scoped fix is an explicit public invoker for this one callable endpoint, with existing `assertStaff` retained. Await explicit approval before applying IAM exposure.
 - Cancelled booking rows now have no operations buttons; Hosting release completed at 2026-08-10 14:33 Taipei.
+
+## 2026-08-10 Staff booking edit access restored
+
+- `updateBookingAsStaff` is public only at the Cloud Run callable transport layer to permit CORS preflight. Do not remove `assertStaff(request)`; it remains the booking-data authorization boundary.
+- Production verification passed: `OPTIONS` from the Hosting origin returns HTTP 204 and allows `POST`.
+- User acceptance required: edit any active booking from the staff booking list, save, then confirm the booking fields and its audit entry update.

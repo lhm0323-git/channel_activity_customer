@@ -331,3 +331,12 @@ pm test, staging build, and staging Hosting deployment.
 - Cancelled bookings no longer render confirm, cancel, reminder, or print controls in the staff booking list.
 - Verified with `npm test`, production build, and Hosting deployment.
 - Diagnosis for staff booking edits: production log shows Cloud Run rejects the `updateBookingAsStaff` callable CORS preflight with HTTP 403 before application code runs. The endpoint retains `assertStaff` but needs explicit public callable invoker configuration; this IAM change is pending approval.
+
+## 2026-08-10 Staff booking edit access restored
+
+- Production Gen2 service `updateBookingAsStaff` rejected browser CORS preflight before application code ran, resulting in the staff UI error `更新失敗: internal`.
+- The Function now declares `{ invoker: "public" }`, and the corresponding Cloud Run service has public access enabled.
+- This exposes only the callable transport endpoint. The existing `assertStaff(request)` is retained as the application authorization boundary for every update.
+- Verification: `node --check functions/index.js`, `npm test`, deployment of only `updateBookingAsStaff`, and production `OPTIONS` preflight HTTP 204 for `https://channel-activity-customer.web.app`.
+- Next acceptance: sign in as an active staff account, edit a non-cancelled booking, save, and confirm the record updates and an audit entry is created.
+

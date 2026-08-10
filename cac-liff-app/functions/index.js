@@ -582,7 +582,7 @@ function safeStaffBookingPatch(input) {
   return patch;
 }
 
-exports.updateBookingAsStaff = onCall(async (request) => {
+exports.updateBookingAsStaff = onCall({ invoker: "public" }, async (request) => {
   const actor = await assertStaff(request);
   const bookingId = text(request.data?.bookingId, 200);
   if (!bookingId) throw new HttpsError("invalid-argument", "bookingId is required");

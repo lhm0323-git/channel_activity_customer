@@ -244,3 +244,9 @@ Deployment completed on 2026-07-28: Functions and Hosting released successfully 
 ## Known issue - 2026-08-10
 
 - Staff booking edits are currently blocked before reaching application code because the Gen2 callable endpoint `updateBookingAsStaff` rejects browser CORS preflight requests. The required remediation is an explicit public callable invoker for this endpoint while retaining its existing `assertStaff` authorization. This IAM change is pending explicit approval.
+
+## Staff booking edit access - 2026-08-10
+
+- `updateBookingAsStaff` is configured as a public Firebase callable endpoint so browser CORS preflight can reach the function.
+- The Cloud Run service is set to allow public access. Data authorization remains unchanged: `assertStaff(request)` still requires an authenticated, active staff or administrator account before any booking update is processed.
+- Verified from the production origin: the callable `OPTIONS` preflight returns HTTP 204 and permits `POST`.
