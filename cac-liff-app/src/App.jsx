@@ -1895,7 +1895,10 @@ ${selectedItems
     if (!file) return;
     try {
       setAdminStatus(lang === "en" ? "Importing CSV..." : "CSV \u532f\u5165\u4e2d...");
-      const rows = parseBookingImportCsv(await file.text());
+      const bytes = await file.arrayBuffer();
+      let csvText = new TextDecoder("utf-8").decode(bytes);
+      if (csvText.includes("\uFFFD")) csvText = new TextDecoder("big5").decode(bytes);
+      const rows = parseBookingImportCsv(csvText);
       let imported = 0;
       const skipped = [];
       for (const row of rows) {

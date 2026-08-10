@@ -550,6 +550,13 @@ export function exportBookingsCsv(bookings) {
   return [BOOKING_CSV_HEADERS, ...rows].map((row) => row.map(csvCell).join(",")).join("\n");
 }
 
+function normalizeBookingDate(value) {
+  const raw = String(value || "").trim();
+  const match = raw.match(/^(\d{4})[\/-](\d{1,2})[\/-](\d{1,2})$/);
+  if (!match) return raw;
+  return `${match[1]}-${match[2].padStart(2, "0")}-${match[3].padStart(2, "0")}`;
+}
+
 export function parseBookingImportCsv(text) {
   const rows = parseCSV(text).filter((row) => row.some((cell) => String(cell || "").trim()));
   if (rows.length < 2) return [];
@@ -566,7 +573,7 @@ export function parseBookingImportCsv(text) {
       phone: value("phone"),
       email: value("email"),
       idNumber: value("id", "idNumber"),
-      appointmentDate: value("date", "appointmentDate"),
+      appointmentDate: normalizeBookingDate(value("date", "appointmentDate")),
       channel: value("channel") || "GENERAL",
       packageName: value("packageName"),
       finalPrice: Number(value("finalPrice").replace(/,/g, "")) || 0,

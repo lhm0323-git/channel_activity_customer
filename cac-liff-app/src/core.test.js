@@ -390,6 +390,14 @@ run("booking CSV import accepts short id and date headers with blank status", ()
   assert.equal(rows[0].status, "BOOKED");
 });
 
+run("booking CSV import normalizes slash date format", () => {
+  const rows = parseBookingImportCsv([
+    "name,phone,date,packageName",
+    "CSV Test,0912000000,2026/8/12,Basic package",
+  ].join("\n"));
+  assert.equal(rows[0].appointmentDate, "2026-08-12");
+});
+
 run("questionnaire printing escapes customer supplied HTML", () => {
   const schema = { id: "xss", title: "<img src=x onerror=alert(1)>", sections: [{ title: "<script>alert(1)</script>", questions: [{ id: "q1", label: "<b>Question</b>" }] }] };
   const html = generatePrintableQuestionnaireHtml({ booking: { customerName: "<img src=x onerror=alert(1)>" }, schema, answers: { q1: "<script>alert(1)</script>" } });

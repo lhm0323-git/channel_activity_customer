@@ -271,3 +271,11 @@ Deployment completed on 2026-07-28: Functions and Hosting released successfully 
 - Import remains backward-compatible with `idNumber` and `appointmentDate`, tolerates a UTF-8 BOM and header case differences, and treats a blank `status` as `BOOKED`.
 - Staff CSV imports preserve valid statuses including `CONFIRMED`, `RESCHEDULED`, and `CANCELLED` instead of silently changing them to `BOOKED`.
 - Verified against `bookings-2026-08-01-2026-08-11.csv`, unit tests, production build, Hosting release, and the production `createBooking` Function deployment.
+
+
+## 2026-08-10 Excel CSV import compatibility
+
+- CSV import now decodes UTF-8 first and falls back to Big5/CP950 when replacement characters are detected, preserving Traditional Chinese package names from legacy Excel CSV exports.
+- Import normalizes `YYYY/M/D` and `YYYY-MM-DD` dates to `YYYY-MM-DD` before validation.
+- Verified with `C:/Users/xray/Documents/1.csv`: all rows retained their Chinese package names and normalized to `2026-08-12`.
+- Production Hosting release completed after unit tests and Vite build passed.
