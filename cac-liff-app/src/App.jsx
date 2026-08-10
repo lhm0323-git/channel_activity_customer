@@ -1938,7 +1938,7 @@ ${selectedItems
         });
         payload.booking.status = row.status;
         try {
-          await saveBooking(payload, { lineAccessToken: "" });
+          await saveBooking(payload, { lineAccessToken: "", requireStaffSession: true });
           results.push({ rowNumber: row.rowNumber, name: row.name, success: true, message: "???" });
         } catch (error) {
           results.push({ rowNumber: row.rowNumber, name: row.name, success: false, message: error.message || "Firebase ????" });

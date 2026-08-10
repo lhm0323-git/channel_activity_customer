@@ -95,7 +95,7 @@ export async function signOutStaff() {
   if (auth) await signOut(auth);
 }
 
-export async function saveBooking(payload, { allowBlockedDate = false, lineAccessToken = "" } = {}) {
+export async function saveBooking(payload, { allowBlockedDate = false, lineAccessToken = "", requireStaffSession = false } = {}) {
   const appointmentDate = payload?.booking?.appointmentDate;
   if (!appointmentDate) throw new Error("Appointment date is required");
   if (!db) return saveLocalBooking(payload);
@@ -105,7 +105,12 @@ export async function saveBooking(payload, { allowBlockedDate = false, lineAcces
     throw new Error(`This date is unavailable${blockedDate.reason ? `: ${blockedDate.reason}` : ""}`);
   }
 
-  await ensurePublicUser();
+  const currentUser = await ensurePublicUser();
+  if (requireStaffSession && !currentUser?.email) {
+    throw new Error("CSV ??????? Google ?????????????????");
+  }
+  // Refresh after an account change so callable requests use the current Google staff token.
+  await currentUser?.getIdToken(true);
   if (!functions) throw new Error("Booking service is unavailable");
   const result = await httpsCallable(functions, "createBooking")({ payload, lineAccessToken });
   return { ...result.data, localOnly: false };
