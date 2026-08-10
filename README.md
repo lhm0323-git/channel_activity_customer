@@ -266,3 +266,11 @@ Deployment completed on 2026-07-28: Functions and Hosting released successfully 
 - Import normalizes `YYYY/M/D` and `YYYY-MM-DD` dates to `YYYY-MM-DD` before validation.
 - Verified with `C:/Users/xray/Documents/1.csv`: all rows retained their Chinese package names and normalized to `2026-08-12`.
 - Production Hosting release completed after unit tests and Vite build passed.
+
+
+## 2026-08-10 CSV import diagnostics
+
+- Staff booking import now shows a persistent per-row result panel beneath the import controls.
+- Each row records success or the exact failure: missing name/phone/date/package, package not found, or the Firebase error returned while creating the booking.
+- The panel remains visible after the booking list refresh, so the summary is no longer overwritten by the load status.
+- Production Hosting deployment completed after unit tests and Vite build passed.

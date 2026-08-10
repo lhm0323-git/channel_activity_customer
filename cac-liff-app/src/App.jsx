@@ -659,6 +659,7 @@ const App = () => {
   const [selectedAdminBookingIds, setSelectedAdminBookingIds] = useState([]);
   const [pendingChanges, setPendingChanges] = useState([]);
   const [adminStatus, setAdminStatus] = useState("");
+  const [csvImportLog, setCsvImportLog] = useState([]);
   const [staffAccounts, setStaffAccounts] = useState([]);
   const [auditLogs, setAuditLogs] = useState([]);
   const [auditStatus, setAuditStatus] = useState("");
@@ -1893,20 +1894,29 @@ ${selectedItems
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
+    const results = [];
     try {
-      setAdminStatus(lang === "en" ? "Importing CSV..." : "CSV \u532f\u5165\u4e2d...");
+      setCsvImportLog([]);
+      setAdminStatus(lang === "en" ? "Importing CSV..." : "CSV ???...");
       const bytes = await file.arrayBuffer();
       let csvText = new TextDecoder("utf-8").decode(bytes);
       if (csvText.includes("\uFFFD")) csvText = new TextDecoder("big5").decode(bytes);
       const rows = parseBookingImportCsv(csvText);
-      let imported = 0;
-      const skipped = [];
+      if (!rows.length) throw new Error(lang === "en" ? "No booking rows found" : "????????????");
+
       for (const row of rows) {
         const ids = packages[row.packageName];
-        if (!row.name || !row.phone || !row.appointmentDate || !row.packageName || !ids?.length) {
-          skipped.push(row.rowNumber);
+        const missing = [];
+        if (!row.name) missing.push("??");
+        if (!row.phone) missing.push("??");
+        if (!row.appointmentDate) missing.push("??");
+        if (!row.packageName) missing.push("????");
+        if (!ids?.length) missing.push("?????????");
+        if (missing.length) {
+          results.push({ rowNumber: row.rowNumber, name: row.name || "-", success: false, message: missing.join("?") });
           continue;
         }
+
         const rowItems = parsedItems.filter((item) => ids.includes(item.id));
         const pricing = calculatePricing(rowItems);
         const payload = buildBookingPayload({
@@ -1925,14 +1935,24 @@ ${selectedItems
           listPrice: pricing.listPrice,
           discountRate: pricing.discountRate,
           finalPrice: row.finalPrice || Number(packageMeta[row.packageName]?.finalPrice) || pricing.suggestedPrice,
-        });        payload.booking.status = row.status;
-        await saveBooking(payload, { lineAccessToken: "" });
-        imported += 1;
+        });
+        payload.booking.status = row.status;
+        try {
+          await saveBooking(payload, { lineAccessToken: "" });
+          results.push({ rowNumber: row.rowNumber, name: row.name, success: true, message: "???" });
+        } catch (error) {
+          results.push({ rowNumber: row.rowNumber, name: row.name, success: false, message: error.message || "Firebase ????" });
+        }
       }
-      setAdminStatus(lang === "en" ? `CSV import complete: ${imported} rows${skipped.length ? `, skipped rows ${skipped.join(", ")}` : ""}` : `CSV \u532f\u5165\u5b8c\u6210\uff1a${imported} \u7b46${skipped.length ? `\uff0c\u8df3\u904e\u7b2c ${skipped.join(", ")} \u5217` : ""}`);
-      if (adminStartDate && adminEndDate) handleLoadAdminBookings();
+
+      setCsvImportLog(results);
+      if (adminStartDate && adminEndDate) await handleLoadAdminBookings();
+      const imported = results.filter((result) => result.success).length;
+      const failed = results.length - imported;
+      setAdminStatus(lang === "en" ? "CSV import: " + imported + " succeeded, " + failed + " failed" : "CSV ????? " + imported + " ???? " + failed + " ?");
     } catch (error) {
-      setAdminStatus(lang === "en" ? `CSV import failed: ${error.message}` : `CSV \u532f\u5165\u5931\u6557\uff1a${error.message}`);
+      setCsvImportLog([{ rowNumber: "-", name: "-", success: false, message: error.message || "CSV ????" }]);
+      setAdminStatus(lang === "en" ? "CSV import failed: " + error.message : "CSV ?????" + error.message);
     }
   };
   const buildChecklistHtml = (bookings) => {
@@ -3698,6 +3718,10 @@ ${selectedItems
             <label className="text-xs font-bold text-slate-600">{t.adminChannel}<select className="mt-1 block rounded-md border border-slate-300 px-3 py-2 text-sm font-normal" value={adminChannel} onChange={(e) => setAdminChannel(e.target.value)}><option value="ALL">{t.allChannels}</option>{CHANNELS.map((channel) => <option key={channel.value} value={channel.value}>{channel.label}</option>)}</select></label>
             <button onClick={handleLoadAdminBookings} className="rounded-md bg-slate-900 px-4 py-2 text-sm font-bold text-white">{t.load}</button>
             {adminStatus && <span className="text-xs font-bold text-slate-500">{adminStatus}</span>}
+            {csvImportLog.length > 0 && <div className="w-full max-h-32 overflow-y-auto rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
+              <div className="mb-1 font-bold text-slate-700">CSV ????</div>
+              {csvImportLog.map((entry, index) => <div key={index} className={entry.success ? "text-emerald-700" : "text-rose-700"}>? {entry.rowNumber} ? / {entry.name}: {entry.success ? "??" : "??"} - {entry.message}</div>)}
+            </div>}
           </div>
         </div>
         <div className="mt-4 overflow-hidden rounded-lg border border-slate-200 bg-white">
