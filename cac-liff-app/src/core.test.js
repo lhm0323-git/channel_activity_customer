@@ -379,6 +379,17 @@ run("booking CSV export/import round trips core fields", () => {
   assert.equal(rows[0].finalPrice, 8000);
   assert.equal(rows[0].notes, "line1\nline2");
 });
+run("booking CSV import accepts short id and date headers with blank status", () => {
+  const rows = parseBookingImportCsv([
+    "name,phone,email,id,date,channel,packageName,finalPrice,status,notes",
+    "CSV Test,0912000000,test@example.com,A123456789,2026-08-12,GENERAL,Basic package,2700,,Imported from HR",
+  ].join("\n"));
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].idNumber, "A123456789");
+  assert.equal(rows[0].appointmentDate, "2026-08-12");
+  assert.equal(rows[0].status, "BOOKED");
+});
+
 run("questionnaire printing escapes customer supplied HTML", () => {
   const schema = { id: "xss", title: "<img src=x onerror=alert(1)>", sections: [{ title: "<script>alert(1)</script>", questions: [{ id: "q1", label: "<b>Question</b>" }] }] };
   const html = generatePrintableQuestionnaireHtml({ booking: { customerName: "<img src=x onerror=alert(1)>" }, schema, answers: { q1: "<script>alert(1)</script>" } });

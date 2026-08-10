@@ -520,8 +520,8 @@ export const BOOKING_CSV_HEADERS = [
   "name",
   "phone",
   "email",
-  "idNumber",
-  "appointmentDate",
+  "id",
+  "date",
   "channel",
   "packageName",
   "finalPrice",
@@ -553,11 +553,11 @@ export function exportBookingsCsv(bookings) {
 export function parseBookingImportCsv(text) {
   const rows = parseCSV(text).filter((row) => row.some((cell) => String(cell || "").trim()));
   if (rows.length < 2) return [];
-  const headers = rows[0].map((header) => String(header || "").trim());
-  const indexOf = (name) => headers.indexOf(name);
+  const headers = rows[0].map((header) => String(header || "").trim().replace(/^\uFEFF/, "").toLowerCase());
+  const indexOf = (...names) => names.map((name) => headers.indexOf(String(name).toLowerCase())).find((index) => index >= 0) ?? -1;
   return rows.slice(1).map((row, rowIndex) => {
-    const value = (name) => {
-      const index = indexOf(name);
+    const value = (...names) => {
+      const index = indexOf(...names);
       return index >= 0 ? String(row[index] || "").trim() : "";
     };
     return {
@@ -565,12 +565,12 @@ export function parseBookingImportCsv(text) {
       name: value("name"),
       phone: value("phone"),
       email: value("email"),
-      idNumber: value("idNumber"),
-      appointmentDate: value("appointmentDate"),
+      idNumber: value("id", "idNumber"),
+      appointmentDate: value("date", "appointmentDate"),
       channel: value("channel") || "GENERAL",
       packageName: value("packageName"),
       finalPrice: Number(value("finalPrice").replace(/,/g, "")) || 0,
-      status: value("status") || "BOOKED",
+      status: value("status").toUpperCase() || "BOOKED",
       notes: value("notes"),
     };
   });

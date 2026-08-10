@@ -340,3 +340,11 @@ pm test, staging build, and staging Hosting deployment.
 - Verification: `node --check functions/index.js`, `npm test`, deployment of only `updateBookingAsStaff`, and production `OPTIONS` preflight HTTP 204 for `https://channel-activity-customer.web.app`.
 - Next acceptance: sign in as an active staff account, edit a non-cancelled booking, save, and confirm the record updates and an audit entry is created.
 
+
+
+## 2026-08-10 CSV booking import compatibility
+
+- Exported booking CSV now uses the concise headers `id` and `date`.
+- Import remains backward-compatible with `idNumber` and `appointmentDate`, tolerates a UTF-8 BOM and header case differences, and treats a blank `status` as `BOOKED`.
+- Staff CSV imports preserve valid statuses including `CONFIRMED`, `RESCHEDULED`, and `CANCELLED` instead of silently changing them to `BOOKED`.
+- Verified against `bookings-2026-08-01-2026-08-11.csv`, unit tests, production build, Hosting release, and the production `createBooking` Function deployment.

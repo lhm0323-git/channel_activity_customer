@@ -250,3 +250,11 @@ Deployment completed on 2026-07-28: Functions and Hosting released successfully 
 - `updateBookingAsStaff` is configured as a public Firebase callable endpoint so browser CORS preflight can reach the function.
 - The Cloud Run service is set to allow public access. Data authorization remains unchanged: `assertStaff(request)` still requires an authenticated, active staff or administrator account before any booking update is processed.
 - Verified from the production origin: the callable `OPTIONS` preflight returns HTTP 204 and permits `POST`.
+
+
+## 2026-08-10 CSV booking import compatibility
+
+- Exported booking CSV now uses the concise headers `id` and `date`.
+- Import remains backward-compatible with `idNumber` and `appointmentDate`, tolerates a UTF-8 BOM and header case differences, and treats a blank `status` as `BOOKED`.
+- Staff CSV imports preserve valid statuses including `CONFIRMED`, `RESCHEDULED`, and `CANCELLED` instead of silently changing them to `BOOKED`.
+- Verified against `bookings-2026-08-01-2026-08-11.csv`, unit tests, production build, Hosting release, and the production `createBooking` Function deployment.

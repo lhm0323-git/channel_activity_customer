@@ -263,3 +263,11 @@ Deployment completed on 2026-07-28: Functions and Hosting released successfully 
 - `updateBookingAsStaff` is public only at the Cloud Run callable transport layer to permit CORS preflight. Do not remove `assertStaff(request)`; it remains the booking-data authorization boundary.
 - Production verification passed: `OPTIONS` from the Hosting origin returns HTTP 204 and allows `POST`.
 - User acceptance required: edit any active booking from the staff booking list, save, then confirm the booking fields and its audit entry update.
+
+
+## 2026-08-10 CSV booking import compatibility
+
+- Exported booking CSV now uses the concise headers `id` and `date`.
+- Import remains backward-compatible with `idNumber` and `appointmentDate`, tolerates a UTF-8 BOM and header case differences, and treats a blank `status` as `BOOKED`.
+- Staff CSV imports preserve valid statuses including `CONFIRMED`, `RESCHEDULED`, and `CANCELLED` instead of silently changing them to `BOOKED`.
+- Verified against `bookings-2026-08-01-2026-08-11.csv`, unit tests, production build, Hosting release, and the production `createBooking` Function deployment.

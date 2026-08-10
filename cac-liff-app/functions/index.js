@@ -301,7 +301,8 @@ exports.createBooking = onCall(async (request) => {
   const blockedRef = db.doc("bookingBlockedDates/" + appointmentDate);
   const claimToken = lineProfile ? "" : crypto.randomBytes(24).toString("hex");
   const now = FieldValue.serverTimestamp();
-  const status = isStaff && ["BOOKED", "CANCELLED"].includes(text(bookingInput.status, 20)) ? text(bookingInput.status, 20) : "BOOKED";
+  const requestedStatus = text(bookingInput.status, 20).toUpperCase();
+  const status = isStaff && STAFF_BOOKING_STATUSES.has(requestedStatus) ? requestedStatus : "BOOKED";
   const booking = {
     customerId, customerName, customerPhone, customerEmail,
     idNumberMasked: text(customerInput.idNumberMasked || bookingInput.idNumberMasked, 80),
