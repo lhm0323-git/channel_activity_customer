@@ -310,7 +310,7 @@ exports.createBooking = onCall(async (request) => {
     customerId, customerName, customerPhone, customerEmail,
     idNumberMasked: text(customerInput.idNumberMasked || bookingInput.idNumberMasked, 80),
     lineUserId: lineProfile?.userId || null, lineDisplayName: lineProfile?.displayName || "",
-    notificationChannel: lineProfile ? "LINE" : "EMAIL", channel: text(bookingInput.channel, 120) || "GENERAL",
+    notificationChannel: lineProfile ? "LINE" : customerEmail ? "EMAIL" : "NONE", channel: text(bookingInput.channel, 120) || "GENERAL",
     appointmentDate, packageName: text(bookingInput.packageName, 200), selectedItems,
     listPrice: number(bookingInput.listPrice), discountRate: number(bookingInput.discountRate), finalPrice: number(bookingInput.finalPrice),
     status, notes: text(bookingInput.notes, 2000), ownerUid: request.auth.uid, createdAt: now, updatedAt: now,

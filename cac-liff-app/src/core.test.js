@@ -128,6 +128,20 @@ run("buildBookingPayload uses email when LINE identity is unavailable", () => {
   assert.equal(result.booking.lineUserId, null);
   assert.equal(result.booking.notificationChannel, "EMAIL");
 });
+run("buildBookingPayload permits blank contact only for staff CSV import", () => {
+  const input = {
+    formData: { name: "CSV customer", phone: "0912345678", email: "", idNumber: "", channel: "GENERAL", appointmentDate: "2026-08-01" },
+    lineProfile: null,
+    packageName: "Test package",
+    selectedItems: [{ id: 1, name: "CBC", enName: "CBC", code: "", category: "Lab", price: 300, clinical: "", remark: "", outsource: "" }],
+    listPrice: 300,
+    discountRate: 0,
+    finalPrice: 300,
+  };
+  assert.throws(() => buildBookingPayload(input), /Email/);
+  const result = buildBookingPayload({ ...input, allowMissingContact: true });
+  assert.equal(result.booking.notificationChannel, "NONE");
+});
 run("bookingCheckInCode uses a short stable code", () => {
   assert.equal(bookingCheckInCode("Abc-123_xYz"), "123XYZ");
 });

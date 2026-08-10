@@ -71,7 +71,7 @@ const imported = await createStaffImport({
 assert.ok(imported.data.bookingId);
 const importedBooking = await getDoc(doc(db, "bookings", imported.data.bookingId));
 assert.equal(importedBooking.data().customerEmail, "");
-assert.equal(importedBooking.data().notificationChannel, "EMAIL");
+assert.equal(importedBooking.data().notificationChannel, "NONE");
 console.log("ok - active staff CSV import accepts blank Email and LINE ID");
 await admin.app("p0-admin").delete();
 console.log("ok - P0 Functions create, questionnaire, reschedule, and cancel retain public workflow");

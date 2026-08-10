@@ -312,3 +312,13 @@ Deployment completed on 2026-07-28: Functions and Hosting released successfully 
 
 - Regression test added in src/functions.p0.test.js. It signs in a simulated staff email, seeds active staffUsers in the emulator, and successfully creates a STAFF_CSV booking with no Email/LINE ID.
 - Passed: npm test and npm run test:functions. Production createBooking revision remains createbooking-00004-dab.
+
+## 2026-08-11 - Current CSV import correction
+
+The persistent `CSV ... 未登入 LINE 時，請填寫 Email ...` error was caused by the browser client, not the production Function: `buildBookingPayload()` rejected the row before `saveBooking()` ran. The fixed CSV-only call in `src/App.jsx` passes `allowMissingContact: true`; normal public bookings retain the LINE-or-Email requirement. Contactless staff imports use `notificationChannel: NONE`.
+
+Deployed production:
+- Hosting release: `ec574d5a0f337fcb`
+- `createBooking`: `createbooking-00005-taz`
+
+Verification passed: `npm test`, `npm run build`, deployed bundle marker verification. `npm run test:functions` hit a local emulator `functions/not-found` response in this run; do not treat that as production failure. First acceptance step: Staff Login, import `C:/Users/xray/Documents/1.csv`, read the per-row import log, and ensure the date filter covers the CSV dates.

@@ -427,7 +427,7 @@ export function makeFirestoreSafeId(value) {
     .slice(0, 120);
 }
 
-export function buildBookingPayload({ formData, lineProfile, packageName, selectedItems, listPrice, discountRate, finalPrice }) {
+export function buildBookingPayload({ formData, lineProfile, packageName, selectedItems, listPrice, discountRate, finalPrice, allowMissingContact = false }) {
   const trimmedName = String(formData.name || "").trim();
   const trimmedPhone = String(formData.phone || "").trim();
   const trimmedEmail = String(formData.email || "").trim();
@@ -441,8 +441,8 @@ export function buildBookingPayload({ formData, lineProfile, packageName, select
   if (!selectedItems.length) throw new Error("請先選擇至少一個檢查項目");
 
   const lineUserId = lineProfile?.userId || null;
-  if (!lineUserId && !trimmedEmail) throw new Error("\u672a\u767b\u5165 LINE \u6642\uff0c\u8acb\u586b\u5beb Email \u4ee5\u63a5\u6536\u5230\u6aa2\u63d0\u9192");
-  const notificationChannel = lineUserId ? "LINE" : "EMAIL";
+  if (!lineUserId && !trimmedEmail && !allowMissingContact) throw new Error("\u672a\u767b\u5165 LINE \u6642\uff0c\u8acb\u586b\u5beb Email \u4ee5\u63a5\u6536\u5230\u6aa2\u63d0\u9192");
+  const notificationChannel = lineUserId ? "LINE" : trimmedEmail ? "EMAIL" : "NONE";
   const customerId = makeFirestoreSafeId(lineUserId || `${trimmedPhone}-${idNumber || trimmedName}`);
 
   return {

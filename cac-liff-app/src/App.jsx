@@ -1935,6 +1935,7 @@ ${selectedItems
           listPrice: pricing.listPrice,
           discountRate: pricing.discountRate,
           finalPrice: row.finalPrice || Number(packageMeta[row.packageName]?.finalPrice) || pricing.suggestedPrice,
+          allowMissingContact: true,
         });
         payload.booking.status = row.status;
         payload.booking.source = "STAFF_CSV";

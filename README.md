@@ -293,3 +293,10 @@ Deployment completed on 2026-07-28: Functions and Hosting released successfully 
 ### CSV import regression coverage
 
 - The Functions emulator test creates an active staff account and proves that a STAFF_CSV booking with blank customer Email and LINE ID is accepted. This prevents the public no-LINE Email requirement from regressing into the staff CSV workflow.
+
+## 2026-08-11 Staff CSV imports without contact details
+
+- The browser-side `buildBookingPayload` check now accepts blank LINE ID and Email only when the authenticated staff CSV import path explicitly passes `allowMissingContact: true`.
+- Public self-service bookings are unchanged: without a LINE identity they must still provide Email.
+- A contactless staff import is stored with `notificationChannel: NONE`, so it is not misrepresented as an Email reminder target.
+- Production deployment: Hosting release `ec574d5a0f337fcb`; Cloud Function `createBooking` revision `createbooking-00005-taz`.

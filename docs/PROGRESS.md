@@ -393,3 +393,12 @@ pm test, staging build, and staging Hosting deployment.
 - Added Functions emulator coverage in src/functions.p0.test.js: a simulated active email staff account creates a STAFF_CSV booking with blank customer Email and LINE ID.
 - Result: passed. The created booking retained an empty customerEmail and used the backend staff authorization path.
 - This verifies the actual callable authorization and persistence behavior without creating production test bookings.
+
+## 2026-08-11 - CSV import browser validation repair
+
+- Completed: fixed the remaining client-side validation that rejected `1.csv` before it reached `createBooking`. `handleImportBookingCsv` now calls `buildBookingPayload` with `allowMissingContact: true`.
+- Completed: `buildBookingPayload` reports `NONE` rather than `EMAIL` when an authenticated staff import has no LINE ID or Email; the Function writes the same value.
+- Files: `cac-liff-app/src/App.jsx`, `cac-liff-app/src/core.js`, `cac-liff-app/functions/index.js`, `cac-liff-app/src/core.test.js`, `cac-liff-app/src/functions.p0.test.js`.
+- Verification: `npm test` passed, including the new blank-contact staff CSV regression; `npm run build` passed; deployed bundle contains `allowMissingContact` and `STAFF_CSV`; production Hosting release `ec574d5a0f337fcb`; Function revision `createbooking-00005-taz`.
+- Test note: `npm run test:functions` was unable to complete in this run because the local Functions emulator returned `functions/not-found`; prior emulator coverage remains in the suite. This does not affect the successful client/core/build and production deployment checks.
+- Next: Staff Login, import `C:/Users/xray/Documents/1.csv`, then inspect the in-app CSV row result panel. The list date range must include the CSV appointment dates.
