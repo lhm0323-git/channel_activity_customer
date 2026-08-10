@@ -310,3 +310,11 @@ pm test, staging build, and staging Hosting deployment.
 - 僅保留人工可追溯操作：後台確認、取消、編修、改期核准與人工提醒；建立預約、排程 D-1 通知與現場報到不再新增紀錄。
 - 管理者仍可由稽核列點開對應預約；既有舊稽核資料不回寫或刪除。PITR/TTL 保留至正式營運前另行決定。
 - 2026-07-30 staging deployed: Functions updated and Hosting version `c8ab09c932a90d38` released to `https://cac-health-staging.web.app`; production remains unchanged.
+
+## 2026-08-10 - Production promotion from staging
+
+- Promoted the accepted `security-p0-staging` release (`40faa1e`) to Firebase project `channel-activity-customer`.
+- Deployed Hosting and Firestore Rules. Firebase compared Cloud Functions and skipped them because production already had the same source.
+- Validation: `npm test` passed; `npm run build` passed; `https://channel-activity-customer.web.app` returned HTTP 200 and served the new bundle.
+- Data boundary: this deployment did not overwrite Firestore package, booking, customer, questionnaire, report-status, or staff data.
+- Next: browser acceptance of production staff roles, invite-only packages, booking ownership, LINE binding, and D-1 reminder behavior using non-test accounts.

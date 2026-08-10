@@ -238,3 +238,11 @@ Deployment completed on 2026-07-28: Functions and Hosting released successfully 
 - 僅保留人工可追溯操作：後台確認、取消、編修、改期核准與人工提醒；建立預約、排程 D-1 通知與現場報到不再新增紀錄。
 - 管理者仍可由稽核列點開對應預約；既有舊稽核資料不回寫或刪除。PITR/TTL 保留至正式營運前另行決定。
 - 2026-07-30 staging deployed: Functions updated and Hosting version `c8ab09c932a90d38` released to `https://cac-health-staging.web.app`; production remains unchanged.
+
+## 2026-08-10 Production release
+
+- The staging security release is live in production at `https://channel-activity-customer.web.app`.
+- Git source: branch `security-p0-staging`, commit `40faa1e refactor: reduce booking audit volume`.
+- Production deployment scope: Hosting, Firestore Rules, and Functions comparison. Functions were unchanged and therefore skipped by Firebase; Hosting and Rules released successfully.
+- Production data was retained. Do not seed staging test records into the production project.
+- Verify production through the hosted app; localhost is no longer the acceptance target.
