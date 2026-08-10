@@ -318,3 +318,10 @@ pm test, staging build, and staging Hosting deployment.
 - Validation: `npm test` passed; `npm run build` passed; `https://channel-activity-customer.web.app` returned HTTP 200 and served the new bundle.
 - Data boundary: this deployment did not overwrite Firestore package, booking, customer, questionnaire, report-status, or staff data.
 - Next: browser acceptance of production staff roles, invite-only packages, booking ownership, LINE binding, and D-1 reminder behavior using non-test accounts.
+
+## 2026-08-10 - Booking list date-range diagnosis
+
+- Read-only Firestore aggregation verified that the 2026-08-03 booking is returned for both the broad `2026-07-01..2026-08-10` range and the narrow `2026-08-01..2026-08-10` range.
+- Root cause: the booking list defaulted to creation-time sorting, so an appointment could appear far from its scheduled date when a broad range was loaded.
+- Changed `src/App.jsx` to default the staff booking list to appointment date ascending.
+- Verified: `npm test`, production Vite build, and Hosting deployment to `https://channel-activity-customer.web.app`.

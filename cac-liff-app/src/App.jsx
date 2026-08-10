@@ -653,7 +653,7 @@ const App = () => {
   const [adminEndDate, setAdminEndDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [adminChannel, setAdminChannel] = useState("ALL");
   const [adminBookings, setAdminBookings] = useState([]);
-  const [adminSort, setAdminSort] = useState({ key: "createdAt", direction: "asc" });
+  const [adminSort, setAdminSort] = useState({ key: "date", direction: "asc" });
   const [adminDetailBooking, setAdminDetailBooking] = useState(null);
   const [reportDetailBooking, setReportDetailBooking] = useState(null);
   const [selectedAdminBookingIds, setSelectedAdminBookingIds] = useState([]);

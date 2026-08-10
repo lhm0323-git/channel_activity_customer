@@ -236,3 +236,7 @@ Deployment completed on 2026-07-28: Functions and Hosting released successfully 
 - Source release: `security-p0-staging` commit `40faa1e`
 - Verified: core test suite passed, production build passed, and Hosting returned HTTP 200.
 - Deployment updated Hosting and Firestore Rules. Firebase detected that the deployed Functions source was unchanged. Existing Firestore package, booking, customer, questionnaire, and staff data was not overwritten.
+
+## Booking list ordering - 2026-08-10
+
+- The staff booking list now defaults to appointment date ascending. Firestore range queries were verified to return the 2026-08-03 booking for both `2026-07-01..2026-08-10` and `2026-08-01..2026-08-10`; the earlier confusion was presentation order, not missing data.

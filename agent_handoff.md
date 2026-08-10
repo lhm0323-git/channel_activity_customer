@@ -246,3 +246,8 @@ Deployment completed on 2026-07-28: Functions and Hosting released successfully 
 - Production deployment scope: Hosting, Firestore Rules, and Functions comparison. Functions were unchanged and therefore skipped by Firebase; Hosting and Rules released successfully.
 - Production data was retained. Do not seed staging test records into the production project.
 - Verify production through the hosted app; localhost is no longer the acceptance target.
+
+## 2026-08-10 Booking list ordering fix
+
+- Firestore did not lose the 2026-08-03 booking. Both tested query ranges returned it.
+- Staff booking list now defaults to appointment date ascending instead of creation-time order. Production Hosting release completed at 2026-08-10 14:04 Taipei.
