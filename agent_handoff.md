@@ -287,3 +287,10 @@ Deployment completed on 2026-07-28: Functions and Hosting released successfully 
 - Each row records success or the exact failure: missing name/phone/date/package, package not found, or the Firebase error returned while creating the booking.
 - The panel remains visible after the booking list refresh, so the summary is no longer overwritten by the load status.
 - Production Hosting deployment completed after unit tests and Vite build passed.
+
+## 2026-08-10 - CSV import session fix
+
+- Production Hosting now refreshes Firebase Auth before staff CSV rows call createBooking. The prior error claiming that Email was required without LINE was caused by a stale or non-staff callable session.
+- CSV import intentionally accepts blank customer Email and LINE ID. It still requires a currently authenticated Google staff session; if it reports the new staff-login message, use the app Logout then Staff Login with an active staff account.
+- Deployed Hosting version: 9a3f4ff9bd4e1787.
+- Validation passed: npm test and npm run build.

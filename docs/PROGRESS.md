@@ -364,3 +364,11 @@ pm test, staging build, and staging Hosting deployment.
 - Each row records success or the exact failure: missing name/phone/date/package, package not found, or the Firebase error returned while creating the booking.
 - The panel remains visible after the booking list refresh, so the summary is no longer overwritten by the load status.
 - Production Hosting deployment completed after unit tests and Vite build passed.
+
+## 2026-08-10 - CSV staff import session repair
+
+- Completed: CSV imports now force-refresh the active Firebase Auth token before calling createBooking; imports explicitly require a Google staff session.
+- Decision: imported booking rows may omit Email because this is an authenticated staff workflow. Public self-service booking continues to require LINE or Email.
+- Files: cac-liff-app/src/firebase.js, cac-liff-app/src/App.jsx.
+- Verification: npm test, npm run build, and production Hosting deployment passed.
+- Next: sign out and sign back in through Staff Login once, then re-import 1.csv; review the per-row CSV import log.

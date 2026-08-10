@@ -274,3 +274,9 @@ Deployment completed on 2026-07-28: Functions and Hosting released successfully 
 - Each row records success or the exact failure: missing name/phone/date/package, package not found, or the Firebase error returned while creating the booking.
 - The panel remains visible after the booking list refresh, so the summary is no longer overwritten by the load status.
 - Production Hosting deployment completed after unit tests and Vite build passed.
+
+## 2026-08-10 - CSV staff import authentication
+
+- CSV import is a staff operation. Before each row is submitted, the app refreshes the current Firebase Auth token so the callable receives the current Google staff identity.
+- Imported customers may leave Email blank; Email remains required only for self-service bookings that have neither a connected LINE identity nor an Email contact.
+- If the browser session is anonymous or stale, the UI now asks the operator to sign out and use Staff Login again rather than reporting the misleading customer Email validation error.
