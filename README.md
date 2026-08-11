@@ -321,3 +321,8 @@ The `預約清單` column `聯絡／綁定` combines the stored telephone number
 ## Returning customer prefill
 
 When a customer opens a package from LIFF with a previously linked LINE identity, CAC verifies the LINE access token through a callable Function and pre-fills the saved name, phone, and Email. CAC stores and displays only a masked ID/passport number; it never supports ID-number-only lookup. Browser/Email-only and staff proxy bookings continue to use manual entry.
+
+## Medical record number
+
+Staff can enter and update a booking's medical record number in the booking-detail modal. It appears immediately after the customer name in the staff booking list and is protected by staff authorization.
+

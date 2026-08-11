@@ -709,6 +709,7 @@ function safeStaffBookingPatch(input) {
   const patch = {};
   if (hasOwn(input, "customerName")) patch.customerName = text(input.customerName, 160);
   if (hasOwn(input, "customerPhone")) patch.customerPhone = text(input.customerPhone, 80);
+  if (hasOwn(input, "medicalRecordNumber")) patch.medicalRecordNumber = text(input.medicalRecordNumber, 80);
   if (hasOwn(input, "customerEmail")) {
     const email = text(input.customerEmail, 320).toLowerCase();
     if (email && !validEmail(email)) throw new HttpsError("invalid-argument", "Invalid customer email");

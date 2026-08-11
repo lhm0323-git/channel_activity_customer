@@ -374,3 +374,10 @@ Do not rely on routine email delivery until Google OAuth is published/verified o
 - Browser/Email-only users and staff proxy bookings remain manual entry flows. There is no ID-number-only lookup endpoint.
 - Files: `cac-liff-app/functions/index.js`, `cac-liff-app/src/firebase.js`, `cac-liff-app/src/core.js`, `cac-liff-app/src/App.jsx`.
 - Verification: `node --check functions/index.js`, `npm test`, and `npm run build` passed. Production Function and Hosting were deployed; interactive acceptance requires an existing LINE-linked customer account in LIFF.
+
+## 2026-08-11 - Medical record number in staff bookings
+
+- Added an employee-editable `medicalRecordNumber` field to the booking detail modal and the booking-list table immediately after customer name.
+- The field is accepted only by the existing staff-authorized `updateBookingAsStaff` Function. Empty existing records display `-`; no migration is required.
+- Files: `cac-liff-app/src/App.jsx`, `cac-liff-app/functions/index.js`.
+- Verification: `node --check functions/index.js`, `npm test`, and `npm run build` passed. Production Function revision `updatebookingasstaff-00004-deh` and Hosting release `9bd58ab5c3eb3769` deployed.
