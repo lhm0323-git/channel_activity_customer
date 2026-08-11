@@ -1602,11 +1602,17 @@ ${selectedItems
   }[status || "PENDING"]);
   const noticeLabel = (booking) => {
     if (booking.d1AcknowledgedAt) return lang === "en" ? "Acknowledged" : "\u5df2\u56de\u8986";
-    if (booking.d1NoticeSentAt) return lang === "en" ? "Sent" : "\u5df2\u767c\u9001";
-    if (booking.d1NoticeStatus === "FAILED") return lang === "en" ? "Failed" : "\u767c\u9001\u5931\u6557";
-    return lang === "en" ? "Pending" : "\u5f85\u767c\u9001";
+    if (booking.d1NoticeSentAt || booking.d1NoticeStatus === "SENT" || booking.d1NoticeStatus === "EMAIL_QUEUED") return lang === "en" ? "Sent" : "\u5df2\u767c\u9001";
+    if (!booking.lineUserId && !booking.customerEmail) return lang === "en" ? "Manual follow-up" : "\u5f85\u4eba\u5de5\u806f\u7e6b";
+    if (booking.d1NoticeStatus === "FAILED") return lang === "en" ? "Delivery failed" : "\u767c\u9001\u5931\u6557";
+    return lang === "en" ? "Not sent" : "\u5c1a\u672a\u901a\u77e5";
   };
-
+  const contactBindingLabel = (booking) => {
+    if (booking.lineUserId) return lang === "en" ? "LINE linked" : "LINE \u5df2\u7d81\u5b9a";
+    if (booking.customerEmail) return lang === "en" ? "Email registered" : "Email \u5df2\u767b\u8a18";
+    if (booking.customerClaimToken) return lang === "en" ? "Awaiting claim" : "\u5f85\u53d7\u6aa2\u8005\u8a8d\u9818";
+    return lang === "en" ? "Manual follow-up" : "\u5f85\u4eba\u5de5\u806f\u7e6b";
+  };
   const handleConfirmBooking = async (booking) => {
     try {
       const result = await confirmBooking(booking.bookingId);
@@ -3851,7 +3857,7 @@ ${selectedItems
               <div className="col-span-1"><input type="checkbox" checked={allAdminBookingsSelected} onChange={toggleAllAdminBookings} aria-label={t.selectAllBookings} /></div>
               <div className="col-span-1"><button className="font-bold" onClick={() => toggleAdminSort("date")}>{t.appointmentDate}{adminSortMark("date")}</button></div>
               <div className="col-span-2"><button className="font-bold" onClick={() => toggleAdminSort("customer")}>{t.customer}{adminSortMark("customer")}</button></div>
-              <div className="col-span-1"><button className="font-bold" onClick={() => toggleAdminSort("phone")}>{t.phone}{adminSortMark("phone")}</button></div>
+              <div className="col-span-1"><button className="font-bold" onClick={() => toggleAdminSort("phone")}>{lang === "en" ? "Contact / binding" : "\u806f\u7d61\uff0f\u7d81\u5b9a"}{adminSortMark("phone")}</button></div>
               <div className="col-span-1"><button className="font-bold" onClick={() => toggleAdminSort("channel")}>{t.adminChannel}{adminSortMark("channel")}</button></div>
               <div className="col-span-2"><button className="font-bold" onClick={() => toggleAdminSort("package")}>{t.package}{adminSortMark("package")}</button></div>
               <div className="col-span-1"><button className="font-bold" onClick={() => toggleAdminSort("status")}>{t.status}{adminSortMark("status")}</button></div>
@@ -3872,7 +3878,7 @@ ${selectedItems
                   <div className="col-span-1"><input type="checkbox" checked={selectedAdminBookingIds.includes(booking.bookingId)} onClick={(e) => e.stopPropagation()} onChange={() => toggleAdminBookingSelection(booking.bookingId)} aria-label={t.customer} /></div>
                   <div className="col-span-1 text-slate-600"><span className="lg:hidden block text-[10px] text-slate-400">{t.appointmentDate}</span>{booking.appointmentDate || "-"}</div>
                   <div className="col-span-2 font-bold text-slate-800"><span className="lg:hidden block text-[10px] font-normal text-slate-400">{t.customer}</span>{booking.customerName || booking.name || booking.customerId}</div>
-                  <div className="col-span-1 text-slate-600 truncate"><span className="lg:hidden block text-[10px] text-slate-400">{t.phone}</span>{booking.customerPhone || booking.phone || "-"}</div>
+                  <div className="col-span-1 min-w-0 text-slate-600"><span className="lg:hidden block text-[10px] text-slate-400">{lang === "en" ? "Contact / binding" : "\u806f\u7d61\uff0f\u7d81\u5b9a"}</span><div className="truncate">{booking.customerPhone || booking.phone || "-"}</div><div className="mt-0.5 truncate text-[11px] font-medium text-indigo-600">{contactBindingLabel(booking)}</div></div>
                   <div className="col-span-1 text-slate-600"><span className="lg:hidden block text-[10px] text-slate-400">{t.adminChannel}</span>{channelLabel(booking.channel, lang)}</div>
                   <div className="col-span-2 text-slate-600 truncate"><span className="lg:hidden block text-[10px] text-slate-400">{t.package}</span>{booking.packageName}</div>
                   <div className="col-span-1 text-slate-600"><span className="lg:hidden block text-[10px] text-slate-400">{t.status}</span>{statusLabel(booking.status)}{booking.checkInSerial && <div className="mt-0.5 font-mono text-xs font-bold text-indigo-600">{booking.checkInSerial}</div>}</div>

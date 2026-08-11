@@ -432,3 +432,10 @@ pm test, staging build, and staging Hosting deployment.
 - Claim emails now use the sender display name `屏基健檢中心` and a correctly encoded Chinese subject. Existing emails are unchanged; newly sent or resent mail uses the fix.
 - Files: `cac-liff-app/functions/index.js`.
 - Verification: `node --check functions/index.js`, `npm test`, production deployment of `createBooking` and `sendBookingClaimEmailAsStaff`.
+## 2026-08-11 - Booking list contact and reminder labels
+
+- Updated the staff booking list to replace the phone-only column with `聯絡／綁定`: it keeps the telephone number and derives one concise status from existing data: `LINE 已綁定`, `Email 已登記`, `待受檢者認領`, or `待人工聯繫`.
+- Reminder labels are now operational: `已回覆`, `已發送`, `尚未通知`, `待人工聯繫`, or `發送失敗`. Contactless corporate imports no longer look like a message-delivery failure.
+- No Firestore schema, booking data, or notification behavior changed. This is a display-only rule; the future corporate claim workflow still needs explicit `claimStatus` and expiry design before it is implemented.
+- File: `cac-liff-app/src/App.jsx`.
+- Verification: `npm run build` passed; deployed to production Firebase Hosting release `3dc5c59093b8639e`.

@@ -314,3 +314,6 @@ Required one-time administrator action:
 The mail contains only the package, appointment date, and a short-lived customer LINE-link URL. It does not include ID/passport number, telephone, or questionnaire data. A staff user can resend the link for a booking that still has no customer LINE identity.
 
 Known operational constraint: Google OAuth apps using the sensitive `gmail.send` scope may issue refresh tokens that expire after seven days while the OAuth consent screen remains in Testing. Publish/verify the OAuth app before relying on this for routine production mail.
+## Staff booking-list contact status
+
+The `預約清單` column `聯絡／綁定` combines the stored telephone number with a concise system-derived contact state: `LINE 已綁定`, `Email 已登記`, `待受檢者認領`, or `待人工聯繫`. The adjacent notification column reports `已回覆`, `已發送`, `尚未通知`, `待人工聯繫`, or `發送失敗`. These labels do not add or migrate booking fields.
