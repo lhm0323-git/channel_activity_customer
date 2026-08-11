@@ -97,6 +97,13 @@ function cleanHeader(value, max = 240) {
   return String(value || "").replace(/[\r\n]+/g, " ").trim().slice(0, max);
 }
 
+function encodeMimeHeader(value) {
+  const header = cleanHeader(value);
+  return /[^\x20-\x7E]/.test(header)
+    ? "=?UTF-8?B?" + Buffer.from(header, "utf8").toString("base64") + "?="
+    : header;
+}
+
 function customerLineClaimUrl(bookingId, claimToken) {
   return "https://liff.line.me/" + LIFF_ID + "?view=my-bookings&claimBooking=" + encodeURIComponent(bookingId) + "&claimToken=" + encodeURIComponent(claimToken);
 }
@@ -147,9 +154,9 @@ async function sendGmailMessage(settings, recipient, subject, textBody) {
   const tokenJson = await tokenResponse.json();
   if (!tokenResponse.ok || !tokenJson.access_token) throw new Error("Gmail token refresh failed: " + (tokenJson.error || tokenResponse.status));
   const raw = Buffer.from([
-    "From: " + cleanHeader(settings.senderEmail),
+    "From: " + encodeMimeHeader("屏基健檢中心") + " <" + cleanHeader(settings.senderEmail) + ">",
     "To: " + cleanHeader(recipient),
-    "Subject: " + cleanHeader(subject),
+    "Subject: " + encodeMimeHeader(subject),
     "MIME-Version: 1.0",
     "Content-Type: text/plain; charset=UTF-8",
     "Content-Transfer-Encoding: 8bit",

@@ -353,3 +353,9 @@ Do not rely on routine email delivery until Google OAuth is published/verified o
 - Added the supplied Health Check Center location map to the public `聯絡交通` view, immediately before the Google Maps navigation button.
 - Asset: `cac-liff-app/public/health-check-center-location.jpg`.
 - Verified: `npm test`, `npm run build`, production Hosting deployment, and public image URL HTTP 200 (`image/jpeg`).
+## 2026-08-11 - Gmail Chinese subject encoding
+
+- Fixed booking-link email MIME headers using RFC 2047 UTF-8 Base64 encoding for non-ASCII headers.
+- Claim emails now use the sender display name `屏基健檢中心` and a correctly encoded Chinese subject. Existing emails are unchanged; newly sent or resent mail uses the fix.
+- Files: `cac-liff-app/functions/index.js`.
+- Verification: `node --check functions/index.js`, `npm test`, production deployment of `createBooking` and `sendBookingClaimEmailAsStaff`.
