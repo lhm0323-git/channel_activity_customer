@@ -341,3 +341,10 @@ Security contract:
 
 Do not rely on routine email delivery until Google OAuth is published/verified or the refresh-token policy is otherwise confirmed. Testing-mode refresh tokens can expire after seven days.
 - Secret hygiene: production Functions are bound to MAILER_ENCRYPTION_KEY version 2. The prior version is retained because irreversible secret destruction requires separate explicit confirmation; no OAuth credential was configured through this integration before deployment.
+
+## 2026-08-11 - Gmail authorization INTERNAL fix
+
+- Root cause: the administrator profile used by `startGmailMailerAuthorization` returned email/role but omitted Firebase Auth UID. The one-time OAuth state write therefore attempted to store `actorUid: undefined`, which Firestore rejected and surfaced as `INTERNAL`.
+- Fixed `staffProfile()` to return the authenticated UID for bootstrap admin and stored staff accounts. OAuth state and audit records now receive a valid actor UID.
+- Verification: production log reproduced the exact Firestore error; `node --check functions/index.js` and `npm test` passed; production Function revision `startgmailmailerauthorization-00002-xuj` is ACTIVE.
+- Acceptance: retry `連結 Gmail`; the next expected screen is Google account selection/consent, not an INTERNAL error.

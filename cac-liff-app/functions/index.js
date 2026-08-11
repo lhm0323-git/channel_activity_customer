@@ -291,11 +291,12 @@ const BOOTSTRAP_ADMIN_EMAIL = "lhm0323@gmail.com";
 
 async function staffProfile(request) {
   const email = text(request.auth?.token?.email, 320).toLowerCase();
-  if (!email) return null;
-  if (email === BOOTSTRAP_ADMIN_EMAIL) return { email, role: "ADMIN" };
+  const uid = text(request.auth?.uid, 200);
+  if (!email || !uid) return null;
+  if (email === BOOTSTRAP_ADMIN_EMAIL) return { email, uid, role: "ADMIN" };
   const staff = await admin.firestore().doc("staffUsers/" + email).get();
   if (!staff.exists || staff.data().active === false) return null;
-  return { email, role: staff.data().role === "ADMIN" ? "ADMIN" : "STAFF" };
+  return { email, uid, role: staff.data().role === "ADMIN" ? "ADMIN" : "STAFF" };
 }
 
 async function staffEmail(request) {
