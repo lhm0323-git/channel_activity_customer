@@ -439,3 +439,11 @@ pm test, staging build, and staging Hosting deployment.
 - No Firestore schema, booking data, or notification behavior changed. This is a display-only rule; the future corporate claim workflow still needs explicit `claimStatus` and expiry design before it is implemented.
 - File: `cac-liff-app/src/App.jsx`.
 - Verification: `npm run build` passed; deployed to production Firebase Hosting release `3dc5c59093b8639e`.
+
+## 2026-08-11 - Returning customer prefill via LINE
+
+- Added `getLineCustomerProfile`, a callable endpoint that requires both Firebase Auth and a valid LINE access token. It reads only the customer document keyed by that verified LINE user ID and returns name, phone, email, and masked ID number.
+- The public booking modal now pre-fills a returning LINE customer\'s basic details after they select a package. It does not retrieve or store a full ID/passport number: the form shows the saved masked ID and permits an empty ID field for the already LINE-linked customer.
+- Browser/Email-only users and staff proxy bookings remain manual entry flows. There is no ID-number-only lookup endpoint.
+- Files: `cac-liff-app/functions/index.js`, `cac-liff-app/src/firebase.js`, `cac-liff-app/src/core.js`, `cac-liff-app/src/App.jsx`.
+- Verification: `node --check functions/index.js`, `npm test`, and `npm run build` passed. Production Function and Hosting were deployed; interactive acceptance requires an existing LINE-linked customer account in LIFF.

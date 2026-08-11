@@ -433,6 +433,7 @@ export function buildBookingPayload({ formData, lineProfile, packageName, select
   const trimmedEmail = String(formData.email || "").trim();
   const appointmentDate = String(formData.appointmentDate || "").trim();
   const idNumber = String(formData.idNumber || "").trim();
+  const idNumberMasked = idNumber ? maskId(idNumber) : String(formData.idNumberMasked || "").trim();
   const channel = String(formData.channel || "GENERAL").trim();
 
   if (!trimmedName) throw new Error("請填寫姓名");
@@ -452,14 +453,14 @@ export function buildBookingPayload({ formData, lineProfile, packageName, select
       phone: trimmedPhone,
       email: trimmedEmail,
       lineUserId,
-      idNumberMasked: maskId(idNumber),
+      idNumberMasked,
     },
     booking: {
       customerId,
       customerName: trimmedName,
       customerPhone: trimmedPhone,
       customerEmail: trimmedEmail,
-      idNumberMasked: maskId(idNumber),
+      idNumberMasked,
       lineUserId,
       lineDisplayName: lineProfile?.displayName || "",
       notificationChannel,

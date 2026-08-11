@@ -536,6 +536,21 @@ exports.saveMyQuestionnaireResponse = onCall(async (request) => {
   });
   return { responseId: responseRef.id };
 });
+exports.getLineCustomerProfile = onCall(async (request) => {
+  if (!request.auth?.uid) throw new HttpsError("unauthenticated", "A signed-in session is required");
+  const profile = await verifyLineAccessToken(request.data?.accessToken);
+  const customerSnap = await admin.firestore().doc("customers/" + profile.userId).get();
+  if (!customerSnap.exists) return { profile: null };
+  const customer = customerSnap.data();
+  return {
+    profile: {
+      name: text(customer.name, 160),
+      phone: text(customer.phone, 80),
+      email: text(customer.email, 320).toLowerCase(),
+      idNumberMasked: text(customer.idNumberMasked, 80),
+    },
+  };
+});
 exports.claimMyLineBookings = onCall(async (request) => {
   if (!request.auth?.uid) throw new HttpsError("unauthenticated", "A signed-in session is required");
   const profile = await verifyLineAccessToken(request.data?.accessToken);

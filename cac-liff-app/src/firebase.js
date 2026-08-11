@@ -218,6 +218,12 @@ export async function listBookingsByDate(appointmentDate, channel = "ALL") {
   return sortBookings(filterBookingsByChannel(bookings, channel));
 }
 
+export async function getLineCustomerProfile(lineAccessToken = "") {
+  if (!lineAccessToken || !functions) return null;
+  await ensurePublicUser();
+  const result = await httpsCallable(functions, "getLineCustomerProfile")({ accessToken: lineAccessToken });
+  return result.data?.profile || null;
+}
 export async function listMyBookings(lineAccessToken = "") {
   if (!db) return JSON.parse(localStorage.getItem("cac_local_bookings") || "[]");
   const user = await ensurePublicUser();

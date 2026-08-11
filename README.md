@@ -317,3 +317,7 @@ Known operational constraint: Google OAuth apps using the sensitive `gmail.send`
 ## Staff booking-list contact status
 
 The `預約清單` column `聯絡／綁定` combines the stored telephone number with a concise system-derived contact state: `LINE 已綁定`, `Email 已登記`, `待受檢者認領`, or `待人工聯繫`. The adjacent notification column reports `已回覆`, `已發送`, `尚未通知`, `待人工聯繫`, or `發送失敗`. These labels do not add or migrate booking fields.
+
+## Returning customer prefill
+
+When a customer opens a package from LIFF with a previously linked LINE identity, CAC verifies the LINE access token through a callable Function and pre-fills the saved name, phone, and Email. CAC stores and displays only a masked ID/passport number; it never supports ID-number-only lookup. Browser/Email-only and staff proxy bookings continue to use manual entry.

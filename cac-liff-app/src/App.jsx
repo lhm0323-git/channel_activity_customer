@@ -72,6 +72,7 @@ import {
   deleteManagedPackage,
   getLastCustomerQuestionnaireResponse,
   getBookingById,
+  getLineCustomerProfile,
   getStaffUser,
   listBookingBlockedDates,
   listAuditLogs,
@@ -602,6 +603,7 @@ const App = () => {
   const [liffMessage, setLiffMessage] = useState("一般瀏覽器模式");
   const [showBookingModal, setShowBookingModal] = useState(false);
   const [bookingStatus, setBookingStatus] = useState("");
+  const [bookingPrefillStatus, setBookingPrefillStatus] = useState("");
   const [myBookings, setMyBookings] = useState([]);
   const [reportBookings, setReportBookings] = useState([]);
   const [myBookingStatus, setMyBookingStatus] = useState("");
@@ -826,6 +828,34 @@ const App = () => {
   }, []);
 
   // 核心：全能型 CSV 解析器 (解決換行、引號與逗號問題)
+  useEffect(() => {
+    if (!showBookingModal || ["staff", "admin", "reports", "audit"].includes(mode) || !lineProfile?.accessToken) {
+      setBookingPrefillStatus("");
+      return undefined;
+    }
+    let active = true;
+    setBookingPrefillStatus(lang === "en" ? "Checking saved details..." : "正在讀取已連結的基本資料...");
+    getLineCustomerProfile(lineProfile.accessToken)
+      .then((profile) => {
+        if (!active) return;
+        if (!profile) {
+          setBookingPrefillStatus(lang === "en" ? "No saved profile found; please complete your details." : "尚無已儲存資料，請完成基本資料。");
+          return;
+        }
+        setBookingForm((current) => ({
+          ...current,
+          name: current.name || profile.name || "",
+          phone: current.phone || profile.phone || "",
+          email: current.email || profile.email || "",
+          idNumberMasked: current.idNumberMasked || profile.idNumberMasked || "",
+        }));
+        setBookingPrefillStatus(lang === "en" ? "Previous details were filled in. Please confirm before sending." : "已帶入上次基本資料，請確認後送出。");
+      })
+      .catch(() => {
+        if (active) setBookingPrefillStatus(lang === "en" ? "Could not load saved details; please enter them manually." : "無法讀取既有資料，請手動填寫。");
+      });
+    return () => { active = false; };
+  }, [showBookingModal, mode, lineProfile?.accessToken, lang]);
   const parseCSV = (text) => {
     const rows = [];
     let currentRow = [];
@@ -2974,13 +3004,14 @@ ${selectedItems
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <label className="block text-xs font-bold text-slate-600">{t.name}<input required className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-base font-normal" value={bookingForm.name} onChange={(e) => setBookingField("name", e.target.value)} /></label>
               <label className="block text-xs font-bold text-slate-600">{t.phone}<input required inputMode="tel" className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-base font-normal" value={bookingForm.phone} onChange={(e) => setBookingField("phone", e.target.value)} /></label>
-              <label className="block text-xs font-bold text-slate-600">{t.idNumber}<input required className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-base font-normal" value={bookingForm.idNumber} onChange={(e) => setBookingField("idNumber", e.target.value)} /></label>
+              <label className="block text-xs font-bold text-slate-600">{t.idNumber}<input required={!lineProfile || staffMode} placeholder={bookingForm.idNumberMasked || ""} className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-base font-normal" value={bookingForm.idNumber} onChange={(e) => setBookingField("idNumber", e.target.value)} />{lineProfile && !staffMode && bookingForm.idNumberMasked && <span className="mt-1 block text-[11px] font-medium text-emerald-700">{lang === "en" ? `Saved ID: ${bookingForm.idNumberMasked}` : `已連結證號：${bookingForm.idNumberMasked}`}</span>}</label>
               <label className="block text-xs font-bold text-slate-600">
                 {t.email} {(!lineProfile || staffMode) && <span className="text-rose-600 font-bold">* ({lang === "en" ? "Required for non-LINE" : "無 LINE 身份時必填"})</span>}
                 <input type="email" required={!lineProfile || staffMode} placeholder={!lineProfile || staffMode ? (lang === "en" ? "Required for email reminder" : "\u8acb\u8f38\u5165 Email \u4ee5\u63a5\u6536\u5230\u6aa2\u63d0\u9192") : ""} className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-base font-normal" value={bookingForm.email} onChange={(e) => setBookingField("email", e.target.value)} />
               </label>
               <label className="block text-xs font-bold text-slate-600">{t.appointmentDate}<input required type="date" className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-base font-normal" value={bookingForm.appointmentDate} onChange={(e) => setBookingField("appointmentDate", e.target.value)} />{disabled && <span className="mt-1 block text-xs font-bold text-rose-600">{lang === "en" ? "This date is unavailable" : "\u6b64\u65e5\u671f\u66ab\u505c\u9810\u7d04"}</span>}</label>
             </div>
+            {bookingPrefillStatus && <p className="rounded-md bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-800">{bookingPrefillStatus}</p>}
             <p className="text-xs leading-relaxed text-slate-500">{t.idNumberHelp}</p>
             <label className="block text-xs font-bold text-slate-600">{t.notes}<textarea rows="3" className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-base font-normal" value={bookingForm.notes} onChange={(e) => setBookingField("notes", e.target.value)} /></label>
             {bookingStatus && <p className="text-sm text-slate-600">{bookingStatus}</p>}
