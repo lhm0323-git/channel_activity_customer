@@ -326,3 +326,7 @@ When a customer opens a package from LIFF with a previously linked LINE identity
 
 Staff can enter and update a booking's medical record number in the booking-detail modal. It appears immediately after the customer name in the staff booking list and is protected by staff authorization.
 
+
+## Latest Update
+
+- 2026-08-11: The admin audit-log tab now loads the latest 100 records, supports loading older pages, and filters loaded records by booking customer name, medical record number, package, or appointment date. Selecting a result opens its linked booking detail.

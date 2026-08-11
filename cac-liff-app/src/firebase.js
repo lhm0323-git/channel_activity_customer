@@ -431,10 +431,19 @@ export async function getStaffUser(email) {
   return snap.exists() ? { email: cleanEmail, ...snap.data() } : null;
 }
 
-export async function listAuditLogs(maxRows = 100) {
-  if (!db) return [];
-  const snapshot = await getDocs(query(collection(db, "auditLogs"), orderBy("createdAt", "desc"), limit(maxRows)));
-  return snapshot.docs.map((docSnap) => ({ auditId: docSnap.id, ...docSnap.data() }));
+export async function listAuditLogs({ pageSize = 100, cursor = null } = {}) {
+  if (!db) return { logs: [], cursor: null, hasMore: false };
+  const constraints = [orderBy("createdAt", "desc")];
+  if (cursor) constraints.push(startAfter(cursor));
+  constraints.push(limit(pageSize + 1));
+  const snapshot = await getDocs(query(collection(db, "auditLogs"), ...constraints));
+  const hasMore = snapshot.docs.length > pageSize;
+  const pageDocs = hasMore ? snapshot.docs.slice(0, pageSize) : snapshot.docs;
+  return {
+    logs: pageDocs.map((docSnap) => ({ auditId: docSnap.id, ...docSnap.data() })),
+    cursor: pageDocs.at(-1) || null,
+    hasMore,
+  };
 }
 export async function listStaffUsers() {
   if (!db) return [];

@@ -669,6 +669,9 @@ const App = () => {
   const [staffAccounts, setStaffAccounts] = useState([]);
   const [auditLogs, setAuditLogs] = useState([]);
   const [auditStatus, setAuditStatus] = useState("");
+  const [auditCursor, setAuditCursor] = useState(null);
+  const [auditHasMore, setAuditHasMore] = useState(false);
+  const [auditSearchTerm, setAuditSearchTerm] = useState("");
   const [newStaffEmail, setNewStaffEmail] = useState("");
   const [newStaffRole, setNewStaffRole] = useState("STAFF");
   const [staffManageStatus, setStaffManageStatus] = useState("");
@@ -1767,6 +1770,18 @@ ${selectedItems
     });
   }, [adminBookings, adminSort, lang]);
 
+  const filteredAuditLogs = useMemo(() => {
+    const term = auditSearchTerm.trim().toLowerCase();
+    if (!term) return auditLogs;
+    return auditLogs.filter((entry) => {
+      const booking = entry.booking || {};
+      return [booking.customerName, booking.name, booking.medicalRecordNumber, booking.packageName, booking.appointmentDate, entry.bookingId, entry.action, entry.actorEmail]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+        .includes(term);
+    });
+  }, [auditLogs, auditSearchTerm]);
   const toggleAdminSort = (key) => setAdminSort((current) => current.key === key ? { key, direction: current.direction === "asc" ? "desc" : "asc" } : { key, direction: "asc" });
   const adminSortMark = (key) => adminSort.key === key ? (adminSort.direction === "asc" ? " ?" : " ?") : "";
 
@@ -1834,20 +1849,23 @@ ${selectedItems
       setAdminStatus(lang === "en" ? `Email failed: ${error.message}` : `寄送失敗：${error.message}`);
     }
   };
-  const handleLoadAuditLogs = async () => {
+  const handleLoadAuditLogs = async ({ append = false } = {}) => {
     try {
       setAuditStatus(lang === "en" ? "Loading..." : "讀取中...");
-      const logs = await listAuditLogs();
-      const bookingIds = [...new Set(logs.map((entry) => entry.bookingId).filter(Boolean))];
+      const page = await listAuditLogs({ pageSize: 100, cursor: append ? auditCursor : null });
+      const bookingIds = [...new Set(page.logs.map((entry) => entry.bookingId).filter(Boolean))];
       const linkedBookings = await Promise.all(bookingIds.map(async (bookingId) => [bookingId, await getBookingById(bookingId)]));
       const byBookingId = Object.fromEntries(linkedBookings);
-      setAuditLogs(logs.map((entry) => ({ ...entry, booking: byBookingId[entry.bookingId] || null })));
-      setAuditStatus(lang === "en" ? `Loaded ${logs.length} audit records` : `已載入 ${logs.length} 筆稽核紀錄`);
+      const enriched = page.logs.map((entry) => ({ ...entry, booking: byBookingId[entry.bookingId] || null }));
+      setAuditLogs((current) => append ? [...current, ...enriched.filter((entry) => !current.some((existing) => existing.auditId === entry.auditId))] : enriched);
+      setAuditCursor(page.cursor);
+      setAuditHasMore(page.hasMore);
+      const total = append ? auditLogs.length + enriched.length : enriched.length;
+      setAuditStatus(lang === "en" ? `Loaded ${total} audit records` : `已載入 ${total} 筆稽核紀錄`);
     } catch (error) {
-      setAuditStatus(lang === "en" ? `Audit load failed: ${error.message}` : `稽核紀錄讀取失敗：${error.message}`);
+      setAuditStatus(lang === "en" ? `Audit load failed: ${error.message}` : `稽核讀取失敗：${error.message}`);
     }
   };
-
   const handleAddStaffUser = async () => {
     try {
       const result = await saveStaffUser(newStaffEmail, true, newStaffRole);
@@ -3797,13 +3815,37 @@ ${selectedItems
   const AuditLogView = () => (
     <div className="min-h-[calc(100vh-73px)] max-w-[1200px] mx-auto w-full p-3 lg:p-6">
       <div className="rounded-lg border border-slate-200 bg-white p-4">
-        <div className="flex flex-wrap items-center justify-between gap-3"><div><h1 className="text-lg font-black text-slate-900">{lang === "en" ? "Audit log" : "稽核紀錄"}</h1><p className="mt-1 text-xs text-slate-500">{lang === "en" ? "Booking operation trace. Customer personal content is not recorded here." : "預約操作追溯；此處不記錄客戶個資與備註內容。"}</p></div><button onClick={handleLoadAuditLogs} className="rounded-md bg-slate-900 px-4 py-2 text-sm font-bold text-white">{lang === "en" ? "Load" : "讀取"}</button></div>
-        {auditStatus && <p className="mt-3 text-xs font-bold text-slate-500">{auditStatus}</p>}
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h1 className="text-lg font-black text-slate-900">{lang === "en" ? "Audit log" : "稽核紀錄"}</h1>
+            <p className="mt-1 text-xs text-slate-500">{lang === "en" ? "Search booking operations without exposing questionnaire content." : "依姓名、病歷號碼、套餐或日期追蹤預約操作；不顯示問卷內容。"}</p>
+          </div>
+          <button onClick={() => handleLoadAuditLogs()} className="rounded-md bg-slate-900 px-4 py-2 text-sm font-bold text-white">{lang === "en" ? "Load latest 100" : "讀取最新 100 筆"}</button>
+        </div>
+        <div className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
+          <label className="text-xs font-bold text-slate-600">{lang === "en" ? "Search booking" : "搜尋預約"}
+            <input value={auditSearchTerm} onChange={(event) => setAuditSearchTerm(event.target.value)} placeholder={lang === "en" ? "Name, MRN, package, date" : "姓名、病歷號碼、套餐或預約日期"} className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-normal" />
+          </label>
+          {auditHasMore && <button onClick={() => handleLoadAuditLogs({ append: true })} className="rounded-md border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700">{lang === "en" ? "Load older records" : "載入更早紀錄"}</button>}
+        </div>
+        <div className="mt-3 flex flex-wrap gap-3 text-xs font-bold text-slate-500">
+          <span>{lang === "en" ? `Loaded ${auditLogs.length}` : `已載入 ${auditLogs.length} 筆`}</span>
+          {auditSearchTerm && <span>{lang === "en" ? `Matched ${filteredAuditLogs.length}` : `符合 ${filteredAuditLogs.length} 筆`}</span>}
+          {auditStatus && <span>{auditStatus}</span>}
+        </div>
       </div>
-<div className="mt-4 overflow-hidden rounded-lg border border-slate-200 bg-white"><div className="grid grid-cols-[130px_1fr_1fr] gap-3 border-b border-slate-200 bg-slate-100 px-4 py-3 text-xs font-bold text-slate-600 sm:grid-cols-[170px_130px_1.4fr_1fr]"><span>{lang === "en" ? "Time" : "時間"}</span><span>{lang === "en" ? "Action" : "動作"}</span><span>{lang === "en" ? "Booking" : "對應預約"}</span><span className="hidden sm:block">{lang === "en" ? "Operator" : "操作者"}</span></div><div className="divide-y divide-slate-100">{auditLogs.length ? auditLogs.map((entry) => <button type="button" key={entry.auditId} onClick={() => entry.booking && setAdminDetailBooking(entry.booking)} className="grid w-full grid-cols-[130px_1fr_1fr] gap-3 px-4 py-3 text-left text-xs hover:bg-slate-50 sm:grid-cols-[170px_130px_1.4fr_1fr]"><span className="text-slate-500">{entry.createdAt?.toDate ? entry.createdAt.toDate().toLocaleString() : "-"}</span><span className="font-bold text-indigo-700">{entry.action || "-"}</span><span className="truncate text-slate-700">{entry.booking ? `${entry.booking.appointmentDate || "-"} / ${entry.booking.customerName || entry.booking.name || "-"} / ${entry.booking.packageName || "-"}` : entry.bookingId || "-"}</span><span className="hidden sm:block truncate text-slate-700">{entry.actorEmail || entry.actorRole || "-"}</span></button>) : <div className="p-12 text-center text-sm text-slate-400">{lang === "en" ? "Load audit records to view the trace." : "請讀取稽核紀錄。"}</div>}</div></div>
+      <div className="mt-4 overflow-hidden rounded-lg border border-slate-200 bg-white">
+        <div className="grid grid-cols-[130px_1fr_1fr] gap-3 border-b border-slate-200 bg-slate-100 px-4 py-3 text-xs font-bold text-slate-600 sm:grid-cols-[170px_130px_1.4fr_1fr]">
+          <span>{lang === "en" ? "Time" : "時間"}</span><span>{lang === "en" ? "Action" : "動作"}</span><span>{lang === "en" ? "Booking" : "對應預約"}</span><span className="hidden sm:block">{lang === "en" ? "Operator" : "操作者"}</span>
+        </div>
+        <div className="divide-y divide-slate-100">
+          {filteredAuditLogs.length ? filteredAuditLogs.map((entry) => <button type="button" key={entry.auditId} onClick={() => entry.booking && setAdminDetailBooking(entry.booking)} className="grid w-full grid-cols-[130px_1fr_1fr] gap-3 px-4 py-3 text-left text-xs hover:bg-slate-50 sm:grid-cols-[170px_130px_1.4fr_1fr]">
+            <span className="text-slate-500">{entry.createdAt?.toDate ? entry.createdAt.toDate().toLocaleString() : "-"}</span><span className="font-bold text-indigo-700">{entry.action || "-"}</span><span className="truncate text-slate-700">{entry.booking ? `${entry.booking.appointmentDate || "-"} / ${entry.booking.customerName || entry.booking.name || "-"}${entry.booking.medicalRecordNumber ? ` / ${entry.booking.medicalRecordNumber}` : ""} / ${entry.booking.packageName || "-"}` : entry.bookingId || "-"}</span><span className="hidden sm:block truncate text-slate-700">{entry.actorEmail || entry.actorRole || "-"}</span>
+          </button>) : <div className="p-12 text-center text-sm text-slate-400">{auditLogs.length ? (lang === "en" ? "No matching audit records." : "沒有符合的稽核紀錄。") : (lang === "en" ? "Load audit records to view the trace." : "請先讀取稽核紀錄。")}</div>}
+        </div>
+      </div>
     </div>
-  );
-  const ReportManagementView = () => {
+  );  const ReportManagementView = () => {
     const reports = sortedAdminBookings.filter((booking) => booking.status !== "CANCELLED");
     return (
       <div className="min-h-[calc(100vh-73px)] max-w-[1200px] mx-auto w-full p-3 lg:p-6">

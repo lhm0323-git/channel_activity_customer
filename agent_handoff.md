@@ -381,3 +381,9 @@ Do not rely on routine email delivery until Google OAuth is published/verified o
 - The field is accepted only by the existing staff-authorized `updateBookingAsStaff` Function. Empty existing records display `-`; no migration is required.
 - Files: `cac-liff-app/src/App.jsx`, `cac-liff-app/functions/index.js`.
 - Verification: `node --check functions/index.js`, `npm test`, and `npm run build` passed. Production Function revision `updatebookingasstaff-00004-deh` and Hosting release `9bd58ab5c3eb3769` deployed.
+
+## 2026-08-11 - Admin audit log search
+
+- Production Hosting release `e130c92465fa8084` adds audit-log pagination: load the newest 100 entries, then load older pages as required.
+- The audit view resolves booking references and supports filtering the loaded history by customer name, medical record number, package, or appointment date. Selecting a row opens the linked booking detail.
+- This is front-end only; no Firestore schema or callable Function changed. The search intentionally operates on loaded pages to avoid adding a duplicate patient-name index to every audit record.

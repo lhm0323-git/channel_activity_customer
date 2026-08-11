@@ -454,3 +454,11 @@ pm test, staging build, and staging Hosting deployment.
 - The field is accepted only by the existing staff-authorized `updateBookingAsStaff` Function. Empty existing records display `-`; no migration is required.
 - Files: `cac-liff-app/src/App.jsx`, `cac-liff-app/functions/index.js`.
 - Verification: `node --check functions/index.js`, `npm test`, and `npm run build` passed. Production Function revision `updatebookingasstaff-00004-deh` and Hosting release `9bd58ab5c3eb3769` deployed.
+
+## 2026-08-11 - Searchable admin audit log
+
+- The Audit Log tab now retrieves the latest 100 records per page instead of a fixed small result set, with a `Load older records` control for further history.
+- After each page is read, the UI resolves its booking references so administrators can filter by customer name, medical record number, package, or appointment date. Selecting a matching row opens that booking's detail modal.
+- Files: `cac-liff-app/src/App.jsx`, `cac-liff-app/src/firebase.js`.
+- Verification: `npm test` and `npm run build` passed. Production Hosting release `e130c92465fa8084` deployed.
+- Operational note: searching is performed across records already loaded into the page. Use `Load older records` before searching an older case.
