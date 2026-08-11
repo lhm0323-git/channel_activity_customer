@@ -301,6 +301,29 @@ export async function cancelBooking(bookingId) {
   const result = await httpsCallable(functions, "cancelBooking")({ bookingId });
   return { ...result.data, localOnly: false };
 }
+export async function configureGmailMailer(settings) {
+  requireStaffFunction();
+  if (!functions) throw new Error("Firebase is not configured");
+  return httpsCallable(functions, "configureGmailMailer")(settings);
+}
+
+export async function getGmailMailerStatus() {
+  requireStaffFunction();
+  if (!functions) throw new Error("Firebase is not configured");
+  return httpsCallable(functions, "getGmailMailerStatus")({});
+}
+
+export async function startGmailMailerAuthorization() {
+  requireStaffFunction();
+  if (!functions) throw new Error("Firebase is not configured");
+  return httpsCallable(functions, "startGmailMailerAuthorization")({});
+}
+
+export async function sendBookingClaimEmail(bookingId) {
+  requireStaffFunction();
+  if (!functions) throw new Error("Firebase is not configured");
+  return httpsCallable(functions, "sendBookingClaimEmailAsStaff")({ bookingId });
+}
 export async function sendD1Notice(bookingId) {
   if (!functions) throw new Error("Firebase is not configured");
   const user = auth?.currentUser;

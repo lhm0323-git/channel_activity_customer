@@ -402,3 +402,15 @@ pm test, staging build, and staging Hosting deployment.
 - Verification: `npm test` passed, including the new blank-contact staff CSV regression; `npm run build` passed; deployed bundle contains `allowMissingContact` and `STAFF_CSV`; production Hosting release `ec574d5a0f337fcb`; Function revision `createbooking-00005-taz`.
 - Test note: `npm run test:functions` was unable to complete in this run because the local Functions emulator returned `functions/not-found`; prior emulator coverage remains in the suite. This does not affect the successful client/core/build and production deployment checks.
 - Next: Staff Login, import `C:/Users/xray/Documents/1.csv`, then inspect the in-app CSV row result panel. The list date range must include the CSV appointment dates.
+
+## 2026-08-11 - Gmail booking-link email integration
+
+- Added a direct Gmail API sender for staff-created bookings. When a staff-created booking has a customer Email but no customer LINE identity, CAC sends a booking-link email after the booking is safely stored; mail failure never cancels the booking.
+- Added administrator-only UI in `預約清單` to save OAuth client settings, view connection state, and begin one-time Gmail authorization. The correct dedicated sender default is `ptch.health@gmail.com`.
+- OAuth client secret and refresh token are encrypted with the Firebase secret `MAILER_ENCRYPTION_KEY`; neither is written to source files, Firestore plaintext, Git, audit logs, or browser storage. Re-saving OAuth configuration clears prior Gmail authorization, requiring an explicit reconnect.
+- OAuth callback: `https://us-central1-channel-activity-customer.cloudfunctions.net/connectMailerCallback`. State records expire after 10 minutes.
+- Important: the OAuth secret posted in the discussion must be rotated. The application was not configured with that exposed value.
+- Files: `cac-liff-app/functions/index.js`, `cac-liff-app/src/firebase.js`, `cac-liff-app/src/App.jsx`, `README.md`.
+- Verification: `npm test`, `npm run build`, `node --check functions/index.js`, production deployment, hosted bundle marker check, and callback missing-state rejection. Interactive Gmail consent and a real test email remain required.
+- Deployment: Hosting `https://channel-activity-customer.web.app`; Functions `createBooking`, `configureGmailMailer`, and `connectMailerCallback` updated in `us-central1`.
+- Secret hygiene: production Functions are bound to MAILER_ENCRYPTION_KEY version 2. The prior version is retained because irreversible secret destruction requires separate explicit confirmation; no OAuth credential was configured through this integration before deployment.

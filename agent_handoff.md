@@ -322,3 +322,22 @@ Deployed production:
 - `createBooking`: `createbooking-00005-taz`
 
 Verification passed: `npm test`, `npm run build`, deployed bundle marker verification. `npm run test:functions` hit a local emulator `functions/not-found` response in this run; do not treat that as production failure. First acceptance step: Staff Login, import `C:/Users/xray/Documents/1.csv`, read the per-row import log, and ensure the date filter covers the CSV dates.
+
+## 2026-08-11 - Gmail booking-link email handoff
+
+Current state: Gmail API integration is deployed but intentionally not connected until the administrator supplies the newly rotated OAuth client secret through the app UI and grants consent as `ptch.health@gmail.com`.
+
+Admin acceptance sequence:
+1. Log into production as CAC admin and open `預約清單`.
+2. In `預約 Email 寄件設定`, confirm Client ID, enter the rotated Client Secret, and keep sender as `ptch.health@gmail.com`; save.
+3. Click `連結 Gmail`; complete consent with the dedicated Gmail account. If Google shows `redirect_uri_mismatch`, add exactly `https://us-central1-channel-activity-customer.cloudfunctions.net/connectMailerCallback` to the OAuth client.
+4. Create one staff booking with a non-staff test Email and no LINE identity. Verify the booking persists, the email arrives, the claim link opens LIFF, and the booking becomes linked after customer LINE login.
+
+Security contract:
+- `MAILER_ENCRYPTION_KEY` is Firebase Secret Manager version 2; no plaintext OAuth secret/token belongs in Git or Firestore.
+- `configureGmailMailer` and status/authorization calls enforce `assertAdmin`; email resend enforces `assertStaff`.
+- The OAuth callback is public only to receive Google redirects, validates one-time state, and expires authorization state after 10 minutes.
+- First secret version was never configured with credentials; latest Function revisions use secret version 2.
+
+Do not rely on routine email delivery until Google OAuth is published/verified or the refresh-token policy is otherwise confirmed. Testing-mode refresh tokens can expire after seven days.
+- Secret hygiene: production Functions are bound to MAILER_ENCRYPTION_KEY version 2. The prior version is retained because irreversible secret destruction requires separate explicit confirmation; no OAuth credential was configured through this integration before deployment.

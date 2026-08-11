@@ -300,3 +300,17 @@ Deployment completed on 2026-07-28: Functions and Hosting released successfully 
 - Public self-service bookings are unchanged: without a LINE identity they must still provide Email.
 - A contactless staff import is stored with `notificationChannel: NONE`, so it is not misrepresented as an Email reminder target.
 - Production deployment: Hosting release `ec574d5a0f337fcb`; Cloud Function `createBooking` revision `createbooking-00005-taz`.
+
+## Gmail booking-link email
+
+Staff-created single bookings with a customer Email and no customer LINE identity can now send the customer a booking-link email automatically. Administrators configure the dedicated sender from the `預約清單` tab; credentials are encrypted at rest with the Firebase secret `MAILER_ENCRYPTION_KEY` and are never committed to Git.
+
+Required one-time administrator action:
+
+1. In `預約清單`, enter the Google OAuth Client ID, the newly rotated Client Secret, and `ptch.health@gmail.com`, then save.
+2. Select `連結 Gmail`, sign in as `ptch.health@gmail.com`, and grant Gmail send permission.
+3. The OAuth client must list this exact redirect URI: `https://us-central1-channel-activity-customer.cloudfunctions.net/connectMailerCallback`.
+
+The mail contains only the package, appointment date, and a short-lived customer LINE-link URL. It does not include ID/passport number, telephone, or questionnaire data. A staff user can resend the link for a booking that still has no customer LINE identity.
+
+Known operational constraint: Google OAuth apps using the sensitive `gmail.send` scope may issue refresh tokens that expire after seven days while the OAuth consent screen remains in Testing. Publish/verify the OAuth app before relying on this for routine production mail.

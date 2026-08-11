@@ -2,13 +2,16 @@ const crypto = require("crypto");
 const admin = require("firebase-admin");
 const { FieldValue } = require("firebase-admin/firestore");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
-const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const { onCall, onRequest, HttpsError } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
 
 admin.initializeApp();
 
 const lineChannelAccessToken = defineSecret("LINE_CHANNEL_ACCESS_TOKEN");
+const mailerEncryptionKey = defineSecret("MAILER_ENCRYPTION_KEY");
 const LIFF_ID = "2010725321-sRRkD0Le";
+const MAILER_SETTINGS_PATH = "systemSettings/mailer";
+const MAILER_OAUTH_CALLBACK = "https://us-central1-channel-activity-customer.cloudfunctions.net/connectMailerCallback";
 
 function taipeiDate(offsetDays = 0) {
   const now = new Date();
@@ -69,6 +72,126 @@ async function pushLineMessage(token, to, message) {
   if (!response.ok) throw new Error(String(response.status) + " " + await response.text());
 }
 
+function mailerCipherKey() {
+  const value = mailerEncryptionKey.value();
+  if (!value) throw new HttpsError("failed-precondition", "Mailer encryption is not configured");
+  return crypto.createHash("sha256").update(value).digest();
+}
+
+function encryptMailerValue(value) {
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv("aes-256-gcm", mailerCipherKey(), iv);
+  const encrypted = Buffer.concat([cipher.update(String(value), "utf8"), cipher.final()]);
+  return [iv.toString("base64url"), cipher.getAuthTag().toString("base64url"), encrypted.toString("base64url")].join(".");
+}
+
+function decryptMailerValue(value) {
+  const [ivValue, tagValue, encryptedValue] = String(value || "").split(".");
+  if (!ivValue || !tagValue || !encryptedValue) throw new HttpsError("failed-precondition", "Mailer credentials are incomplete");
+  const decipher = crypto.createDecipheriv("aes-256-gcm", mailerCipherKey(), Buffer.from(ivValue, "base64url"));
+  decipher.setAuthTag(Buffer.from(tagValue, "base64url"));
+  return Buffer.concat([decipher.update(Buffer.from(encryptedValue, "base64url")), decipher.final()]).toString("utf8");
+}
+
+function cleanHeader(value, max = 240) {
+  return String(value || "").replace(/[\r\n]+/g, " ").trim().slice(0, max);
+}
+
+function customerLineClaimUrl(bookingId, claimToken) {
+  return "https://liff.line.me/" + LIFF_ID + "?view=my-bookings&claimBooking=" + encodeURIComponent(bookingId) + "&claimToken=" + encodeURIComponent(claimToken);
+}
+
+function buildClaimEmail(bookingId, booking) {
+  const claimUrl = customerLineClaimUrl(bookingId, booking.customerClaimToken);
+  const name = cleanHeader(booking.customerName || "");
+  const packageName = cleanHeader(booking.packageName || "健檢套餐");
+  const date = cleanHeader(booking.appointmentDate || "");
+  return {
+    subject: "屏基健檢中心：預約確認與 LINE 綁定",
+    text: [
+      name ? name + " 您好：" : "您好：",
+      "您的健檢預約已建立。",
+      "套餐：" + packageName,
+      "暫定日期：" + date,
+      "請開啟下列連結，於 LINE 完成綁定後即可查詢預約、提出改期並接收提醒：",
+      claimUrl,
+      "若無法開啟，請聯繫屏基健檢中心。",
+    ].join("\n"),
+  };
+}
+
+async function getMailerSettings(requireConnected = true) {
+  const snap = await admin.firestore().doc(MAILER_SETTINGS_PATH).get();
+  if (!snap.exists) throw new HttpsError("failed-precondition", "Gmail sender has not been configured");
+  const data = snap.data();
+  if (!data.clientId || !data.clientSecretEncrypted || !data.senderEmail) throw new HttpsError("failed-precondition", "Gmail sender has not been configured");
+  if (requireConnected && !data.refreshTokenEncrypted) throw new HttpsError("failed-precondition", "Gmail sender has not been connected");
+  return {
+    ...data,
+    clientSecret: decryptMailerValue(data.clientSecretEncrypted),
+    refreshToken: data.refreshTokenEncrypted ? decryptMailerValue(data.refreshTokenEncrypted) : "",
+  };
+}
+
+async function sendGmailMessage(settings, recipient, subject, textBody) {
+  const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: settings.clientId,
+      client_secret: settings.clientSecret,
+      refresh_token: settings.refreshToken,
+      grant_type: "refresh_token",
+    }),
+  });
+  const tokenJson = await tokenResponse.json();
+  if (!tokenResponse.ok || !tokenJson.access_token) throw new Error("Gmail token refresh failed: " + (tokenJson.error || tokenResponse.status));
+  const raw = Buffer.from([
+    "From: " + cleanHeader(settings.senderEmail),
+    "To: " + cleanHeader(recipient),
+    "Subject: " + cleanHeader(subject),
+    "MIME-Version: 1.0",
+    "Content-Type: text/plain; charset=UTF-8",
+    "Content-Transfer-Encoding: 8bit",
+    "",
+    String(textBody || ""),
+  ].join("\r\n"), "utf8").toString("base64url");
+  const response = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
+    method: "POST",
+    headers: { Authorization: "Bearer " + tokenJson.access_token, "Content-Type": "application/json" },
+    body: JSON.stringify({ raw }),
+  });
+  if (!response.ok) throw new Error("Gmail send failed: " + response.status);
+}
+
+async function sendBookingClaimEmail(bookingRef, actor = { role: "SYSTEM" }) {
+  const snap = await bookingRef.get();
+  if (!snap.exists) throw new HttpsError("not-found", "Booking not found");
+  const booking = snap.data();
+  const email = String(booking.customerEmail || "").trim().toLowerCase();
+  if (!validEmail(email)) throw new HttpsError("failed-precondition", "Booking has no valid email address");
+  if (!booking.customerClaimToken) throw new HttpsError("failed-precondition", "Booking has no LINE claim link");
+  try {
+    const settings = await getMailerSettings(true);
+    const message = buildClaimEmail(bookingRef.id, booking);
+    await sendGmailMessage(settings, email, message.subject, message.text);
+    await bookingRef.update({
+      claimEmailStatus: "SENT",
+      claimEmailSentAt: FieldValue.serverTimestamp(),
+      claimEmailError: null,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    if (actor?.email) await writeBookingAuditRecord({ action: "SEND_CLAIM_EMAIL", bookingId: bookingRef.id, actor });
+    return "SENT";
+  } catch (error) {
+    await bookingRef.update({
+      claimEmailStatus: "FAILED",
+      claimEmailError: String(error && error.message || error).slice(0, 300),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    throw error;
+  }
+}
 async function markD1NoticeFailed(doc, error) {
   await doc.ref.update({
     d1NoticeStatus: "FAILED",
@@ -274,7 +397,7 @@ async function assertPackageBookingAccess(transaction, db, bookingInput, isStaff
     if (!inviteSnap?.exists || !inviteIsActive(inviteSnap.data(), packageName)) throw new HttpsError("permission-denied", "This invitation link is invalid or expired");
   }
 }
-exports.createBooking = onCall(async (request) => {
+exports.createBooking = onCall({ secrets: [mailerEncryptionKey] }, async (request) => {
   if (!request.auth?.uid) throw new HttpsError("unauthenticated", "A signed-in session is required");
   const payload = request.data?.payload;
   if (!payload || typeof payload !== "object") throw new HttpsError("invalid-argument", "Booking payload is required");
@@ -328,7 +451,16 @@ exports.createBooking = onCall(async (request) => {
     transaction.set(bookingRef, booking);
     transaction.set(db.doc("checklists/" + bookingRef.id), { bookingId: bookingRef.id, ...checklistFor(selectedItems), generatedAt: now, printedAt: null });
   });
-  return { bookingId: bookingRef.id, claimToken };
+  let claimEmailStatus = "NOT_REQUESTED";
+  if (isStaff && customerEmail && claimToken) {
+    try {
+      claimEmailStatus = await sendBookingClaimEmail(bookingRef, actor);
+    } catch (error) {
+      claimEmailStatus = "FAILED";
+      console.warn("Claim email was not sent for " + bookingRef.id + ": " + error.message);
+    }
+  }
+  return { bookingId: bookingRef.id, claimToken, claimEmailStatus };
 });
 
 exports.cancelBooking = onCall(async (request) => {
@@ -683,4 +815,101 @@ exports.confirmBookingWithSerial = onCall(async (request) => {
     return { checkInSerial };
   });
   return result;
+});
+exports.configureGmailMailer = onCall({ secrets: [mailerEncryptionKey] }, async (request) => {
+  const actor = await assertAdmin(request);
+  const input = request.data || {};
+  const clientId = text(input.clientId, 300);
+  const clientSecret = text(input.clientSecret, 500);
+  const senderEmail = text(input.senderEmail, 320).toLowerCase();
+  if (!clientId.endsWith(".apps.googleusercontent.com") || !clientSecret || !validEmail(senderEmail)) {
+    throw new HttpsError("invalid-argument", "Valid Gmail OAuth client details and sender email are required");
+  }
+  const ref = admin.firestore().doc(MAILER_SETTINGS_PATH);
+  const current = await ref.get();
+  await ref.set({
+    clientId,
+    clientSecretEncrypted: encryptMailerValue(clientSecret),
+    senderEmail,
+    configuredAt: FieldValue.serverTimestamp(),
+    configuredBy: actor.email,
+    refreshTokenEncrypted: FieldValue.delete(),
+    connectedAt: FieldValue.delete(),
+    connectedBy: FieldValue.delete(),
+  }, { merge: true });
+  await writeBookingAuditRecord({ action: "CONFIGURE_GMAIL_MAILER", bookingId: "", actor });
+  return { configured: true };
+});
+
+exports.getGmailMailerStatus = onCall(async (request) => {
+  await assertAdmin(request);
+  const snap = await admin.firestore().doc(MAILER_SETTINGS_PATH).get();
+  const data = snap.exists ? snap.data() : {};
+  return { configured: Boolean(data.clientId && data.clientSecretEncrypted && data.senderEmail), connected: Boolean(data.refreshTokenEncrypted), senderEmail: data.senderEmail || "", connectedAt: data.connectedAt || null };
+});
+
+exports.startGmailMailerAuthorization = onCall({ secrets: [mailerEncryptionKey] }, async (request) => {
+  const actor = await assertAdmin(request);
+  const settings = await getMailerSettings(false);
+  const state = crypto.randomBytes(32).toString("hex");
+  await admin.firestore().doc("mailerAuthorizationStates/" + state).set({
+    state,
+    actorUid: actor.uid,
+    actorEmail: actor.email,
+    expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+    createdAt: FieldValue.serverTimestamp(),
+  });
+  const authUrl = new URL("https://accounts.google.com/o/oauth2/v2/auth");
+  authUrl.searchParams.set("client_id", settings.clientId);
+  authUrl.searchParams.set("redirect_uri", MAILER_OAUTH_CALLBACK);
+  authUrl.searchParams.set("response_type", "code");
+  authUrl.searchParams.set("scope", "https://www.googleapis.com/auth/gmail.send");
+  authUrl.searchParams.set("access_type", "offline");
+  authUrl.searchParams.set("prompt", "consent");
+  authUrl.searchParams.set("state", state);
+  return { authorizationUrl: authUrl.toString() };
+});
+
+exports.connectMailerCallback = onRequest({ secrets: [mailerEncryptionKey] }, async (request, response) => {
+  const state = text(request.query?.state, 200);
+  const code = text(request.query?.code, 4096);
+  const oauthError = text(request.query?.error, 200);
+  const finish = (title, detail, status = 200) => response.status(status).type("html").send("<!doctype html><meta charset=\"utf-8\"><title>" + title + "</title><main style=\"font-family:system-ui;max-width:560px;margin:48px auto;padding:24px\"><h1>" + title + "</h1><p>" + detail + "</p><p>可關閉此頁並回到 CAC 後台。</p></main>");
+  if (oauthError) return finish("Gmail 連結未完成", "Google 授權被取消或拒絕。", 400);
+  if (!state || !code) return finish("Gmail 連結失敗", "缺少授權資料。", 400);
+  const stateRef = admin.firestore().doc("mailerAuthorizationStates/" + state);
+  const stateSnap = await stateRef.get();
+  const expiresAt = stateSnap.exists ? stateSnap.data().expiresAt?.toDate?.() : null;
+  if (!stateSnap.exists || !expiresAt || expiresAt.getTime() < Date.now()) return finish("Gmail 連結失敗", "此授權連結已過期，請回後台重新開始。", 400);
+  try {
+    const settings = await getMailerSettings(false);
+    const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ code, client_id: settings.clientId, client_secret: settings.clientSecret, redirect_uri: MAILER_OAUTH_CALLBACK, grant_type: "authorization_code" }),
+    });
+    const tokenJson = await tokenResponse.json();
+    if (!tokenResponse.ok || !tokenJson.refresh_token) throw new Error("Google did not return a refresh token");
+    await admin.firestore().doc(MAILER_SETTINGS_PATH).set({
+      refreshTokenEncrypted: encryptMailerValue(tokenJson.refresh_token),
+      connectedAt: FieldValue.serverTimestamp(),
+      connectedBy: stateSnap.data().actorEmail || "",
+      lastConnectionError: null,
+    }, { merge: true });
+    await stateRef.delete();
+    await writeBookingAuditRecord({ action: "CONNECT_GMAIL_MAILER", bookingId: "", actor: { uid: stateSnap.data().actorUid, email: stateSnap.data().actorEmail, role: "ADMIN" } });
+    return finish("Gmail 已連結", "預約認領信將由已設定的健檢中心信箱寄出。");
+  } catch (error) {
+    console.error("Gmail mailer callback failed", error.message);
+    return finish("Gmail 連結失敗", "無法完成授權。請回後台重新設定或重新連結。", 500);
+  }
+});
+
+exports.sendBookingClaimEmailAsStaff = onCall({ secrets: [mailerEncryptionKey] }, async (request) => {
+  const actor = await assertStaff(request);
+  const bookingId = text(request.data?.bookingId, 200);
+  if (!bookingId) throw new HttpsError("invalid-argument", "bookingId is required");
+  const bookingRef = admin.firestore().doc("bookings/" + bookingId);
+  const status = await sendBookingClaimEmail(bookingRef, actor);
+  return { status };
 });

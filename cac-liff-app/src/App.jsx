@@ -85,6 +85,10 @@ import {
   listStaffUsers,
   markChecklistPrinted,
   saveBooking,
+  configureGmailMailer,
+  getGmailMailerStatus,
+  startGmailMailerAuthorization,
+  sendBookingClaimEmail,
   saveBookingBlockedDate,
   saveCustomerQuestionnaireResponse,
   saveManagedQuestionnaire,
@@ -666,6 +670,9 @@ const App = () => {
   const [newStaffEmail, setNewStaffEmail] = useState("");
   const [newStaffRole, setNewStaffRole] = useState("STAFF");
   const [staffManageStatus, setStaffManageStatus] = useState("");
+  const [mailerSettings, setMailerSettings] = useState({ clientId: "115646983549-2kcsdujf95q93oak14ns9lv6n73345gv.apps.googleusercontent.com", clientSecret: "", senderEmail: "ptch.health@gmail.com" });
+  const [mailerStatus, setMailerStatus] = useState("");
+  const [mailerConnection, setMailerConnection] = useState({ configured: false, connected: false, senderEmail: "" });
   const [blockedBookingDates, setBlockedBookingDates] = useState([]);
   const [blockedDate, setBlockedDate] = useState("");
   const [blockedDateReason, setBlockedDateReason] = useState("");
@@ -1459,10 +1466,10 @@ ${selectedItems
       });
       if (inviteToken) payload.booking.inviteToken = inviteToken;
       const result = await saveBooking(payload, { lineAccessToken: staffMode ? "" : lineProfile?.accessToken || "" });
-      if (staffMode && result.claimToken) {
-        window.prompt(lang === "en" ? "Send this LINE linking link to the customer:" : "請將此 LINE 綁定連結傳給客戶：", customerLineClaimLink(result.bookingId, result.claimToken));
-      }
-      setBookingStatus(result.localOnly ? `已暫存本機預約：${result.bookingId}` : `預約已建立：${result.bookingId}`);
+      const claimEmailMessage = staffMode && bookingForm.email
+        ? (result.claimEmailStatus === "SENT" ? (lang === "en" ? " LINE linking email sent." : "；LINE 綁定信已寄出") : (lang === "en" ? " Email is pending or failed; use the booking list to resend." : "；寄件尚未完成，可至預約清單補寄"))
+        : "";
+      setBookingStatus(result.localOnly ? `已暫存本機預約：${result.bookingId}` : `預約已建立：${result.bookingId}${claimEmailMessage}`);
       setShowBookingModal(false);
       setAdminStartDate(payload.booking.appointmentDate);
       setAdminEndDate(payload.booking.appointmentDate);
@@ -1747,6 +1754,50 @@ ${selectedItems
       .catch((error) => setStaffManageStatus(lang === "en" ? `Load staff failed: ${error.message}` : `\u8b80\u53d6\u54e1\u5de5\u5931\u6557\uff1a${error.message}`));
   }, [isAdminUser, lang]);
 
+  const loadMailerStatus = async () => {
+    try {
+      const result = await getGmailMailerStatus();
+      setMailerConnection(result.data || {});
+    } catch (error) {
+      setMailerStatus(lang === "en" ? `Load mailer failed: ${error.message}` : `讀取寄件設定失敗：${error.message}`);
+    }
+  };
+
+  useEffect(() => {
+    if (isAdminUser) loadMailerStatus();
+  }, [isAdminUser]);
+
+  const handleConfigureMailer = async () => {
+    try {
+      setMailerStatus(lang === "en" ? "Saving Gmail sender..." : "儲存 Gmail 寄件設定中...");
+      await configureGmailMailer(mailerSettings);
+      setMailerSettings((current) => ({ ...current, clientSecret: "" }));
+      setMailerStatus(lang === "en" ? "Saved. Now connect the Gmail account." : "已儲存。請按「連結 Gmail」完成一次性授權。");
+      await loadMailerStatus();
+    } catch (error) {
+      setMailerStatus(lang === "en" ? `Save failed: ${error.message}` : `儲存失敗：${error.message}`);
+    }
+  };
+
+  const handleConnectMailer = async () => {
+    try {
+      setMailerStatus(lang === "en" ? "Opening Google authorization..." : "正在開啟 Google 授權頁...");
+      const result = await startGmailMailerAuthorization();
+      window.location.assign(result.data.authorizationUrl);
+    } catch (error) {
+      setMailerStatus(lang === "en" ? `Connect failed: ${error.message}` : `連結失敗：${error.message}`);
+    }
+  };
+
+  const handleResendClaimEmail = async (booking) => {
+    try {
+      await sendBookingClaimEmail(booking.bookingId);
+      setAdminStatus(lang === "en" ? "Claim email sent" : "已寄出 LINE 綁定／預約確認信");
+      handleLoadAdminBookings();
+    } catch (error) {
+      setAdminStatus(lang === "en" ? `Email failed: ${error.message}` : `寄送失敗：${error.message}`);
+    }
+  };
   const handleLoadAuditLogs = async () => {
     try {
       setAuditStatus(lang === "en" ? "Loading..." : "讀取中...");
@@ -3825,6 +3876,7 @@ ${selectedItems
                     {booking.status !== "CONFIRMED" && booking.status !== "CANCELLED" && <button onClick={() => handleConfirmBooking(booking)} className="text-xs px-2 py-1 rounded bg-emerald-600 text-white font-bold">{t.confirm}</button>}
                     {booking.status !== "CANCELLED" && <button onClick={() => handleCancelAdminBooking(booking)} className="text-xs px-2 py-1 rounded bg-rose-600 text-white font-bold">{lang === "en" ? "Cancel" : "\u53d6\u6d88"}</button>}
                     {booking.status === "CONFIRMED" && <button onClick={() => handleSendD1Notice(booking)} className="text-xs px-2 py-1 rounded bg-amber-500 text-white font-bold">{lang === "en" ? "Reminder" : "\u63d0\u9192"}</button>}
+                    {booking.status !== "CANCELLED" && booking.customerEmail && !booking.lineUserId && <button onClick={() => handleResendClaimEmail(booking)} className="text-xs px-2 py-1 rounded bg-indigo-600 text-white font-bold">{lang === "en" ? "Email" : "寄信"}</button>}
                     {booking.status !== "CANCELLED" && <button onClick={() => printBookings([booking])} className="text-xs px-2 py-1 rounded bg-slate-900 text-white font-bold">{t.print}</button>}
                   </div>
                 </div>
@@ -3868,6 +3920,19 @@ ${selectedItems
           </div>
 
           {isAdminUser && (
+            <div className="rounded-lg border border-indigo-200 bg-white p-4 shadow-sm space-y-3">
+              <div className="text-sm font-black text-slate-900">{lang === "en" ? "Booking email sender" : "預約 Email 寄件設定"}</div>
+              <p className="text-xs leading-relaxed text-slate-500">{lang === "en" ? "Only admins can configure and connect the sender. Credentials are encrypted server-side." : "僅管理者可設定與連結寄件 Gmail；憑證僅以伺服器端加密方式保存。"}</p>
+              <div className={`rounded px-2 py-1.5 text-xs font-bold ${mailerConnection.connected ? "bg-emerald-50 text-emerald-700" : mailerConnection.configured ? "bg-amber-50 text-amber-800" : "bg-slate-100 text-slate-600"}`}>
+                {mailerConnection.connected ? (lang === "en" ? `Connected: ${mailerConnection.senderEmail}` : `已連結：${mailerConnection.senderEmail}`) : mailerConnection.configured ? (lang === "en" ? "Credentials saved: connect Gmail" : "已儲存憑證：請連結 Gmail") : (lang === "en" ? "Not configured" : "尚未設定")}
+              </div>
+              <input className="w-full rounded-md border border-slate-300 px-3 py-2 text-xs font-normal" value={mailerSettings.clientId} onChange={(e) => setMailerSettings((current) => ({ ...current, clientId: e.target.value }))} placeholder="OAuth Client ID" />
+              <input type="password" className="w-full rounded-md border border-slate-300 px-3 py-2 text-xs font-normal" value={mailerSettings.clientSecret} onChange={(e) => setMailerSettings((current) => ({ ...current, clientSecret: e.target.value }))} placeholder={lang === "en" ? "New OAuth client secret" : "新的 OAuth Client secret"} />
+              <input type="email" className="w-full rounded-md border border-slate-300 px-3 py-2 text-xs font-normal" value={mailerSettings.senderEmail} onChange={(e) => setMailerSettings((current) => ({ ...current, senderEmail: e.target.value }))} placeholder="Sender Gmail" />
+              <div className="grid grid-cols-2 gap-2"><button onClick={handleConfigureMailer} className="rounded-md bg-slate-900 px-3 py-2 text-xs font-bold text-white">{lang === "en" ? "Save sender" : "儲存寄件設定"}</button><button disabled={!mailerConnection.configured} onClick={handleConnectMailer} className="rounded-md bg-indigo-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-40">{lang === "en" ? "Connect Gmail" : "連結 Gmail"}</button></div>
+              {mailerStatus && <p className="text-xs text-slate-500">{mailerStatus}</p>}
+            </div>
+          )}          {isAdminUser && (
             <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm space-y-3">
               <div className="text-sm font-black text-slate-900 flex items-center justify-between">
                 <span>{t.staffAccounts}</span>
