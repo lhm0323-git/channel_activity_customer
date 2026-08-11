@@ -2687,6 +2687,7 @@ ${selectedItems
     if (view === "prep") return <CheckInInfoPanel prepOnly />;
     if (view === "followup") return <ReportFollowUpPanel />;
     const contactMapUrl = "https://www.google.com/maps/search/?api=1&query=%E5%B1%8F%E6%9D%B1%E5%B8%82%E5%A4%A7%E9%80%A3%E8%B7%AF66%E8%99%9F%E6%81%A9%E6%85%88%E5%A4%A7%E6%A8%932%E6%A8%93";
+    const contactLocationImage = '/health-check-center-location.jpg';
     const content = {
       prep: {
         title: "來檢須知",
@@ -2717,7 +2718,12 @@ ${selectedItems
           {(content.items || []).map((item) => <div key={item} className="rounded-md border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700">{item}</div>)}
         </div>
         {view === "contact" ? (
-          <a href={contactMapUrl} target="_blank" rel="noreferrer" className="mt-4 inline-flex w-full items-center justify-center rounded-md bg-emerald-600 px-4 py-3 text-sm font-black text-white shadow-sm sm:w-auto">開啟 Google Maps 導航</a>
+          <>
+            <figure className="mt-5 overflow-hidden rounded-lg border border-slate-200 bg-white">
+              <img src={contactLocationImage} alt="Health Check Center location map" loading="lazy" className="block h-auto w-full" />
+            </figure>
+            <a href={contactMapUrl} target="_blank" rel="noreferrer" className="mt-4 inline-flex w-full items-center justify-center rounded-md bg-emerald-600 px-4 py-3 text-sm font-black text-white shadow-sm sm:w-auto">開啟 Google Maps 導航</a>
+          </>
         ) : null}
       </div>
     );

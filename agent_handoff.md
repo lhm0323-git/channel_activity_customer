@@ -348,3 +348,8 @@ Do not rely on routine email delivery until Google OAuth is published/verified o
 - Fixed `staffProfile()` to return the authenticated UID for bootstrap admin and stored staff accounts. OAuth state and audit records now receive a valid actor UID.
 - Verification: production log reproduced the exact Firestore error; `node --check functions/index.js` and `npm test` passed; production Function revision `startgmailmailerauthorization-00002-xuj` is ACTIVE.
 - Acceptance: retry `連結 Gmail`; the next expected screen is Google account selection/consent, not an INTERNAL error.
+## 2026-08-11 - Contact location map
+
+- Added the supplied Health Check Center location map to the public `聯絡交通` view, immediately before the Google Maps navigation button.
+- Asset: `cac-liff-app/public/health-check-center-location.jpg`.
+- Verified: `npm test`, `npm run build`, production Hosting deployment, and public image URL HTTP 200 (`image/jpeg`).
