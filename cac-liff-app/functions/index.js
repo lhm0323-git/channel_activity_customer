@@ -570,6 +570,56 @@ exports.saveMyQuestionnaireResponse = onCall(async (request) => {
   });
   return { responseId: responseRef.id };
 });
+exports.getBookingQuestionnaireResponseAsStaff = onCall(async (request) => {
+  await assertStaff(request);
+  const bookingId = text(request.data?.bookingId, 200);
+  const questionnaireId = text(request.data?.questionnaireId, 160);
+  if (!bookingId || !questionnaireId) throw new HttpsError("invalid-argument", "Booking ID and questionnaire ID are required");
+  const db = admin.firestore();
+  const [bookingSnap, responseSnap] = await Promise.all([
+    db.doc("bookings/" + bookingId).get(),
+    db.doc("customerQuestionnaireResponses/" + bookingId + "_" + questionnaireId).get(),
+  ]);
+  if (!bookingSnap.exists) throw new HttpsError("not-found", "Booking not found");
+  if (!responseSnap.exists) return { response: null };
+  const response = responseSnap.data();
+  return {
+    response: {
+      responseId: responseSnap.id,
+      bookingId,
+      questionnaireId,
+      answers: safeAnswers(response.answers),
+      staffEditedBy: text(response.staffEditedBy, 320),
+    },
+  };
+});
+
+exports.saveBookingQuestionnaireResponseAsStaff = onCall(async (request) => {
+  const actor = await assertStaff(request);
+  const bookingId = text(request.data?.bookingId, 200);
+  const questionnaireId = text(request.data?.questionnaireId, 160);
+  if (!bookingId || !questionnaireId) throw new HttpsError("invalid-argument", "Booking ID and questionnaire ID are required");
+  const answers = safeAnswers(request.data?.answers);
+  const db = admin.firestore();
+  const bookingRef = db.doc("bookings/" + bookingId);
+  const responseRef = db.doc("customerQuestionnaireResponses/" + bookingId + "_" + questionnaireId);
+  const bookingSnap = await bookingRef.get();
+  if (!bookingSnap.exists) throw new HttpsError("not-found", "Booking not found");
+  const booking = bookingSnap.data();
+  await responseRef.set({
+    bookingId,
+    customerId: booking.customerId || "",
+    questionnaireId,
+    answers,
+    ownerUid: booking.ownerUid || "",
+    staffEditedAt: FieldValue.serverTimestamp(),
+    staffEditedBy: actor.email,
+    updatedAt: FieldValue.serverTimestamp(),
+  }, { merge: true });
+  await writeBookingAuditRecord({ action: "UPDATE_QUESTIONNAIRE", bookingId, actor });
+  return { responseId: responseRef.id };
+});
+
 exports.getLineCustomerProfile = onCall(async (request) => {
   if (!request.auth?.uid) throw new HttpsError("unauthenticated", "A signed-in session is required");
   const profile = await verifyLineAccessToken(request.data?.accessToken);

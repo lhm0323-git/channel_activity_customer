@@ -333,3 +333,7 @@ Staff can enter and update a booking's medical record number in the booking-deta
 ## Latest Update
 
 - 2026-08-12: The LIFF booking modal scrolls within short mobile screens. Cancelling a LINE-linked booking sends a best-effort LINE cancellation message. The staff booking list now defaults to active bookings; use the Show filter to view cancelled records or all records.
+## Latest Update - 2026-08-12 Booking-scoped questionnaire correction
+
+- Staff booking detail now loads the questionnaire response for that exact booking. Authorized staff can correct and save answers, then print the corrected A4 form for customer signature. Questionnaire answers are not copied into audit logs.
+- National Health Administration preventive-care eligibility lookup is not active yet. Its planned boundary is an authenticated staff Cloud Function that forwards a one-time ID lookup to the hospital API without persisting or logging the full ID.

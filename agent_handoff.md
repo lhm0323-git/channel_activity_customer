@@ -393,3 +393,11 @@ Do not rely on routine email delivery until Google OAuth is published/verified o
 - cancelBooking is deployed with LINE_CHANNEL_ACCESS_TOKEN. It writes the cancellation before attempting the optional LINE message, so an external delivery failure cannot restore an already-cancelled booking.
 - Booking List defaults to active records. Staff can explicitly choose Cancelled or All with the Show filter.
 - Deployed: cancelbooking-00003-nur; Hosting 8aaf6387a729c7f8.
+
+## 2026-08-12 - Booking questionnaire staff correction
+
+- Staff booking detail now resolves questionnaire answers by exact `bookingId + questionnaireId`; it no longer uses the latest response for the customer.
+- New staff-only callable Functions allow authorized correction and preserve the existing customer-facing response document. Staff can save corrections and print the signed A4 form from the same modal.
+- `auditLogs` records `UPDATE_QUESTIONNAIRE` metadata only; answer content is intentionally excluded.
+- Production Hosting release: `496c1114a9ba5e6e`. Function and emulator tests passed.
+- National Health Administration preventive-care eligibility lookup remains pending. Do not implement or persist full-ID lookup until hospital IT supplies endpoint, authentication, schema, test environment, errors, timeout, and rate limits.

@@ -544,6 +544,31 @@ export async function getLastCustomerQuestionnaireResponse(customerId, questionn
   }
 }
 
+export async function getBookingQuestionnaireResponseAsStaff(bookingId, questionnaireId) {
+  if (!bookingId || !questionnaireId) throw new Error("Booking ID and questionnaire ID are required");
+  if (!db) {
+    const saved = JSON.parse(localStorage.getItem("cac_questionnaire_responses") || "[]");
+    return saved.find((response) => response.bookingId === bookingId && response.questionnaireId === questionnaireId) || null;
+  }
+  if (!functions) throw new Error("Questionnaire service is unavailable");
+  const result = await httpsCallable(functions, "getBookingQuestionnaireResponseAsStaff")({ bookingId, questionnaireId });
+  return result.data?.response || null;
+}
+
+export async function saveBookingQuestionnaireResponseAsStaff({ bookingId, questionnaireId, answers }) {
+  if (!bookingId || !questionnaireId) throw new Error("Booking ID and questionnaire ID are required");
+  if (!db) {
+    const saved = JSON.parse(localStorage.getItem("cac_questionnaire_responses") || "[]");
+    const next = saved.filter((response) => !(response.bookingId === bookingId && response.questionnaireId === questionnaireId));
+    next.push({ bookingId, questionnaireId, answers: answers || {}, staffEditedAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+    localStorage.setItem("cac_questionnaire_responses", JSON.stringify(next));
+    return { responseId: `local-${bookingId}-${questionnaireId}`, localOnly: true };
+  }
+  if (!functions) throw new Error("Questionnaire service is unavailable");
+  const result = await httpsCallable(functions, "saveBookingQuestionnaireResponseAsStaff")({ bookingId, questionnaireId, answers: answers || {} });
+  return { ...result.data, localOnly: false };
+}
+
 export async function saveCustomerQuestionnaireResponse({ bookingId, customerId, questionnaireId, answers }) {
   if (!bookingId || !questionnaireId) throw new Error("Booking ID and questionnaire ID are required");
   if (!db) {

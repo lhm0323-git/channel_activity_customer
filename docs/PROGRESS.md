@@ -471,3 +471,14 @@ pm test, staging build, and staging Hosting deployment.
 - Verification: node --check functions/index.js, npm test -- --run, npm run build, and git diff --check passed.
 - Deployment: cancelBooking revision cancelbooking-00003-nur and Hosting release 8aaf6387a729c7f8 deployed to production.
 - Next acceptance: cancel a LINE-linked booking from both My Bookings and staff Booking List, then verify the LINE message and default active-only list view.
+
+## 2026-08-12 - Booking-scoped questionnaire correction
+
+- Fixed the staff print workflow to load `customerQuestionnaireResponses/{bookingId}_{questionnaireId}` instead of the latest response for the customer, which could belong to another appointment.
+- Added staff-authorized callable Functions to read and save answers for the selected booking. Staff can now review, correct, save, and print the corrected A4 questionnaire for customer signature.
+- Audit records capture the booking, action, operator, and time but never copy questionnaire answers or other health-content values.
+- Documented the pending National Health Administration API boundary. Full ID data will be forwarded only through an authenticated staff Function and will not be persisted or logged; implementation waits for the hospital IT API contract and test credentials.
+- Files: `cac-liff-app/functions/index.js`, `cac-liff-app/src/firebase.js`, `cac-liff-app/src/App.jsx`, `cac-liff-app/src/functions.p0.test.js`, implementation plan and handoff documents.
+- Verification: `node --check functions/index.js`, `npm test`, `npm audit --omit=dev --audit-level=high`, `npm run build`, emulator `npm run test:functions`, and `git diff --check` passed.
+- Deployment: both questionnaire callable Functions and Firebase Hosting were deployed to production. Hosting release `496c1114a9ba5e6e`.
+- Next acceptance: open a booking with a completed questionnaire, select `檢視／修正健康問卷`, change one answer, save it, reopen the same booking, and print the corrected form.

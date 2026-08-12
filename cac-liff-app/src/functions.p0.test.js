@@ -73,6 +73,22 @@ const importedBooking = await getDoc(doc(db, "bookings", imported.data.bookingId
 assert.equal(importedBooking.data().customerEmail, "");
 assert.equal(importedBooking.data().notificationChannel, "NONE");
 console.log("ok - active staff CSV import accepts blank Email and LINE ID");
+
+const saveQuestionnaireAsStaff = httpsCallable(functions, "saveBookingQuestionnaireResponseAsStaff");
+const getQuestionnaireAsStaff = httpsCallable(functions, "getBookingQuestionnaireResponseAsStaff");
+const staffQuestionnaire = await saveQuestionnaireAsStaff({
+  bookingId: imported.data.bookingId,
+  questionnaireId: "general-health",
+  answers: { q1: "staff corrected", q2: ["none"] },
+});
+assert.equal(staffQuestionnaire.data.responseId, `${imported.data.bookingId}_general-health`);
+const loadedStaffQuestionnaire = await getQuestionnaireAsStaff({
+  bookingId: imported.data.bookingId,
+  questionnaireId: "general-health",
+});
+assert.deepEqual(loadedStaffQuestionnaire.data.response.answers, { q1: "staff corrected", q2: ["none"] });
+assert.equal(loadedStaffQuestionnaire.data.response.bookingId, imported.data.bookingId);
+console.log("ok - staff questionnaire correction is scoped to the selected booking");
 await admin.app("p0-admin").delete();
 console.log("ok - P0 Functions create, questionnaire, reschedule, and cancel retain public workflow");
 await terminate(db);

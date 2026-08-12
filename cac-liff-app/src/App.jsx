@@ -71,6 +71,7 @@ import {
   confirmBooking,
   deleteManagedPackage,
   getLastCustomerQuestionnaireResponse,
+  getBookingQuestionnaireResponseAsStaff,
   getBookingById,
   getLineCustomerProfile,
   getStaffUser,
@@ -92,6 +93,7 @@ import {
   sendBookingClaimEmail,
   saveBookingBlockedDate,
   saveCustomerQuestionnaireResponse,
+  saveBookingQuestionnaireResponseAsStaff,
   saveManagedQuestionnaire,
   requestBookingChange,
   createPackageInvite,
@@ -1628,6 +1630,30 @@ ${selectedItems
       setMyBookingStatus(`載入問卷失敗：${error.message}`);
     }
   };
+  const openAdminQuestionnaireForBooking = async (booking) => {
+    try {
+      const questionnaireId = questionnaireIdForPackage(booking.packageName);
+      if (!questionnaireId) {
+        setAdminStatus(lang === "en" ? "No questionnaire is required for this package." : "此套餐未設定健康問卷。");
+        return;
+      }
+      setAdminStatus(lang === "en" ? "Loading questionnaire..." : "讀取該次預填問卷中...");
+      const schema = getQuestionnaireById(questionnaireId, customQuestionnaires);
+      const response = await getBookingQuestionnaireResponseAsStaff(booking.bookingId, questionnaireId);
+      setActiveQuestionnaireModal({
+        booking,
+        schema,
+        answers: mergePreviousAnswers(schema, response?.answers),
+        previousLoaded: Boolean(response),
+        staffMode: true,
+        status: response ? (lang === "en" ? "Loaded submitted answers" : "已載入此筆預約的最新作答") : (lang === "en" ? "No submitted answers yet" : "此筆預約尚未填寫問卷"),
+      });
+      setAdminStatus("");
+    } catch (error) {
+      setAdminStatus(lang === "en" ? `Questionnaire load failed: ${error.message}` : `問卷讀取失敗：${error.message}`);
+    }
+  };
+
   const statusLabel = (status) => ({ BOOKED: t.booked, CONFIRMED: t.confirmed, RESCHEDULED: t.rescheduled, CANCELLED: t.cancelled }[status] || status || t.booked);
   const reportStatusLabel = (status) => ({
     PENDING: lang === "en" ? "Processing" : "處理中",
@@ -3125,17 +3151,10 @@ ${selectedItems
           <button
             type="button"
             className="rounded-md border border-slate-700 bg-slate-800 px-3.5 py-2 text-xs font-bold text-white hover:bg-slate-900 flex items-center gap-1.5"
-            onClick={async () => {
-              const qId = questionnaireIdForPackage(adminDetailBooking.packageName);
-              if (!qId) { alert(lang === "en" ? "No questionnaire is required for this package." : "\u6b64\u5957\u9910\u672a\u8a2d\u5b9a\u5065\u5eb7\u554f\u5377\u3002"); return; }
-              const schema = getQuestionnaireById(qId, customQuestionnaires);
-              const customerId = adminDetailBooking.customerId || adminDetailBooking.ownerUid || adminDetailBooking.customerPhone || adminDetailBooking.idNumber || "";
-              const lastResp = await getLastCustomerQuestionnaireResponse(customerId, qId);
-              printQuestionnaireDocument({ booking: adminDetailBooking, schema, answers: lastResp?.answers });
-            }}
+            onClick={() => openAdminQuestionnaireForBooking(adminDetailBooking)}
           >
             <Printer className="w-4 h-4 text-slate-300" />
-            列印健康問卷 (A4紙本)
+            {lang === "en" ? "Review / edit questionnaire" : "檢視／修正健康問卷"}
           </button>
           {adminDetailBooking.status !== "CANCELLED" && (
             <button className="rounded-md bg-rose-600 px-4 py-2 text-xs font-bold text-white" onClick={() => handleCancelAdminBooking(adminDetailBooking)}>{lang === "en" ? "Cancel booking" : "\u53d6\u6d88\u9810\u7d04"}</button>
@@ -3165,12 +3184,13 @@ ${selectedItems
   ) : null;
   const QuestionnaireModal = () => {
     if (!activeQuestionnaireModal) return null;
-    const { booking, schema, answers, status, previousLoaded } = activeQuestionnaireModal;
+    const { booking, schema, answers, status, previousLoaded, staffMode: questionnaireStaffMode = false } = activeQuestionnaireModal;
 
     const handleAnswerChange = (questionId, value) => {
       setActiveQuestionnaireModal((current) => ({
         ...current,
         answers: { ...current.answers, [questionId]: value },
+        status: current.staffMode ? (lang === "en" ? "Unsaved changes" : "有尚未儲存的修正") : current.status,
       }));
     };
 
@@ -3192,14 +3212,28 @@ ${selectedItems
     const handleSubmitQuestionnaire = async () => {
       try {
         setActiveQuestionnaireModal((current) => ({ ...current, status: lang === "en" ? "Saving..." : "儲存中..." }));
-        await saveCustomerQuestionnaireResponse({
-          bookingId: booking.bookingId,
-          customerId: booking.customerId || booking.ownerUid || booking.customerPhone || booking.idNumber,
-          questionnaireId: schema.id,
-          answers,
-        });
-        setActiveQuestionnaireModal(null);
-        setMyBookingStatus(lang === "en" ? "Questionnaire saved!" : "健康問卷已成功儲存！");
+        if (questionnaireStaffMode) {
+          await saveBookingQuestionnaireResponseAsStaff({
+            bookingId: booking.bookingId,
+            questionnaireId: schema.id,
+            answers,
+          });
+          setActiveQuestionnaireModal((current) => ({
+            ...current,
+            previousLoaded: true,
+            status: lang === "en" ? "Corrections saved. Ready to print." : "修正已儲存，可列印請客戶簽名。",
+          }));
+          setAdminStatus(lang === "en" ? "Questionnaire corrections saved" : "健康問卷修正已儲存");
+        } else {
+          await saveCustomerQuestionnaireResponse({
+            bookingId: booking.bookingId,
+            customerId: booking.customerId || booking.ownerUid || booking.customerPhone || booking.idNumber,
+            questionnaireId: schema.id,
+            answers,
+          });
+          setActiveQuestionnaireModal(null);
+          setMyBookingStatus(lang === "en" ? "Questionnaire saved!" : "健康問卷已成功儲存！");
+        }
       } catch (error) {
         setActiveQuestionnaireModal((current) => ({ ...current, status: `儲存失敗：${error.message}` }));
       }
@@ -3222,7 +3256,7 @@ ${selectedItems
             {previousLoaded && (
               <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-3 text-xs text-emerald-800 font-bold flex items-center gap-2">
                 <CheckCircle2 className="h-4 w-4 text-emerald-600 flex-shrink-0" />
-                <span>已自動為您帶入上次填寫紀錄（無須重複選擇，確認異動處即可）。</span>
+                <span>{questionnaireStaffMode ? "已載入此筆預約目前儲存的作答，可核對並修正。" : "已自動為您帶入上次填寫紀錄（無須重複選擇，確認異動處即可）。"}</span>
               </div>
             )}
 
@@ -3269,15 +3303,15 @@ ${selectedItems
             ))}
           </div>
 
-          <div className="p-4 border-t border-slate-100 bg-slate-50 flex items-center justify-between">
+          <div className="p-4 border-t border-slate-100 bg-slate-50 flex flex-wrap items-center justify-between gap-3">
             {status ? <span className="text-xs font-bold text-indigo-600">{status}</span> : <span />}
-            <div className="flex gap-2">
+            <div className="flex flex-wrap justify-end gap-2">
               <button type="button" onClick={() => printQuestionnaireDocument({ booking, schema, answers })} className="rounded-md border border-slate-700 bg-slate-800 px-3.5 py-2 text-xs font-bold text-white hover:bg-slate-900 flex items-center gap-1.5">
                 <Printer className="w-4 h-4 text-slate-300" />
                 {lang === "en" ? "Print A4 Questionnaire" : "列印問卷 (含簽名欄)"}
               </button>
               <button onClick={() => setActiveQuestionnaireModal(null)} className="rounded-md border border-slate-300 px-4 py-2 text-xs font-bold text-slate-600 hover:bg-white">{lang === "en" ? "Cancel" : "取消"}</button>
-              <button onClick={handleSubmitQuestionnaire} className="rounded-md bg-indigo-600 px-4 py-2 text-xs font-bold text-white shadow-md hover:bg-indigo-700">{lang === "en" ? "Save & Submit" : "儲存並送出健康問卷"}</button>
+              <button onClick={handleSubmitQuestionnaire} className="rounded-md bg-indigo-600 px-4 py-2 text-xs font-bold text-white shadow-md hover:bg-indigo-700">{questionnaireStaffMode ? (lang === "en" ? "Save corrections" : "儲存修正") : (lang === "en" ? "Save & Submit" : "儲存並送出健康問卷")}</button>
             </div>
           </div>
         </div>
