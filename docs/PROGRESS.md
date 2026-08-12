@@ -482,3 +482,13 @@ pm test, staging build, and staging Hosting deployment.
 - Verification: `node --check functions/index.js`, `npm test`, `npm audit --omit=dev --audit-level=high`, `npm run build`, emulator `npm run test:functions`, and `git diff --check` passed.
 - Deployment: both questionnaire callable Functions and Firebase Hosting were deployed to production. Hosting release `496c1114a9ba5e6e`.
 - Next acceptance: open a booking with a completed questionnaire, select `檢視／修正健康問卷`, change one answer, save it, reopen the same booking, and print the corrected form.
+
+## 2026-08-12 - Questionnaire field carry-forward
+
+- Added `carryForward` at question level and a visual-designer checkbox labelled `下次預約自動帶入` so nursing staff can decide which answers may be reused.
+- Built-in defaults carry stable history fields only. Current medication, recent symptoms, smoking/drinking/exercise, mental-health screening, and pregnancy plans are intentionally not copied.
+- When reopening the same booking, CAC loads all saved answers. When opening a different booking, CAC copies only fields explicitly enabled in the current questionnaire schema.
+- New and Excel/OCR-imported questions default to `carryForward: false`.
+- Files: `cac-liff-app/src/questionnaire.js`, `cac-liff-app/src/firebase.js`, `cac-liff-app/src/App.jsx`, `cac-liff-app/src/core.test.js`.
+- Verification: `npm test`, `npm run build`, and `git diff --check` passed. Existing Vite chunk-size warning remains.
+- Deployment: production Firebase Hosting version `2519d7c7722ff1e5`.

@@ -337,3 +337,10 @@ Staff can enter and update a booking's medical record number in the booking-deta
 
 - Staff booking detail now loads the questionnaire response for that exact booking. Authorized staff can correct and save answers, then print the corrected A4 form for customer signature. Questionnaire answers are not copied into audit logs.
 - National Health Administration preventive-care eligibility lookup is not active yet. Its planned boundary is an authenticated staff Cloud Function that forwards a one-time ID lookup to the hospital API without persisting or logging the full ID.
+
+## Latest Update - 2026-08-12 Questionnaire field carry-forward
+
+- Returning customers can reuse selected answers across bookings. Each questionnaire question now has a staff-managed `carryForward` setting in the visual questionnaire designer.
+- Built-in questionnaires carry forward stable history fields such as disease history, allergies, family history, education, identity category, genetic history, and rubella vaccination. Current medication, recent symptoms, lifestyle behavior, mental-health screening, and pregnancy plans remain blank for each new booking.
+- Reopening the same booking still loads every saved answer. New custom questions and imported questions default to not carrying forward.
+- Production Hosting version: `2519d7c7722ff1e5`.

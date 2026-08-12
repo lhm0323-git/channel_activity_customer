@@ -34,6 +34,7 @@
 
 5. **健康問卷核對與國健署資格查詢**
    - 後台依 `bookingId` 讀取該次預約的預填問卷；員工可核對、修正、儲存後列印請客戶簽名。問卷答案內容不寫入 `auditLogs`。
+   - 問卷題目可由護理團隊逐題設定「下次預約自動帶入」；病史、過敏史、家族史等穩定資料預設沿用，近期症狀、目前用藥、生活習慣與備孕狀態預設不沿用。
    - 國健署預防保健資格查詢採 staff-only Cloud Function adapter，完整身分證僅於查詢當下傳送至院內 API，不寫入 Firestore、不記錄於 log。
    - 待資訊室提供 endpoint、驗證方式、request/response schema、測試環境、錯誤碼、timeout 與 rate limit 後啟用。
 ### 驗收

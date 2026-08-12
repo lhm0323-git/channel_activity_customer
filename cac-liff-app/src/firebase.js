@@ -507,13 +507,14 @@ export async function savePackageQuestionnaireRule(packageName, questionnaireId)
   return { localOnly: false };
 }
 
-export async function getLastCustomerQuestionnaireResponse(customerId, questionnaireId) {
+export async function getLastCustomerQuestionnaireResponse(customerId, questionnaireId, preferredBookingId = "") {
   if (!questionnaireId) return null;
   if (!db) {
     const saved = JSON.parse(localStorage.getItem("cac_questionnaire_responses") || "[]");
-    const match = saved
+    const matches = saved
       .filter((r) => (r.customerId === customerId || !customerId) && r.questionnaireId === questionnaireId)
-      .sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""))[0];
+      .sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""));
+    const match = matches.find((response) => response.bookingId === preferredBookingId) || matches[0];
     return match || null;
   }
   try {
@@ -537,7 +538,7 @@ export async function getLastCustomerQuestionnaireResponse(customerId, questionn
     if (snapshot.empty) return null;
     const docs = snapshot.docs.map((docSnap) => ({ responseId: docSnap.id, ...docSnap.data() }));
     docs.sort((a, b) => (b.updatedAt?.toMillis?.() || 0) - (a.updatedAt?.toMillis?.() || 0));
-    return docs[0] || null;
+    return docs.find((response) => response.bookingId === preferredBookingId) || docs[0] || null;
   } catch (error) {
     console.warn("Failed to load last questionnaire response from Firestore", error);
     return null;

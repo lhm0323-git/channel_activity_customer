@@ -401,3 +401,10 @@ Do not rely on routine email delivery until Google OAuth is published/verified o
 - `auditLogs` records `UPDATE_QUESTIONNAIRE` metadata only; answer content is intentionally excluded.
 - Production Hosting release: `496c1114a9ba5e6e`. Function and emulator tests passed.
 - National Health Administration preventive-care eligibility lookup remains pending. Do not implement or persist full-ID lookup until hospital IT supplies endpoint, authentication, schema, test environment, errors, timeout, and rate limits.
+
+## 2026-08-12 - Questionnaire field carry-forward
+
+- The visual questionnaire designer now exposes `下次預約自動帶入` per question. Existing custom questions without the property and all newly created/imported questions default to false.
+- Public questionnaire loading prefers the selected booking response. Exact-booking responses load fully; cross-booking reuse applies only to questions with `carryForward: true`.
+- Built-in reusable fields are limited to stable history/identity data. Do not broaden defaults to current medication, recent symptoms, lifestyle, mental-health screening, or pregnancy plans without nursing approval.
+- Production Hosting version: `2519d7c7722ff1e5`. Tests and build passed.

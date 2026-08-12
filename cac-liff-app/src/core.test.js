@@ -55,6 +55,47 @@ run("questionnaire mergePreviousAnswers populates default and previous fields", 
   assert.equal(merged.currentMeds, "");
   assert.deepEqual(merged.familyHistory, []);
 });
+
+run("questionnaire carry-forward only copies fields explicitly enabled", () => {
+  const schema = getQuestionnaireById("general-health");
+  const previous = {
+    pastDiseases: ["高血壓"],
+    allergies: "盤尼西林過敏",
+    currentMeds: "降血壓藥",
+    smoking: "每天吸菸",
+    familyHistory: ["糖尿病"],
+  };
+  const carried = mergePreviousAnswers(schema, previous, { carryForwardOnly: true });
+  assert.deepEqual(carried.pastDiseases, ["高血壓"]);
+  assert.equal(carried.allergies, "盤尼西林過敏");
+  assert.deepEqual(carried.familyHistory, ["糖尿病"]);
+  assert.equal(carried.currentMeds, "");
+  assert.equal(carried.smoking, "");
+
+  const current = mergePreviousAnswers(schema, previous);
+  assert.equal(current.currentMeds, "降血壓藥");
+  assert.equal(current.smoking, "每天吸菸");
+});
+
+run("questionnaire preserves explicit staff override over built-in defaults", () => {
+  const managed = {
+    id: "managed-general",
+    title: "Managed",
+    sections: [{
+      title: "History",
+      questions: [
+        { id: "pastDiseases", type: "checkbox", label: "疾病史", options: ["無"], carryForward: false },
+        { id: "familyHistory", type: "checkbox", label: "家族史", options: ["無"] },
+        { id: "recentSymptoms", type: "text", label: "近期症狀" },
+      ],
+    }],
+  };
+  const normalized = getQuestionnaireById("managed-general", [managed]);
+  assert.equal(normalized.sections[0].questions[0].carryForward, false);
+  assert.equal(normalized.sections[0].questions[1].carryForward, true);
+  assert.equal(normalized.sections[0].questions[2].carryForward, false);
+});
+
 function run(name, fn) {
   try {
     fn();

@@ -1616,14 +1616,17 @@ ${selectedItems
       const schema = getQuestionnaireById(qId, customQuestionnaires);
       const customerId = booking.customerId || booking.ownerUid || booking.customerPhone || booking.idNumber || "";
       setMyBookingStatus(lang === "en" ? "Loading questionnaire..." : "讀取問卷紀錄中...");
-      const lastResp = await getLastCustomerQuestionnaireResponse(customerId, qId);
-      const initialAnswers = mergePreviousAnswers(schema, lastResp?.answers);
+      const lastResp = await getLastCustomerQuestionnaireResponse(customerId, qId, booking.bookingId);
+      const isCurrentBookingResponse = lastResp?.bookingId === booking.bookingId;
+      const initialAnswers = mergePreviousAnswers(schema, lastResp?.answers, { carryForwardOnly: !isCurrentBookingResponse });
+      const hasCarriedAnswers = Object.values(initialAnswers).some((value) => Array.isArray(value) ? value.length > 0 : value !== "" && value !== null && value !== undefined);
       setMyBookingStatus("");
       setActiveQuestionnaireModal({
         booking,
         schema,
         answers: initialAnswers,
-        previousLoaded: Boolean(lastResp),
+        previousLoaded: Boolean(lastResp) && (isCurrentBookingResponse || hasCarriedAnswers),
+        carriedFromPreviousBooking: Boolean(lastResp) && !isCurrentBookingResponse && hasCarriedAnswers,
         status: "",
       });
     } catch (error) {
@@ -3184,7 +3187,7 @@ ${selectedItems
   ) : null;
   const QuestionnaireModal = () => {
     if (!activeQuestionnaireModal) return null;
-    const { booking, schema, answers, status, previousLoaded, staffMode: questionnaireStaffMode = false } = activeQuestionnaireModal;
+    const { booking, schema, answers, status, previousLoaded, carriedFromPreviousBooking = false, staffMode: questionnaireStaffMode = false } = activeQuestionnaireModal;
 
     const handleAnswerChange = (questionId, value) => {
       setActiveQuestionnaireModal((current) => ({
@@ -3256,7 +3259,7 @@ ${selectedItems
             {previousLoaded && (
               <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-3 text-xs text-emerald-800 font-bold flex items-center gap-2">
                 <CheckCircle2 className="h-4 w-4 text-emerald-600 flex-shrink-0" />
-                <span>{questionnaireStaffMode ? "已載入此筆預約目前儲存的作答，可核對並修正。" : "已自動為您帶入上次填寫紀錄（無須重複選擇，確認異動處即可）。"}</span>
+                <span>{questionnaireStaffMode ? "已載入此筆預約目前儲存的作答，可核對並修正。" : carriedFromPreviousBooking ? "已帶入上次問卷中設定為可沿用的欄位，請再次確認。" : "已載入本次已儲存的作答，請確認是否需要修改。"}</span>
               </div>
             )}
 
@@ -3372,7 +3375,7 @@ ${selectedItems
       updateSchema({ ...currentSchema, sections: nextSecs });
     };
     const addSection = () => {
-      const nextSecs = [...currentSchema.sections, { title: "新章節標題", questions: [{ id: `q_${Date.now()}`, type: "radio", label: "新題目問題名稱？", options: ["否", "是"] }] }];
+      const nextSecs = [...currentSchema.sections, { title: "新章節標題", questions: [{ id: `q_${Date.now()}`, type: "radio", label: "新題目問題名稱？", options: ["否", "是"], carryForward: false }] }];
       updateSchema({ ...currentSchema, sections: nextSecs });
     };
     const removeSection = (sIdx) => {
@@ -3386,6 +3389,7 @@ ${selectedItems
         type: "radio",
         label: "請輸入題目說明名稱？",
         options: ["否", "是"],
+        carryForward: false,
       });
       updateSchema({ ...currentSchema, sections: nextSecs });
     };
@@ -3499,6 +3503,11 @@ ${selectedItems
                               <input type="text" className="flex-1 rounded border border-slate-200 px-2 py-1 text-xs font-normal bg-white" placeholder="例如：否, 是 或 高血壓, 糖尿病, 無" value={(q.options || []).join(", ")} onChange={(e) => updateOptions(sIdx, qIdx, e.target.value)} />
                             </div>
                           )}
+                          <label className="flex flex-wrap items-center gap-2 text-xs font-bold text-slate-700">
+                            <input type="checkbox" checked={q.carryForward === true} onChange={(e) => updateQuestion(sIdx, qIdx, "carryForward", e.target.checked)} />
+                            下次預約自動帶入
+                            <span className="font-normal text-slate-500">只適合病史、過敏史、家族史等穩定資料</span>
+                          </label>
                         </div>
                       ))}
 

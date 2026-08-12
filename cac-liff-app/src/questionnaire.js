@@ -7,14 +7,14 @@ export const QUESTIONNAIRES = [
       {
         title: "基本資料與教育程度",
         questions: [
-          { id: "aboriginal", type: "radio", label: "原住民身分", options: ["否", "是"] },
-          { id: "education", type: "radio", label: "教育程度", options: ["無", "小學", "國(初)中", "高中(職)", "專科、大學", "研究所以上"] },
+          { id: "aboriginal", type: "radio", label: "原住民身分", options: ["否", "是"], carryForward: true },
+          { id: "education", type: "radio", label: "教育程度", options: ["無", "小學", "國(初)中", "高中(職)", "專科、大學", "研究所以上"], carryForward: true },
         ],
       },
       {
         title: "疾病史與長期服藥",
         questions: [
-          { id: "pastDiseases", type: "checkbox", label: "個人疾病史（可複選）", options: ["高血壓", "糖尿病", "高血脂症", "心臟病", "腦中風", "腎臟病", "B型肝炎", "C型肝炎", "精神疾病", "小兒麻痺", "其他", "以上均無"] },
+          { id: "pastDiseases", type: "checkbox", label: "個人疾病史（可複選）", options: ["高血壓", "糖尿病", "高血脂症", "心臟病", "腦中風", "腎臟病", "B型肝炎", "C型肝炎", "精神疾病", "小兒麻痺", "其他", "以上均無"], carryForward: true },
           { id: "medicationStatus", type: "radio", label: "長期服藥", options: ["無", "有"] },
           { id: "medicationReason", type: "text", label: "若有長期服藥，病因", placeholder: "例如：高血壓控制" },
         ],
@@ -22,7 +22,7 @@ export const QUESTIONNAIRES = [
       {
         title: "家族史",
         questions: [
-          { id: "familyHistory", type: "checkbox", label: "直系親屬家族史（可複選）", options: ["高血壓", "糖尿病", "血脂異常", "心臟病", "腦中風", "精神疾病", "癌症", "其他", "以上均無"] },
+          { id: "familyHistory", type: "checkbox", label: "直系親屬家族史（可複選）", options: ["高血壓", "糖尿病", "血脂異常", "心臟病", "腦中風", "精神疾病", "癌症", "其他", "以上均無"], carryForward: true },
         ],
       },
       {
@@ -52,9 +52,9 @@ export const QUESTIONNAIRES = [
       {
         title: "個人病史與用藥",
         questions: [
-          { id: "pastDiseases", type: "checkbox", label: "過去是否有以下疾病史（可複選）", options: ["高血壓", "糖尿病", "高血脂", "心臟病", "中風", "氣喘", "肝炎", "腎臟病", "癌症", "無"] },
+          { id: "pastDiseases", type: "checkbox", label: "過去是否有以下疾病史（可複選）", options: ["高血壓", "糖尿病", "高血脂", "心臟病", "中風", "氣喘", "肝炎", "腎臟病", "癌症", "無"], carryForward: true },
           { id: "currentMeds", type: "text", label: "目前常服用的藥物或保健食品", placeholder: "例如：降血壓藥、維他命C" },
-          { id: "allergies", type: "text", label: "藥物或食物過敏史", placeholder: "例如：盤尼西林過敏、海鮮過敏，若無請填無" },
+          { id: "allergies", type: "text", label: "藥物或食物過敏史", placeholder: "例如：盤尼西林過敏、海鮮過敏，若無請填無", carryForward: true },
         ],
       },
       {
@@ -63,7 +63,7 @@ export const QUESTIONNAIRES = [
           { id: "smoking", type: "radio", label: "吸菸習慣", options: ["從不吸菸", "已戒菸", "偶爾吸菸", "每天吸菸"] },
           { id: "drinking", type: "radio", label: "飲酒習慣", options: ["從不飲酒", "偶爾飲酒", "經常飲酒"] },
           { id: "exercise", type: "radio", label: "規律運動（每週 3 次以上、每次 30 分鐘）", options: ["無規律運動", "偶爾運動", "規律運動"] },
-          { id: "familyHistory", type: "checkbox", label: "直系親屬家族病史（可複選）", options: ["高血壓", "糖尿病", "心臟病", "癌症", "腦中風", "無"] },
+          { id: "familyHistory", type: "checkbox", label: "直系親屬家族病史（可複選）", options: ["高血壓", "糖尿病", "心臟病", "癌症", "腦中風", "無"], carryForward: true },
         ],
       },
     ],
@@ -79,7 +79,7 @@ export const QUESTIONNAIRES = [
           { id: "chestPain", type: "radio", label: "近期是否有胸痛、胸悶或運動後喘不過氣？", options: ["從不", "偶爾", "頻繁"] },
           { id: "palpitations", type: "radio", label: "是否有心悸、心律不整感受？", options: ["無", "偶爾", "經常"] },
           { id: "dizziness", type: "radio", label: "是否有頭暈、突然站立眼昏花或暈厥史？", options: ["無", "偶爾", "有過暈厥"] },
-          { id: "familyCvd", type: "radio", label: "家族中是否有 55 歲前發生心肌梗塞或猝死者？", options: ["否", "是", "不清楚"] },
+          { id: "familyCvd", type: "radio", label: "家族中是否有 55 歲前發生心肌梗塞或猝死者？", options: ["否", "是", "不清楚"], carryForward: true },
         ],
       },
     ],
@@ -92,8 +92,8 @@ export const QUESTIONNAIRES = [
       {
         title: "婚前與生育諮詢",
         questions: [
-          { id: "geneticHistory", type: "checkbox", label: "家族遺傳性疾病（如蠶豆症、地中海型貧血）", options: ["地中海型貧血", "蠶豆症 (G6PD)", "血友病", "無"] },
-          { id: "rubellaVaccine", type: "radio", label: "女性是否接種過德國麻疹疫苗？", options: ["是", "否", "不確定"] },
+          { id: "geneticHistory", type: "checkbox", label: "家族遺傳性疾病（如蠶豆症、地中海型貧血）", options: ["地中海型貧血", "蠶豆症 (G6PD)", "血友病", "無"], carryForward: true },
+          { id: "rubellaVaccine", type: "radio", label: "女性是否接種過德國麻疹疫苗？", options: ["是", "否", "不確定"], carryForward: true },
           { id: "pregnancyPlan", type: "radio", label: "預計未來一年內是否有備孕計畫？", options: ["有", "暫無", "無"] },
         ],
       },
@@ -101,9 +101,36 @@ export const QUESTIONNAIRES = [
   },
 ];
 
+const DEFAULT_CARRY_FORWARD_QUESTION_IDS = new Set([
+  "aboriginal",
+  "education",
+  "pastDiseases",
+  "allergies",
+  "familyHistory",
+  "familyCvd",
+  "geneticHistory",
+  "rubellaVaccine",
+]);
+
+export function normalizeQuestionnaireCarryForward(schema) {
+  if (!schema || !Array.isArray(schema.sections)) return schema;
+  return {
+    ...schema,
+    sections: schema.sections.map((section) => ({
+      ...section,
+      questions: (section.questions || []).map((question) => ({
+        ...question,
+        carryForward: typeof question.carryForward === "boolean"
+          ? question.carryForward
+          : DEFAULT_CARRY_FORWARD_QUESTION_IDS.has(question.id),
+      })),
+    })),
+  };
+}
+
 export function getQuestionnaireById(id, customList = []) {
   const combined = [...customList, ...QUESTIONNAIRES];
-  return combined.find((q) => q.id === id) || combined[0] || QUESTIONNAIRES[0];
+  return normalizeQuestionnaireCarryForward(combined.find((q) => q.id === id) || combined[0] || QUESTIONNAIRES[0]);
 }
 
 export function validateQuestionnaireSchema(schema) {
@@ -140,6 +167,7 @@ export function parseExcelPasteText(text) {
       type,
       label: qLabel,
       options: type === "text" ? [] : (options.length > 0 ? options : ["無", "有"]),
+      carryForward: false,
     });
   });
 
@@ -158,14 +186,14 @@ export function parseExcelPasteText(text) {
   };
 }
 
-export function mergePreviousAnswers(schema, previousAnswers = {}) {
+export function mergePreviousAnswers(schema, previousAnswers = {}, { carryForwardOnly = false } = {}) {
   const merged = {};
   if (!schema || !Array.isArray(schema.sections)) return merged;
 
   schema.sections.forEach((section) => {
     (section.questions || []).forEach((q) => {
       const prevVal = previousAnswers[q.id];
-      if (prevVal !== undefined && prevVal !== null) {
+      if ((!carryForwardOnly || q.carryForward === true) && prevVal !== undefined && prevVal !== null) {
         merged[q.id] = prevVal;
       } else {
         merged[q.id] = q.type === "checkbox" ? [] : "";
