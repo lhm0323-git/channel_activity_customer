@@ -658,6 +658,7 @@ const App = () => {
   const [adminStartDate, setAdminStartDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [adminEndDate, setAdminEndDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [adminChannel, setAdminChannel] = useState("ALL");
+  const [adminBookingVisibility, setAdminBookingVisibility] = useState("ACTIVE");
   const [adminBookings, setAdminBookings] = useState([]);
   const [adminSort, setAdminSort] = useState({ key: "date", direction: "asc" });
   const [adminDetailBooking, setAdminDetailBooking] = useState(null);
@@ -1593,7 +1594,8 @@ ${selectedItems
     if (!ok) return;
     try {
       const result = await cancelBooking(booking.bookingId);
-      setMyBookingStatus(result.localOnly ? "\u5df2\u53d6\u6d88\u672c\u6a5f\u66ab\u5b58\u9810\u7d04" : "\u5df2\u53d6\u6d88\u9810\u7d04");
+      const notice = result?.cancelNoticeStatus;
+      setMyBookingStatus(result.localOnly ? "\u5df2\u53d6\u6d88\u672c\u6a5f\u66ab\u5b58\u9810\u7d04" : notice === "SENT" ? "\u9810\u7d04\u5df2\u53d6\u6d88\uff0c\u5df2\u767c\u9001 LINE \u901a\u77e5" : notice === "FAILED" ? "\u9810\u7d04\u5df2\u53d6\u6d88\uff0cLINE \u901a\u77e5\u767c\u9001\u5931\u6557" : "\u5df2\u53d6\u6d88\u9810\u7d04");
       handleLoadMyBookings();
     } catch (error) {
       setMyBookingStatus(lang === "en" ? `Cancel failed: ${error.message}` : `\u53d6\u6d88\u5931\u6557\uff1a${error.message}`);
@@ -1676,8 +1678,9 @@ ${selectedItems
     const ok = window.confirm(lang === "en" ? "Cancel this booking?" : "\u78ba\u5b9a\u53d6\u6d88\u9019\u7b46\u9810\u7d04\uff1f");
     if (!ok) return;
     try {
-      await cancelBooking(booking.bookingId);
-      setAdminStatus(lang === "en" ? "Booking cancelled" : "\u9810\u7d04\u5df2\u53d6\u6d88");
+      const result = await cancelBooking(booking.bookingId);
+      const notice = result?.cancelNoticeStatus;
+      setAdminStatus(lang === "en" ? (notice === "SENT" ? "Booking cancelled and LINE notice sent" : notice === "FAILED" ? "Booking cancelled; LINE notice failed" : "Booking cancelled") : (notice === "SENT" ? "\u9810\u7d04\u5df2\u53d6\u6d88\uff0c\u5df2\u767c\u9001 LINE \u901a\u77e5" : notice === "FAILED" ? "\u9810\u7d04\u5df2\u53d6\u6d88\uff0cLINE \u901a\u77e5\u767c\u9001\u5931\u6557" : "\u9810\u7d04\u5df2\u53d6\u6d88"));
       setAdminDetailBooking(null);
       handleLoadAdminBookings();
     } catch (error) {
@@ -1759,16 +1762,22 @@ ${selectedItems
     return booking.createdAt?.toMillis?.() || Date.parse(booking.createdAt || "") || 0;
   };
 
+  const visibleAdminBookings = useMemo(() => {
+    if (adminBookingVisibility === "CANCELLED") return adminBookings.filter((booking) => booking.status === "CANCELLED");
+    if (adminBookingVisibility === "ALL") return adminBookings;
+    return adminBookings.filter((booking) => booking.status !== "CANCELLED");
+  }, [adminBookings, adminBookingVisibility]);
+
   const sortedAdminBookings = useMemo(() => {
     const direction = adminSort.direction === "desc" ? -1 : 1;
-    return [...adminBookings].sort((a, b) => {
+    return [...visibleAdminBookings].sort((a, b) => {
       const valueA = adminSortValue(a, adminSort.key);
       const valueB = adminSortValue(b, adminSort.key);
       if (valueA < valueB) return -1 * direction;
       if (valueA > valueB) return 1 * direction;
       return 0;
     });
-  }, [adminBookings, adminSort, lang]);
+  }, [visibleAdminBookings, adminSort, lang]);
 
   const filteredAuditLogs = useMemo(() => {
     const term = auditSearchTerm.trim().toLowerCase();
@@ -1785,15 +1794,15 @@ ${selectedItems
   const toggleAdminSort = (key) => setAdminSort((current) => current.key === key ? { key, direction: current.direction === "asc" ? "desc" : "asc" } : { key, direction: "asc" });
   const adminSortMark = (key) => adminSort.key === key ? (adminSort.direction === "asc" ? " ?" : " ?") : "";
 
-  const selectedAdminBookings = adminBookings.filter((booking) => selectedAdminBookingIds.includes(booking.bookingId));
-  const allAdminBookingsSelected = adminBookings.length > 0 && selectedAdminBookingIds.length === adminBookings.length;
+  const selectedAdminBookings = visibleAdminBookings.filter((booking) => selectedAdminBookingIds.includes(booking.bookingId));
+  const allAdminBookingsSelected = visibleAdminBookings.length > 0 && selectedAdminBookingIds.length === visibleAdminBookings.length;
 
   const toggleAdminBookingSelection = (bookingId) => {
     setSelectedAdminBookingIds((current) => current.includes(bookingId) ? current.filter((id) => id !== bookingId) : [...current, bookingId]);
   };
 
   const toggleAllAdminBookings = () => {
-    setSelectedAdminBookingIds(allAdminBookingsSelected ? [] : adminBookings.map((booking) => booking.bookingId).filter(Boolean));
+    setSelectedAdminBookingIds(allAdminBookingsSelected ? [] : visibleAdminBookings.map((booking) => booking.bookingId).filter(Boolean));
   };
 
   const isAdminUser = staffRole === "ADMIN";
@@ -1983,7 +1992,7 @@ ${selectedItems
   };
 
   const handleExportAdminBookings = async () => {
-    const target = selectedAdminBookings.length ? selectedAdminBookings : adminBookings;
+    const target = selectedAdminBookings.length ? selectedAdminBookings : sortedAdminBookings;
     if (!target.length) {
       setAdminStatus(lang === "en" ? "No bookings to export" : "\u6c92\u6709\u53ef\u532f\u51fa\u7684\u9810\u7d04");
       return;
@@ -3006,8 +3015,8 @@ ${selectedItems
     const blocked = blockedBookingDates.find((entry) => entry.date === bookingForm.appointmentDate);
     const disabled = Boolean(blocked) && !staffMode;
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setShowBookingModal(false)}>
-        <form className="w-full max-w-lg rounded-lg bg-white shadow-xl" onClick={(event) => event.stopPropagation()} onSubmit={(event) => { event.preventDefault(); handleSubmitBooking(); }}>
+      <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-2 sm:items-center sm:p-4" onClick={() => setShowBookingModal(false)}>
+        <form className="my-auto max-h-[calc(100dvh-1rem)] w-full max-w-lg overflow-y-auto overscroll-contain rounded-lg bg-white shadow-xl" onClick={(event) => event.stopPropagation()} onSubmit={(event) => { event.preventDefault(); handleSubmitBooking(); }}>
           <div className="flex items-start justify-between border-b border-slate-100 p-4"><div><h2 className="text-lg font-black text-slate-900">{t.bookingTitle}</h2><p className="mt-1 text-sm text-slate-600">{packageName || "-"} / NT$ {Number(finalPrice || 0).toLocaleString()}</p></div><button type="button" onClick={() => setShowBookingModal(false)} className="rounded-md p-2 text-slate-500"><X className="h-5 w-5" /></button></div>
           <div className="space-y-3 p-4">
             {staffMode ? (
@@ -3891,9 +3900,17 @@ ${selectedItems
               ))}
             </select>
           </label>
+          <label className="text-xs font-bold text-slate-600">
+            {lang === "en" ? "Show" : "顯示"}
+            <select className="block mt-1 w-full min-w-0 rounded-md border border-slate-300 px-3 py-2 text-sm font-normal" value={adminBookingVisibility} onChange={(e) => { setAdminBookingVisibility(e.target.value); setSelectedAdminBookingIds([]); }}>
+              <option value="ACTIVE">{lang === "en" ? "Active bookings" : "未取消"}</option>
+              <option value="CANCELLED">{lang === "en" ? "Cancelled only" : "已取消"}</option>
+              <option value="ALL">{lang === "en" ? "All bookings" : "全部"}</option>
+            </select>
+          </label>
           <button onClick={handleLoadAdminBookings} className="px-4 py-2 rounded-md bg-slate-900 text-white text-sm font-bold">{t.load}</button>
           <button onClick={handlePrintSelectedBookings} disabled={!selectedAdminBookings.length} className="px-4 py-2 rounded-md bg-emerald-600 text-white text-sm font-bold disabled:opacity-40">{t.printSelected}</button>
-          <button onClick={handleExportAdminBookings} disabled={!adminBookings.length} className="px-4 py-2 rounded-md bg-white border border-slate-300 text-slate-700 text-sm font-bold disabled:opacity-40">{t.exportCsv}</button>
+          <button onClick={handleExportAdminBookings} disabled={!visibleAdminBookings.length} className="px-4 py-2 rounded-md bg-white border border-slate-300 text-slate-700 text-sm font-bold disabled:opacity-40">{t.exportCsv}</button>
           <label className="px-4 py-2 rounded-md bg-white border border-slate-300 text-slate-700 text-sm font-bold cursor-pointer">
             {t.importCsv}
             <input type="file" accept=".csv,text/csv" className="hidden" onChange={handleImportBookingCsv} />

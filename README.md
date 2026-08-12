@@ -330,3 +330,6 @@ Staff can enter and update a booking's medical record number in the booking-deta
 ## Latest Update
 
 - 2026-08-11: The admin audit-log tab now loads the latest 100 records, supports loading older pages, and filters loaded records by booking customer name, medical record number, package, or appointment date. Selecting a result opens its linked booking detail.
+## Latest Update
+
+- 2026-08-12: The LIFF booking modal scrolls within short mobile screens. Cancelling a LINE-linked booking sends a best-effort LINE cancellation message. The staff booking list now defaults to active bookings; use the Show filter to view cancelled records or all records.

@@ -462,3 +462,12 @@ pm test, staging build, and staging Hosting deployment.
 - Files: `cac-liff-app/src/App.jsx`, `cac-liff-app/src/firebase.js`.
 - Verification: `npm test` and `npm run build` passed. Production Hosting release `e130c92465fa8084` deployed.
 - Operational note: searching is performed across records already loaded into the page. Use `Load older records` before searching an older case.
+## 2026-08-12 - Mobile booking and cancellation handling
+
+- Updated the LIFF booking modal container to use a bounded, independently scrollable mobile viewport so the Confirm submit button remains reachable on short screens.
+- Updated cancelBooking to persist the cancellation first, then send a best-effort LINE cancellation notice to LINE-linked customers. The result is recorded as SENT, FAILED, or NOT_LINKED without reversing the cancellation.
+- Added a staff booking-list Show filter. Default is active bookings only; Cancelled and All are explicit choices. Export and bulk selection respect the current filter.
+- Files: cac-liff-app/src/App.jsx, cac-liff-app/functions/index.js.
+- Verification: node --check functions/index.js, npm test -- --run, npm run build, and git diff --check passed.
+- Deployment: cancelBooking revision cancelbooking-00003-nur and Hosting release 8aaf6387a729c7f8 deployed to production.
+- Next acceptance: cancel a LINE-linked booking from both My Bookings and staff Booking List, then verify the LINE message and default active-only list view.

@@ -39,6 +39,36 @@ function buildD1Message(bookingId, booking, ackToken) {
   };
 }
 
+function buildCancellationMessage(booking) {
+  const date = booking.appointmentDate || "";
+  const packageName = booking.packageName || "\u5065\u6aa2\u5957\u9910";
+  return {
+    type: "text",
+    text: "\u5c4f\u57fa\u5065\u6aa2\u4e2d\u5fc3\u901a\u77e5\n\u60a8\u539f\u8a02 " + date + " \u7684\u300c" + packageName + "\u300d\u9810\u7d04\u5df2\u53d6\u6d88\u3002\n\u5982\u9700\u91cd\u65b0\u9810\u7d04\uff0c\u8acb\u7531\u5b98\u65b9\u5e33\u865f\u958b\u555f\u300c\u627e\u65b9\u6848 / \u9810\u7d04\u300d\u3002",
+  };
+}
+
+async function sendCancellationLineNotice(bookingRef, booking) {
+  if (!booking.lineUserId) return "NOT_LINKED";
+  try {
+    await pushLineMessage(lineChannelAccessToken.value(), booking.lineUserId, buildCancellationMessage(booking));
+    await bookingRef.update({
+      cancelNoticeStatus: "SENT",
+      cancelNoticeSentAt: FieldValue.serverTimestamp(),
+      cancelNoticeError: null,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    return "SENT";
+  } catch (error) {
+    console.warn("Cancellation LINE notice failed for " + bookingRef.id + ": " + error.message);
+    await bookingRef.update({
+      cancelNoticeStatus: "FAILED",
+      cancelNoticeError: String(error && error.message || error).slice(0, 500),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    return "FAILED";
+  }
+}
 function buildD1Email(booking) {
   const date = booking.appointmentDate || "";
   const packageName = booking.packageName || "\u5065\u6aa2\u5957\u9910";
@@ -471,23 +501,27 @@ exports.createBooking = onCall({ secrets: [mailerEncryptionKey] }, async (reques
   return { bookingId: bookingRef.id, claimToken, claimEmailStatus };
 });
 
-exports.cancelBooking = onCall(async (request) => {
+exports.cancelBooking = onCall({ secrets: [lineChannelAccessToken] }, async (request) => {
   if (!request.auth?.uid) throw new HttpsError("unauthenticated", "A signed-in session is required");
   const bookingId = text(request.data?.bookingId, 200);
   if (!bookingId) throw new HttpsError("invalid-argument", "Booking ID is required");
   const db = admin.firestore();
   const bookingRef = db.doc("bookings/" + bookingId);
   const actor = await staffProfile(request) || { uid: request.auth.uid, role: "CUSTOMER" };
+  let cancelledBooking = null;
   await db.runTransaction(async (transaction) => {
     const snap = await transaction.get(bookingRef);
     if (!snap.exists) throw new HttpsError("not-found", "Booking not found");
     const booking = snap.data();
     if (!actor.email && booking.ownerUid !== request.auth.uid) throw new HttpsError("permission-denied", "You can only cancel your own booking");
+    if (booking.status === "CANCELLED") return;
     const patch = { status: "CANCELLED", cancelledAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() };
     transaction.update(bookingRef, patch);
     writeBookingAudit(transaction, db, { action: "CANCEL", bookingId, actor, before: booking, after: { ...booking, ...patch } });
+    cancelledBooking = { ...booking, status: "CANCELLED" };
   });
-  return { cancelled: true };
+  const cancelNoticeStatus = cancelledBooking ? await sendCancellationLineNotice(bookingRef, cancelledBooking) : "ALREADY_CANCELLED";
+  return { cancelled: true, cancelNoticeStatus };
 });
 
 exports.requestBookingChange = onCall(async (request) => {

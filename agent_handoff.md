@@ -387,3 +387,9 @@ Do not rely on routine email delivery until Google OAuth is published/verified o
 - Production Hosting release `e130c92465fa8084` adds audit-log pagination: load the newest 100 entries, then load older pages as required.
 - The audit view resolves booking references and supports filtering the loaded history by customer name, medical record number, package, or appointment date. Selecting a row opens the linked booking detail.
 - This is front-end only; no Firestore schema or callable Function changed. The search intentionally operates on loaded pages to avoid adding a duplicate patient-name index to every audit record.
+## 2026-08-12 - Cancellation notice and list visibility
+
+- Production now has a scrollable LIFF booking modal for short mobile screens.
+- cancelBooking is deployed with LINE_CHANNEL_ACCESS_TOKEN. It writes the cancellation before attempting the optional LINE message, so an external delivery failure cannot restore an already-cancelled booking.
+- Booking List defaults to active records. Staff can explicitly choose Cancelled or All with the Show filter.
+- Deployed: cancelbooking-00003-nur; Hosting 8aaf6387a729c7f8.
