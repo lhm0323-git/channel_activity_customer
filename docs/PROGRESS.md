@@ -492,3 +492,12 @@ pm test, staging build, and staging Hosting deployment.
 - Files: `cac-liff-app/src/questionnaire.js`, `cac-liff-app/src/firebase.js`, `cac-liff-app/src/App.jsx`, `cac-liff-app/src/core.test.js`.
 - Verification: `npm test`, `npm run build`, and `git diff --check` passed. Existing Vite chunk-size warning remains.
 - Deployment: production Firebase Hosting version `2519d7c7722ff1e5`.
+
+## 2026-08-13 - PTCH employee account sign-in released to production
+
+- Released the staged hospital employee login to production without taking the uncommitted P0/staging worktree changes with it.
+- Staff accounts may now be registered as either Google email or PTCH employee ID. PTCH accounts use `staffUsers/ptch:{employeeId}` and Firebase custom-token claims, without storing the hospital password in CAC.
+- Production Function: `signInWithHospitalAccount` (us-central1); endpoint configuration: `HOSPITAL_TOKEN_API_URL=https://orapi.ptch.org.tw/TokenAPI/v1/api/GetToken`.
+- Firestore Rules now resolve staff identity from the signed custom-token `staffKey`, while retaining the bootstrap administrator email.
+- Verification: `npm test`, production build, Hosting HTTP 200 with bundle `index-B7-VDxKH.js`, and production Function ACTIVE.
+- Rollback: Firebase Hosting channel `pre-hospital-login-20260813` preserves the previous live version until 2026-08-20.

@@ -408,3 +408,10 @@ Do not rely on routine email delivery until Google OAuth is published/verified o
 - Public questionnaire loading prefers the selected booking response. Exact-booking responses load fully; cross-booking reuse applies only to questions with `carryForward: true`.
 - Built-in reusable fields are limited to stable history/identity data. Do not broaden defaults to current medication, recent symptoms, lifestyle, mental-health screening, or pregnancy plans without nursing approval.
 - Production Hosting version: `2519d7c7722ff1e5`. Tests and build passed.
+
+## 2026-08-13 Production PTCH employee login release
+
+- Release branch: `release/hospital-login-20260813`, commit `8e97119`.
+- Production deployment completed: Hosting, Firestore Rules, and only the `signInWithHospitalAccount` Function.
+- Do not replace the production site with the broader P0/staging working tree. Start future production work from the current production-equivalent commit and isolate releases.
+- Rollback Hosting channel available until 2026-08-20: `pre-hospital-login-20260813`.
