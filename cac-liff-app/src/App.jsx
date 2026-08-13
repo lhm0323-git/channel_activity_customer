@@ -122,25 +122,27 @@ function isAdminEmail(user) {
 
 async function getStaffAccess(user) {
   if (!user || user.isAnonymous) return null;
+  const email = String(user.email || "").trim().toLowerCase();
+  // Keep the established Google-admin path independent of custom-token claims.
+  if (email && isAdminEmail(user)) return { role: "ADMIN", staffKey: email, label: user.email };
+  if (email) {
+    try {
+      const record = await getStaffUser(email);
+      return record && record.active !== false
+        ? { role: record.role === "ADMIN" ? "ADMIN" : "STAFF", staffKey: email, label: record.email || user.displayName || email }
+        : null;
+    } catch {
+      return null;
+    }
+  }
   const token = await user.getIdTokenResult();
-  const staffKey = token.claims?.staffKey ? String(token.claims.staffKey).trim() : String(user.email || "").trim().toLowerCase();
-  if (!staffKey) return null;
-  if (token.claims?.authSource === "PTCH") {
-    return {
-      role: token.claims?.staffRole === "ADMIN" ? "ADMIN" : "STAFF",
-      staffKey,
-      label: String(token.claims?.empid || user.displayName || staffKey),
-    };
-  }
-  if (isAdminEmail(user)) return { role: "ADMIN", staffKey, label: user.email };
-  try {
-    const record = await getStaffUser(staffKey);
-    return record && record.active !== false
-      ? { role: record.role === "ADMIN" ? "ADMIN" : "STAFF", staffKey, label: record.email || record.empid || user.displayName || staffKey }
-      : null;
-  } catch {
-    return null;
-  }
+  const staffKey = token.claims?.staffKey ? String(token.claims.staffKey).trim() : "";
+  if (!staffKey || token.claims?.authSource !== "PTCH") return null;
+  return {
+    role: token.claims?.staffRole === "ADMIN" ? "ADMIN" : "STAFF",
+    staffKey,
+    label: String(token.claims?.empid || user.displayName || staffKey),
+  };
 }
 const CHANNEL_LABELS_EN = { HIGH_END: "Premium", CORPORATE: "Corporate", LABOR: "Labor", GENERAL: "General" };
 
