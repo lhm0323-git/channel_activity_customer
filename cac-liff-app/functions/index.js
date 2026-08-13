@@ -3,12 +3,17 @@ const admin = require("firebase-admin");
 const { FieldValue } = require("firebase-admin/firestore");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { onCall, onRequest, HttpsError } = require("firebase-functions/v2/https");
-const { defineSecret } = require("firebase-functions/params");
+const { defineSecret, defineString } = require("firebase-functions/params");
+const logger = require("firebase-functions/logger");
+const { hospitalStaffKey, validateHospitalTokenResponse } = require("./hospital-auth.cjs");
 
 admin.initializeApp();
 
 const lineChannelAccessToken = defineSecret("LINE_CHANNEL_ACCESS_TOKEN");
 const mailerEncryptionKey = defineSecret("MAILER_ENCRYPTION_KEY");
+const hospitalTokenApiUrl = defineString("HOSPITAL_TOKEN_API_URL", {
+  default: "https://orapi.ptch.org.tw/TokenAPI/v1/api/GetToken",
+});
 const LIFF_ID = "2010725321-sRRkD0Le";
 const MAILER_SETTINGS_PATH = "systemSettings/mailer";
 const MAILER_OAUTH_CALLBACK = "https://us-central1-channel-activity-customer.cloudfunctions.net/connectMailerCallback";
@@ -328,18 +333,27 @@ const BOOTSTRAP_ADMIN_EMAIL = "lhm0323@gmail.com";
 
 async function staffProfile(request) {
   const email = text(request.auth?.token?.email, 320).toLowerCase();
+  const staffKey = text(request.auth?.token?.staffKey, 128);
+  const empid = text(request.auth?.token?.empid, 64);
   const uid = text(request.auth?.uid, 200);
-  if (!email || !uid) return null;
-  if (email === BOOTSTRAP_ADMIN_EMAIL) return { email, uid, role: "ADMIN" };
-  const staff = await admin.firestore().doc("staffUsers/" + email).get();
+  const key = staffKey || email;
+  if (!key || !uid) return null;
+  if (email === BOOTSTRAP_ADMIN_EMAIL) return { email, staffKey: email, uid, role: "ADMIN" };
+  const staff = await admin.firestore().doc("staffUsers/" + key).get();
   if (!staff.exists || staff.data().active === false) return null;
-  return { email, uid, role: staff.data().role === "ADMIN" ? "ADMIN" : "STAFF" };
+  return {
+    email,
+    empid: empid || text(staff.data().empid, 64),
+    staffKey: key,
+    uid,
+    role: staff.data().role === "ADMIN" ? "ADMIN" : "STAFF",
+  };
 }
 
 async function staffEmail(request) {
-  return (await staffProfile(request))?.email || "";
+  const profile = await staffProfile(request);
+  return profile?.email || profile?.empid || "";
 }
-
 async function assertStaff(request) {
   const profile = await staffProfile(request);
   if (!profile) throw new HttpsError(request.auth?.uid ? "permission-denied" : "unauthenticated", "Staff access is required");
@@ -435,6 +449,92 @@ async function assertPackageBookingAccess(transaction, db, bookingInput, isStaff
     if (!inviteSnap?.exists || !inviteIsActive(inviteSnap.data(), packageName)) throw new HttpsError("permission-denied", "This invitation link is invalid or expired");
   }
 }
+function hospitalAttemptRef(request, userId) {
+  const ip = text(request.rawRequest?.headers?.["x-forwarded-for"], 256).split(",")[0].trim() || text(request.rawRequest?.ip, 128);
+  const key = crypto.createHash("sha256").update(ip + "|" + userId).digest("hex");
+  return admin.firestore().doc("hospitalLoginAttempts/" + key);
+}
+
+async function recordHospitalLoginAttempt(request, userId) {
+  const ref = hospitalAttemptRef(request, userId);
+  const now = Date.now();
+  await admin.firestore().runTransaction(async (transaction) => {
+    const snap = await transaction.get(ref);
+    const startedAt = snap.data()?.windowStartedAt?.toMillis?.() || 0;
+    const previousCount = startedAt && now - startedAt < 15 * 60 * 1000 ? Number(snap.data()?.count || 0) : 0;
+    if (previousCount >= 5) throw new HttpsError("resource-exhausted", "Too many sign-in attempts. Try again in 15 minutes.");
+    transaction.set(ref, { count: previousCount + 1, windowStartedAt: new Date(now), updatedAt: FieldValue.serverTimestamp() });
+  });
+  return ref;
+}
+
+async function authenticateWithHospitalAccount(request, userId, password) {
+  const staffKey = hospitalStaffKey(userId);
+  const staffRef = admin.firestore().doc("staffUsers/" + staffKey);
+  const staffSnap = await staffRef.get();
+  if (!staffSnap.exists || staffSnap.data().active === false) {
+    throw new HttpsError("permission-denied", "This employee account is not authorized for CAC.");
+  }
+  const attemptRef = await recordHospitalLoginAttempt(request, userId);
+  let response;
+  try {
+    response = await fetch(hospitalTokenApiUrl.value(), {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ userId, pwd: password }),
+      signal: AbortSignal.timeout(10000),
+    });
+  } catch (error) {
+    logger.error("Hospital Token API connection failed", {
+      endpoint: hospitalTokenApiUrl.value(),
+      name: error?.name || "Error",
+      message: error?.message || "Unknown error",
+      causeCode: error?.cause?.code || null,
+      causeMessage: error?.cause?.message || null,
+    });
+    throw new HttpsError("unavailable", "Hospital sign-in service is temporarily unavailable.");
+  }
+  const body = await response.json().catch(() => null);
+  if (!response.ok) throw new HttpsError("unauthenticated", "Employee ID or password is incorrect.");
+  try {
+    validateHospitalTokenResponse(body);
+  } catch {
+    throw new HttpsError("unavailable", "Hospital sign-in service returned an invalid response.");
+  }
+  await attemptRef.delete();
+  return { staffKey, staff: staffSnap.data() };
+}
+
+exports.signInWithHospitalAccount = onCall(async (request) => {
+  const userId = text(request.data?.userId, 64);
+  const password = String(request.data?.password || "");
+  if (!userId || !password || password.length > 256) {
+    throw new HttpsError("invalid-argument", "Employee ID and password are required.");
+  }
+  const { staffKey, staff } = await authenticateWithHospitalAccount(request, userId, password);
+  const uid = "ptch:" + userId;
+  const profile = { displayName: text(staff.name, 160) || "PTCH " + userId, disabled: false };
+  try {
+    await admin.auth().updateUser(uid, profile);
+  } catch (error) {
+    if (error.code !== "auth/user-not-found") {
+      logger.error("Unable to update hospital staff Firebase session", {
+        code: error?.code || null,
+        message: error?.message || "Unknown Firebase Auth error",
+      });
+      throw new HttpsError("internal", "Unable to create CAC session.");
+    }
+    await admin.auth().createUser({ uid, ...profile });
+  }
+  const staffRole = staff.role === "ADMIN" ? "ADMIN" : "STAFF";
+  const customToken = await admin.auth().createCustomToken(uid, {
+    staffKey,
+    empid: userId,
+    staffRole,
+    authSource: "PTCH",
+  });
+  return { customToken, staffKey, empid: userId, role: staffRole };
+});
 exports.createBooking = onCall({ secrets: [mailerEncryptionKey] }, async (request) => {
   if (!request.auth?.uid) throw new HttpsError("unauthenticated", "A signed-in session is required");
   const payload = request.data?.payload;

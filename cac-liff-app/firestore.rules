@@ -2,18 +2,25 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() { return request.auth != null; }
+    function hasAuthClaim(name) {
+      return signedIn() && request.auth.token.keys().hasAll([name]);
+    }
+    function staffKey() {
+      return hasAuthClaim('staffKey') && request.auth.token.staffKey is string ? request.auth.token.staffKey :
+        (hasAuthClaim('email') && request.auth.token.email is string ? request.auth.token.email.lower() : '');
+    }
     function hasStaffRecord() {
-      return signedIn() && request.auth.token.email is string &&
-        exists(/databases/$(database)/documents/staffUsers/$(request.auth.token.email.lower())) &&
-        get(/databases/$(database)/documents/staffUsers/$(request.auth.token.email.lower())).data.active != false;
+      return signedIn() && staffKey() != '' &&
+        exists(/databases/$(database)/documents/staffUsers/$(staffKey())) &&
+        get(/databases/$(database)/documents/staffUsers/$(staffKey())).data.active != false;
+    }
+    function isBootstrapAdmin() {
+      return hasAuthClaim('email') && request.auth.token.email == 'lhm0323@gmail.com';
     }
     function isAdmin() {
-      return signedIn() && (
-        request.auth.token.email == 'lhm0323@gmail.com' ||
-        (hasStaffRecord() && get(/databases/$(database)/documents/staffUsers/$(request.auth.token.email.lower())).data.role == 'ADMIN')
-      );
-    }
-    function isStaff() { return isAdmin() || hasStaffRecord(); }
+      return isBootstrapAdmin() ||
+        (hasStaffRecord() && get(/databases/$(database)/documents/staffUsers/$(staffKey())).data.role == 'ADMIN');
+    }    function isStaff() { return isAdmin() || hasStaffRecord(); }
     function ownsResource() { return signedIn() && resource.data.ownerUid == request.auth.uid; }
 
     match /customers/{customerId} {

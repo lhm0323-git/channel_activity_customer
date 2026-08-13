@@ -107,6 +107,7 @@ import {
   saveChecklist,
   saveStaffUser,
   signInStaff,
+  signInWithHospitalAccount,
   signOutStaff,
   updateBooking,
   watchPendingChangeRequests,
@@ -120,11 +121,23 @@ function isAdminEmail(user) {
 }
 
 async function getStaffAccess(user) {
-  if (!user?.email) return null;
-  if (isAdminEmail(user)) return { role: "ADMIN" };
+  if (!user || user.isAnonymous) return null;
+  const token = await user.getIdTokenResult();
+  const staffKey = token.claims?.staffKey ? String(token.claims.staffKey).trim() : String(user.email || "").trim().toLowerCase();
+  if (!staffKey) return null;
+  if (token.claims?.authSource === "PTCH") {
+    return {
+      role: token.claims?.staffRole === "ADMIN" ? "ADMIN" : "STAFF",
+      staffKey,
+      label: String(token.claims?.empid || user.displayName || staffKey),
+    };
+  }
+  if (isAdminEmail(user)) return { role: "ADMIN", staffKey, label: user.email };
   try {
-    const record = await getStaffUser(user.email);
-    return record && record.active !== false ? { role: record.role === "ADMIN" ? "ADMIN" : "STAFF" } : null;
+    const record = await getStaffUser(staffKey);
+    return record && record.active !== false
+      ? { role: record.role === "ADMIN" ? "ADMIN" : "STAFF", staffKey, label: record.email || record.empid || user.displayName || staffKey }
+      : null;
   } catch {
     return null;
   }
@@ -641,6 +654,9 @@ const App = () => {
   const [staffUser, setStaffUser] = useState(null);
   const [staffRole, setStaffRole] = useState("");
   const [staffStatus, setStaffStatus] = useState("");
+  const [showStaffLoginModal, setShowStaffLoginModal] = useState(false);
+  const [hospitalCredentials, setHospitalCredentials] = useState({ userId: "", password: "" });
+  const [hospitalLoginStatus, setHospitalLoginStatus] = useState("");
   const t = TEXT[lang];
   const [publicFilters, setPublicFilters] = useState({ audience: "全部", sex: "不限", bodyPart: "全部" });
   const [restrictedPackageIds, setRestrictedPackageIds] = useState([]);
@@ -782,7 +798,7 @@ const App = () => {
     let active = true;
     const unsubscribe = watchStaffAuth((user) => {
       (async () => {
-        if (!user?.email) {
+        if (!user || user.isAnonymous) {
           if (!active) return;
           setStaffUser(null);
           setStaffRole("");
@@ -794,13 +810,13 @@ const App = () => {
         if (!access) {
           setStaffUser(null);
           setStaffRole("");
-          setStaffStatus("\u6b64 Google \u5e33\u865f\u672a\u6388\u6b0a\u4f7f\u7528\u5167\u90e8\u5de5\u5177");
+          setStaffStatus("此帳號未授權使用內部工具");
           setMode("public");
           return;
         }
         setStaffUser(user);
         setStaffRole(access.role);
-        setStaffStatus(`\u5df2\u767b\u5165\uff1a${user.email}`);
+        setStaffStatus(`已登入：${access.label || user.email || user.uid}`);
       })();
     });
     return () => {
@@ -1435,26 +1451,46 @@ ${selectedItems
 
   const staffMode = mode === "staff" || mode === "admin" || mode === "reports" || mode === "audit";
 
+  const completeStaffLogin = async (user) => {
+    const access = await getStaffAccess(user);
+    if (!access) {
+      await signOutStaff();
+      setStaffStatus("此帳號未授權使用內部工具");
+      setMode("public");
+      return false;
+    }
+    setStaffUser(user);
+    setStaffRole(access.role);
+    setStaffStatus(`已登入：${access.label || user.email || user.uid}`);
+    setMode("staff");
+    return true;
+  };
+
   const handleStaffLogin = async () => {
     try {
-      setStaffStatus("\u767b\u5165\u4e2d...");
+      setStaffStatus("登入中...");
       const user = await signInStaff();
-      const access = await getStaffAccess(user);
-      if (!access) {
-        await signOutStaff();
-        setStaffStatus("\u6b64 Google \u5e33\u865f\u672a\u6388\u6b0a\u4f7f\u7528\u5167\u90e8\u5de5\u5177");
-        setMode("public");
-        return;
-      }
-      setStaffUser(user);
-        setStaffRole(access.role);
-      setStaffStatus(`\u5df2\u767b\u5165\uff1a${user.email}`);
-      setMode("staff");
+      if (user) await completeStaffLogin(user);
     } catch (error) {
-      setStaffStatus(`\u767b\u5165\u5931\u6557\uff1a${error.message}`);
+      setStaffStatus(`登入失敗：${error.message}`);
     }
   };
 
+  const handleHospitalStaffLogin = async (event) => {
+    event?.preventDefault();
+    try {
+      setHospitalLoginStatus("驗證院內帳號中...");
+      const user = await signInWithHospitalAccount(hospitalCredentials);
+      const accepted = await completeStaffLogin(user);
+      if (accepted) {
+        setHospitalCredentials({ userId: "", password: "" });
+        setHospitalLoginStatus("");
+        setShowStaffLoginModal(false);
+      }
+    } catch (error) {
+      setHospitalLoginStatus(`登入失敗：${error.message}`);
+    }
+  };
   const handleLineLogin = async () => {
     try {
       setLiffMessage(lang === "en" ? "Connecting LINE..." : "正在連結 LINE...");
@@ -1909,7 +1945,7 @@ ${selectedItems
       const result = await saveStaffUser(newStaffEmail, true, newStaffRole);
       setNewStaffEmail("");
       setNewStaffRole("STAFF");
-      setStaffManageStatus(lang === "en" ? `Added ${result.email}` : `\u5df2\u65b0\u589e\uff1a${result.email}`);
+      setStaffManageStatus(lang === "en" ? `Added ${result.identity}` : `已新增：${result.identity}`);
       setStaffAccounts(await listStaffUsers());
     } catch (error) {
       setStaffManageStatus(lang === "en" ? `Add failed: ${error.message}` : `\u65b0\u589e\u5931\u6557\uff1a${error.message}`);
@@ -1919,8 +1955,8 @@ ${selectedItems
   const handleSetStaffActive = async (staff) => {
     try {
       const active = staff.active === false;
-      await saveStaffUser(staff.email, active, staff.role);
-      setStaffManageStatus(lang === "en" ? `${staff.email} ${active ? "enabled" : "disabled"}` : `${staff.email}已${active ? "啟用" : "停用"}`);
+      await saveStaffUser(staff.empid || staff.email, active, staff.role);
+      setStaffManageStatus(lang === "en" ? `${staff.empid || staff.email} ${active ? "enabled" : "disabled"}` : `${staff.empid || staff.email} 已${active ? "啟用" : "停用"}`);
       setStaffAccounts(await listStaffUsers());
     } catch (error) {
       setStaffManageStatus(lang === "en" ? `Update failed: ${error.message}` : `更新失敗：${error.message}`);
@@ -1928,8 +1964,8 @@ ${selectedItems
   };
   const handleSetStaffRole = async (staff, role) => {
     try {
-      await saveStaffUser(staff.email, staff.active !== false, role);
-      setStaffManageStatus(lang === "en" ? `${staff.email} role updated` : `${staff.email} 權限已更新`);
+      await saveStaffUser(staff.empid || staff.email, staff.active !== false, role);
+      setStaffManageStatus(lang === "en" ? `${staff.empid || staff.email} role updated` : `${staff.empid || staff.email} 權限已更新`);
       setStaffAccounts(await listStaffUsers());
     } catch (error) {
       setStaffManageStatus(lang === "en" ? `Role update failed: ${error.message}` : `權限更新失敗：${error.message}`);
@@ -4088,7 +4124,7 @@ ${selectedItems
               </div>
               <div className="space-y-2">
                 <div className="grid grid-cols-[1fr_auto] gap-2">
-                  <input type="email" className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm font-normal" placeholder={t.staffEmailPlaceholder} value={newStaffEmail} onChange={(e) => setNewStaffEmail(e.target.value)} />
+                  <input type="text" className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm font-normal" placeholder={lang === "en" ? "Google email or PTCH employee ID" : "Google Email 或院內職編"} value={newStaffEmail} onChange={(e) => setNewStaffEmail(e.target.value)} />
                   <select className="rounded-md border border-slate-300 px-2 py-1.5 text-xs font-bold" value={newStaffRole} onChange={(e) => setNewStaffRole(e.target.value)}><option value="STAFF">{lang === "en" ? "Staff" : "員工"}</option><option value="ADMIN">{lang === "en" ? "Admin" : "管理者"}</option></select>
                 </div>
                 <button onClick={handleAddStaffUser} className="w-full rounded-md bg-slate-900 px-3 py-2 text-sm font-bold text-white">{t.addStaff}</button>
@@ -4096,8 +4132,8 @@ ${selectedItems
               </div>
               <div className="pt-2 border-t border-slate-100 flex flex-wrap gap-1.5 max-h-36 overflow-y-auto">
                 {staffAccounts.length ? staffAccounts.map((staff) => (
-                  <span key={staff.email} className={`inline-flex items-center gap-1 rounded border px-2 py-1 text-xs font-bold ${staff.active === false ? "border-rose-200 bg-rose-50 text-rose-700" : "border-slate-200 bg-slate-100 text-slate-700"}`}>
-                    {staff.email}
+                  <span key={staff.staffKey || staff.email} className={`inline-flex items-center gap-1 rounded border px-2 py-1 text-xs font-bold ${staff.active === false ? "border-rose-200 bg-rose-50 text-rose-700" : "border-slate-200 bg-slate-100 text-slate-700"}`}>
+                    {staff.empid ? `院內職編 ${staff.empid}` : staff.email}
                     <span className="rounded bg-white/70 px-1 text-[10px]">{staff.email === ADMIN_EMAIL || staff.role === "ADMIN" ? "ADMIN" : "STAFF"}</span>
                     {staff.email !== ADMIN_EMAIL && <><button type="button" onClick={() => handleSetStaffActive(staff)} className="rounded px-1 text-[11px] underline" title={staff.active === false ? "Enable" : "Disable"}>{staff.active === false ? (lang === "en" ? "Enable" : "啟用") : (lang === "en" ? "Disable" : "停用")}</button><button type="button" onClick={() => handleSetStaffRole(staff, staff.role === "ADMIN" ? "STAFF" : "ADMIN")} className="rounded px-1 text-[11px] underline">{staff.role === "ADMIN" ? (lang === "en" ? "Make staff" : "改為員工") : (lang === "en" ? "Make admin" : "升為管理者")}</button></>}
                   </span>
@@ -4207,6 +4243,21 @@ ${selectedItems
         </div>
       )}
 
+      {showStaffLoginModal && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/45 p-4" onClick={() => setShowStaffLoginModal(false)}>
+          <div className="w-full max-w-md rounded-lg bg-white p-5 shadow-2xl" onClick={(event) => event.stopPropagation()}>
+            <div className="mb-4 flex items-center justify-between"><div><h3 className="text-lg font-black text-slate-900">員工登入</h3><p className="mt-1 text-xs text-slate-500">院內帳號僅用於本次驗證，不會儲存於 CAC。</p></div><button type="button" onClick={() => setShowStaffLoginModal(false)} className="rounded p-2 text-slate-500 hover:bg-slate-100"><X className="h-5 w-5" /></button></div>
+            <form className="space-y-3" onSubmit={handleHospitalStaffLogin}>
+              <label className="block text-sm font-bold text-slate-700">院內職編<input autoComplete="username" value={hospitalCredentials.userId} onChange={(event) => setHospitalCredentials((current) => ({ ...current, userId: event.target.value }))} className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 font-normal" required /></label>
+              <label className="block text-sm font-bold text-slate-700">院內密碼<input type="password" autoComplete="current-password" value={hospitalCredentials.password} onChange={(event) => setHospitalCredentials((current) => ({ ...current, password: event.target.value }))} className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 font-normal" required /></label>
+              <button type="submit" className="w-full rounded-md bg-slate-900 px-4 py-2.5 text-sm font-bold text-white">以院內帳號登入</button>
+              {hospitalLoginStatus && <p className="text-xs text-slate-600">{hospitalLoginStatus}</p>}
+            </form>
+            <div className="my-4 border-t border-slate-200" />
+            <button type="button" onClick={() => { setShowStaffLoginModal(false); handleStaffLogin(); }} className="w-full rounded-md border border-slate-300 px-4 py-2.5 text-sm font-bold text-slate-700">Google 管理者登入</button>
+          </div>
+        </div>
+      )}
       {remarkEditor && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/40 p-4" onClick={() => setRemarkEditor(null)}>
           <div className="w-full max-w-lg rounded-lg bg-white p-5 shadow-2xl" onClick={(event) => event.stopPropagation()}>
@@ -4249,7 +4300,7 @@ ${selectedItems
           {staffUser ? (
             <button onClick={handleStaffLogout} className="rounded-md bg-white px-3 py-2 text-xs font-bold text-slate-600 border border-slate-200">{t.logout}</button>
           ) : (
-            <button onClick={handleStaffLogin} className="rounded-md bg-slate-900 px-3 py-2 text-xs font-bold text-white">{t.staffLogin}</button>
+            <button onClick={() => setShowStaffLoginModal(true)} className="rounded-md bg-slate-900 px-3 py-2 text-xs font-bold text-white">{t.staffLogin}</button>
           )}
         </div>
       </div>
