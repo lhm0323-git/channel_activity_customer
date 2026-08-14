@@ -2037,6 +2037,52 @@ ${selectedItems
     printBookings(selectedAdminBookings);
   };
 
+  const handleBatchConfirmBookings = async () => {
+    const targets = selectedAdminBookings.filter((booking) => booking.status !== "CONFIRMED" && booking.status !== "CANCELLED");
+    if (!targets.length) {
+      setAdminStatus(lang === "en" ? "No selected bookings need confirmation" : "\u6240\u9078\u9810\u7d04\u90fd\u5df2\u78ba\u8a8d\u6216\u5df2\u53d6\u6d88");
+      return;
+    }
+    setAdminStatus(lang === "en" ? `Confirming ${targets.length} bookings...` : `\u6b63\u5728\u78ba\u8a8d ${targets.length} \u7b46\u9810\u7d04...`);
+    const results = await Promise.allSettled(targets.map((booking) => confirmBooking(booking.bookingId)));
+    const failed = results.filter((result) => result.status === "rejected").length;
+    const succeeded = targets.length - failed;
+    setAdminStatus(lang === "en" ? `${succeeded} confirmed${failed ? `, ${failed} failed` : ""}` : `\u5df2\u78ba\u8a8d ${succeeded} \u7b46${failed ? `\uff0c${failed} \u7b46\u5931\u6557` : ""}`);
+    setSelectedAdminBookingIds([]);
+    handleLoadAdminBookings();
+  };
+
+  const handleBatchCancelBookings = async () => {
+    const targets = selectedAdminBookings.filter((booking) => booking.status !== "CANCELLED");
+    if (!targets.length) {
+      setAdminStatus(lang === "en" ? "No active bookings selected" : "\u6c92\u6709\u53ef\u53d6\u6d88\u7684\u5df2\u9078\u9810\u7d04");
+      return;
+    }
+    const ok = window.confirm(lang === "en" ? `Cancel ${targets.length} selected bookings? Customers will receive a LINE or email notice when available.` : `\u78ba\u5b9a\u53d6\u6d88\u5df2\u9078\u7684 ${targets.length} \u7b46\u9810\u7d04\uff1f\u6709 LINE \u6216 Email \u806f\u7d61\u8cc7\u6599\u8005\u5c07\u540c\u6642\u6536\u5230\u901a\u77e5\u3002`);
+    if (!ok) return;
+    setAdminStatus(lang === "en" ? `Cancelling ${targets.length} bookings...` : `\u6b63\u5728\u53d6\u6d88 ${targets.length} \u7b46\u9810\u7d04...`);
+    const results = await Promise.allSettled(targets.map((booking) => cancelBooking(booking.bookingId)));
+    const failed = results.filter((result) => result.status === "rejected").length;
+    const succeeded = targets.length - failed;
+    setAdminStatus(lang === "en" ? `${succeeded} cancelled${failed ? `, ${failed} failed` : ""}` : `\u5df2\u53d6\u6d88 ${succeeded} \u7b46${failed ? `\uff0c${failed} \u7b46\u5931\u6557` : ""}`);
+    setSelectedAdminBookingIds([]);
+    handleLoadAdminBookings();
+  };
+
+  const handleBatchSendD1Notices = async () => {
+    const targets = selectedAdminBookings.filter((booking) => booking.status === "CONFIRMED");
+    if (!targets.length) {
+      setAdminStatus(lang === "en" ? "Select confirmed bookings to send reminders" : "\u8acb\u52fe\u9078\u5df2\u78ba\u8a8d\u7684\u9810\u7d04\u4ee5\u767c\u9001\u63d0\u9192");
+      return;
+    }
+    setAdminStatus(lang === "en" ? `Sending ${targets.length} reminders...` : `\u6b63\u5728\u767c\u9001 ${targets.length} \u7b46\u63d0\u9192...`);
+    const results = await Promise.allSettled(targets.map((booking) => sendD1Notice(booking.bookingId)));
+    const failed = results.filter((result) => result.status === "rejected").length;
+    const succeeded = targets.length - failed;
+    setAdminStatus(lang === "en" ? `${succeeded} reminders sent${failed ? `, ${failed} unavailable` : ""}` : `\u5df2\u767c\u9001 ${succeeded} \u7b46\u63d0\u9192${failed ? `\uff0c${failed} \u7b46\u7121\u6cd5\u767c\u9001` : ""}`);
+    setSelectedAdminBookingIds([]);
+    handleLoadAdminBookings();
+  };
   const downloadCsv = async (filename, csvText) => {
     const blob = new Blob(["\ufeff", csvText], { type: "text/csv;charset=utf-8" });
     if (window.showSaveFilePicker) {
@@ -3990,7 +4036,16 @@ ${selectedItems
             </select>
           </label>
           <button onClick={handleLoadAdminBookings} className="px-4 py-2 rounded-md bg-slate-900 text-white text-sm font-bold">{t.load}</button>
-          <button onClick={handlePrintSelectedBookings} disabled={!selectedAdminBookings.length} className="px-4 py-2 rounded-md bg-emerald-600 text-white text-sm font-bold disabled:opacity-40">{t.printSelected}</button>
+          {selectedAdminBookings.length > 0 && (
+            <div className="flex items-center gap-1.5 rounded-md border border-indigo-200 bg-indigo-50 px-2 py-1.5">
+              <span className="px-1 text-xs font-black text-indigo-800">{lang === "en" ? `${selectedAdminBookings.length} selected` : `已選 ${selectedAdminBookings.length} 筆`}</span>
+              <button onClick={handleBatchConfirmBookings} className="rounded bg-emerald-600 px-2.5 py-1.5 text-xs font-bold text-white">{t.confirm}</button>
+              <button onClick={handleBatchSendD1Notices} className="rounded bg-amber-500 px-2.5 py-1.5 text-xs font-bold text-white">{lang === "en" ? "Reminder" : "提醒"}</button>
+              <button onClick={handlePrintSelectedBookings} className="rounded bg-slate-800 px-2.5 py-1.5 text-xs font-bold text-white">{t.print}</button>
+              <button onClick={handleBatchCancelBookings} className="rounded bg-rose-600 px-2.5 py-1.5 text-xs font-bold text-white">{lang === "en" ? "Cancel" : "取消"}</button>
+              <button onClick={() => setSelectedAdminBookingIds([])} className="px-1.5 py-1 text-xs font-bold text-slate-500 hover:text-slate-800" aria-label={lang === "en" ? "Clear selection" : "清除勾選"}>{lang === "en" ? "Clear" : "清除"}</button>
+            </div>
+          )}
           <button onClick={handleExportAdminBookings} disabled={!visibleAdminBookings.length} className="px-4 py-2 rounded-md bg-white border border-slate-300 text-slate-700 text-sm font-bold disabled:opacity-40">{t.exportCsv}</button>
           <label className="px-4 py-2 rounded-md bg-white border border-slate-300 text-slate-700 text-sm font-bold cursor-pointer">
             {t.importCsv}
@@ -4058,12 +4113,8 @@ ${selectedItems
                   <div className="col-span-1 text-slate-600"><span className="lg:hidden block text-[10px] text-slate-400">{t.status}</span>{statusLabel(booking.status)}{booking.checkInSerial && <div className="mt-0.5 font-mono text-xs font-bold text-indigo-600">{booking.checkInSerial}</div>}</div>
                   <div className="col-span-1 text-slate-600"><span className="lg:hidden block text-[10px] text-slate-400">{t.notice}</span>{noticeLabel(booking)}</div>
                   <div className="col-span-1 font-mono text-slate-700"><span className="lg:hidden block font-sans text-[10px] text-slate-400">{t.amount}</span>NT$ {Number(booking.finalPrice || 0).toLocaleString()}</div>
-                  <div className="col-span-1 text-right flex flex-wrap items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-                    {booking.status !== "CONFIRMED" && booking.status !== "CANCELLED" && <button onClick={() => handleConfirmBooking(booking)} className="text-xs px-2 py-1 rounded bg-emerald-600 text-white font-bold">{t.confirm}</button>}
-                    {booking.status !== "CANCELLED" && <button onClick={() => handleCancelAdminBooking(booking)} className="text-xs px-2 py-1 rounded bg-rose-600 text-white font-bold">{lang === "en" ? "Cancel" : "\u53d6\u6d88"}</button>}
-                    {booking.status === "CONFIRMED" && <button onClick={() => handleSendD1Notice(booking)} className="text-xs px-2 py-1 rounded bg-amber-500 text-white font-bold">{lang === "en" ? "Reminder" : "\u63d0\u9192"}</button>}
-                    {booking.status !== "CANCELLED" && booking.customerEmail && !booking.lineUserId && <button onClick={() => handleResendClaimEmail(booking)} className="text-xs px-2 py-1 rounded bg-indigo-600 text-white font-bold">{lang === "en" ? "Email" : "寄信"}</button>}
-                    {booking.status !== "CANCELLED" && <button onClick={() => printBookings([booking])} className="text-xs px-2 py-1 rounded bg-slate-900 text-white font-bold">{t.print}</button>}
+                  <div className="col-span-1 flex items-center justify-end text-slate-400" aria-label={lang === "en" ? "Open booking details" : "開啟預約詳情"}>
+                    <ChevronRight className="h-4 w-4" />
                   </div>
                 </div>
               )) : (

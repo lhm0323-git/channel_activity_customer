@@ -422,3 +422,11 @@ Do not rely on routine email delivery until Google OAuth is published/verified o
 - Delivery fields: `cancelNoticeStatus`, `cancelNoticeChannel`, `cancelNoticeSentAt`, and `cancelNoticeError`.
 - Deployed Function revision: `cancelbooking-00004-rug`; Hosting release: `b038ae62216fd59f`.
 - Validate with an email-only booking cancellation; do not use a real patient record for routine testing.
+## 2026-08-14 - Booking List contextual batch actions
+
+- The Booking List now keeps each row focused on booking information. Click a row to open and edit its details; repeated row-level Confirm, Cancel, Reminder, and Print buttons were removed.
+- Selecting one or more rows reveals one contextual action strip: Confirm, Reminder, Print, Cancel, and Clear selection. No rows selected means no batch controls consume space.
+- Batch actions call the existing protected operation once per eligible booking, so confirmation serial assignment, cancellation LINE/email notices, and audit logging remain unchanged. The result reports completed and failed counts, then reloads the list.
+- Files: `cac-liff-app/src/App.jsx`.
+- Verification: `npm test` passed (34 checks); `npm run build` passed. Existing Vite chunk-size warning remains.
+- Deployment: production Firebase Hosting release 6750828ccc52d940 on 2026-08-14.

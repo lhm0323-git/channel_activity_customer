@@ -344,3 +344,7 @@ Staff can enter and update a booking's medical record number in the booking-deta
 - Built-in questionnaires carry forward stable history fields such as disease history, allergies, family history, education, identity category, genetic history, and rubella vaccination. Current medication, recent symptoms, lifestyle behavior, mental-health screening, and pregnancy plans remain blank for each new booking.
 - Reopening the same booking still loads every saved answer. New custom questions and imported questions default to not carrying forward.
 - Production Hosting version: `2519d7c7722ff1e5`.
+
+## Current operational update
+
+- Booking List supports contextual multi-select actions: Confirm, Reminder, Print, and Cancel. The action strip appears only after one or more bookings are selected; click a row to edit its details.
