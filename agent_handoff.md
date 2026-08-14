@@ -356,12 +356,12 @@ Do not rely on routine email delivery until Google OAuth is published/verified o
 ## 2026-08-11 - Gmail Chinese subject encoding
 
 - Fixed booking-link email MIME headers using RFC 2047 UTF-8 Base64 encoding for non-ASCII headers.
-- Claim emails now use the sender display name `屏基健檢中心` and a correctly encoded Chinese subject. Existing emails are unchanged; newly sent or resent mail uses the fix.
+- Link emails now use the sender display name `屏基健檢中心` and a correctly encoded Chinese subject. Existing emails are unchanged; newly sent or resent mail uses the fix.
 - Files: `cac-liff-app/functions/index.js`.
 - Verification: `node --check functions/index.js`, `npm test`, production deployment of `createBooking` and `sendBookingClaimEmailAsStaff`.
 ## 2026-08-11 - Booking list contact and reminder labels
 
-- Updated the staff booking list to replace the phone-only column with `聯絡／綁定`: it keeps the telephone number and derives one concise status from existing data: `LINE 已綁定`, `Email 已登記`, `待受檢者認領`, or `待人工聯繫`.
+- Updated the staff booking list to replace the phone-only column with `聯絡／綁定`: it keeps the telephone number and derives one concise status from existing data: `LINE 已綁定`, `Email 已登記`, `待受檢者連結`, or `待人工聯繫`.
 - Reminder labels are now operational: `已回覆`, `已發送`, `尚未通知`, `待人工聯繫`, or `發送失敗`. Contactless corporate imports no longer look like a message-delivery failure.
 - No Firestore schema, booking data, or notification behavior changed. This is a display-only rule; the future corporate claim workflow still needs explicit `claimStatus` and expiry design before it is implemented.
 - File: `cac-liff-app/src/App.jsx`.
@@ -440,19 +440,23 @@ Do not rely on routine email delivery until Google OAuth is published/verified o
 - Verification: `npm test` passed (34 checks); `npm run build` passed. Existing Vite chunk-size warning remains.
 - Deployment: production Firebase Hosting release e03ffd84536bc554 on 2026-08-14.
 
-## 2026-08-14 - Enterprise claim QR and batch claim email (pending production deployment)
+## 2026-08-14 - Enterprise link QR and batch link email (pending production deployment)
 
-- Replaced the Booking List selection-strip `Clear` action with `寄認領信`. It sends the existing Gmail claim email only to selected active bookings with an email address and no LINE identity.
-- Added `認領 QR`: selected active, unlinked bookings receive a staff-only printable A4 QR sheet. Each QR contains only a 48-character random claim token in a LIFF URL; it does not contain booking ID, name, phone, ID number, or Firestore path.
+- Replaced the Booking List selection-strip `Clear` action with `寄連結信`. It sends the existing Gmail link email only to selected active bookings with an email address and no LINE identity.
+- Added `連結 QR`: selected active, unlinked bookings receive a staff-only printable A4 QR sheet. Each QR contains only a 48-character random claim token in a LIFF URL; it does not contain booking ID, name, phone, ID number, or Firestore path.
 - Added protected `bookingClaims/{token}` mapping documents. They hold the booking reference, active flag and expiry date (appointment date minus two days). Firestore Rules deny all client access to this collection. A claim deactivates the token after successful LINE binding.
 - CSV now accepts and exports optional `employeeNumber` (aliases: `employeeId`, `employeeNo`, `staffNo`); this is printed on the staff QR sheet for enterprise distribution.
 - Legacy claim URLs that already include a booking ID remain supported. New email and QR claim links are token-only.
 - Files: `cac-liff-app/functions/index.js`, `cac-liff-app/firestore.rules`, `cac-liff-app/src/App.jsx`, `cac-liff-app/src/firebase.js`, `cac-liff-app/src/core.js`, `cac-liff-app/src/core.test.js`.
 - Verification: `npm test`, `node --check functions/index.js`, `git diff --check`, and production Vite build passed. Deployment is pending explicit approval because this introduces a protected claim-token collection and Functions change in production.
-- Acceptance after deployment: import a two-row enterprise CSV, select both rows, use `認領 QR`, scan one QR in LINE, verify only that booking becomes LINE-linked and the token cannot be reused; select an email-only row and use `寄認領信`.
+- Acceptance after deployment: import a two-row enterprise CSV, select both rows, use `連結 QR`, scan one QR in LINE, verify only that booking becomes LINE-linked and the token cannot be reused; select an email-only row and use `寄連結信`.
 ## 2026-08-14 - Enterprise claim workflow deployed
 
 - Production deployment completed: Firebase Hosting release `06ecf9db5850b738`, Firestore Rules, and `exportBookingClaimsAsStaff` Function revision `exportbookingclaimsasstaff-00002-zup`.
 - The export Callable has `allUsers -> roles/run.invoker` only at its Cloud Run ingress so Firebase callable requests can reach the handler. It continues to call `assertStaff`; an anonymous protocol probe returns HTTP 401 and no claim data.
 - `bookingClaims` remains fully denied to client Firestore access. New QR and email links contain only a random one-time token, with expiry two calendar days before the appointment.
-- Acceptance: select active unlinked enterprise rows in Booking List, use `認領 QR` to print a staff-only sheet, scan one QR in LINE, then verify the token cannot be reused. Select an email-only unlinked row and use `寄認領信`.
+- Acceptance: select active unlinked enterprise rows in Booking List, use `連結 QR` to print a staff-only sheet, scan one QR in LINE, then verify the token cannot be reused. Select an email-only unlinked row and use `寄連結信`.
+## 2026-08-14 - Enterprise link terminology
+
+- Renamed staff-facing enterprise claim wording to `寄連結信` and `連結 QR`; printed QR sheets and status messages now use the same wording. Internal token and collection names remain unchanged for backward compatibility.
+- Production terminology release: Firebase Hosting version `f3e8e99658f53a35` on 2026-08-14.

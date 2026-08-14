@@ -316,7 +316,7 @@ The mail contains only the package, appointment date, and a short-lived customer
 Known operational constraint: Google OAuth apps using the sensitive `gmail.send` scope may issue refresh tokens that expire after seven days while the OAuth consent screen remains in Testing. Publish/verify the OAuth app before relying on this for routine production mail.
 ## Staff booking-list contact status
 
-The `預約清單` column `聯絡／綁定` combines the stored telephone number with a concise system-derived contact state: `LINE 已綁定`, `Email 已登記`, `待受檢者認領`, or `待人工聯繫`. The adjacent notification column reports `已回覆`, `已發送`, `尚未通知`, `待人工聯繫`, or `發送失敗`. These labels do not add or migrate booking fields.
+The `預約清單` column `聯絡／綁定` combines the stored telephone number with a concise system-derived contact state: `LINE 已綁定`, `Email 已登記`, `待受檢者連結`, or `待人工聯繫`. The adjacent notification column reports `已回覆`, `已發送`, `尚未通知`, `待人工聯繫`, or `發送失敗`. These labels do not add or migrate booking fields.
 
 ## Returning customer prefill
 
@@ -351,10 +351,14 @@ Staff can enter and update a booking's medical record number in the booking-deta
 - Booking List selection controls use 20px checkboxes. The final column shows preventive-care lookup readiness; it is prepared for future authorized National Health Administration eligibility results without exposing full identifiers.
 ## Enterprise group booking claims
 
-For CSV-imported enterprise rosters, select the imported bookings in `預約清單` and use `認領 QR` to print one QR per employee. The QR has a random, single-use claim token only; the employee opens it in LINE to link the booking. `寄認領信` sends the same token-only linking URL to selected email-only, LINE-unlinked bookings. Claim links expire two calendar days before the appointment. Do not send QR sheets through unrestricted public channels.
+For CSV-imported enterprise rosters, select the imported bookings in `預約清單` and use `連結 QR` to print one QR per employee. The QR has a random, single-use claim token only; the employee opens it in LINE to link the booking. `寄連結信` sends the same token-only linking URL to selected email-only, LINE-unlinked bookings. Claim links expire two calendar days before the appointment. Do not send QR sheets through unrestricted public channels.
 ## 2026-08-14 - Enterprise claim workflow deployed
 
 - Production deployment completed: Firebase Hosting release `06ecf9db5850b738`, Firestore Rules, and `exportBookingClaimsAsStaff` Function revision `exportbookingclaimsasstaff-00002-zup`.
 - The export Callable has `allUsers -> roles/run.invoker` only at its Cloud Run ingress so Firebase callable requests can reach the handler. It continues to call `assertStaff`; an anonymous protocol probe returns HTTP 401 and no claim data.
 - `bookingClaims` remains fully denied to client Firestore access. New QR and email links contain only a random one-time token, with expiry two calendar days before the appointment.
-- Acceptance: select active unlinked enterprise rows in Booking List, use `認領 QR` to print a staff-only sheet, scan one QR in LINE, then verify the token cannot be reused. Select an email-only unlinked row and use `寄認領信`.
+- Acceptance: select active unlinked enterprise rows in Booking List, use `連結 QR` to print a staff-only sheet, scan one QR in LINE, then verify the token cannot be reused. Select an email-only unlinked row and use `寄連結信`.
+## 2026-08-14 - Enterprise link terminology
+
+- Renamed staff-facing enterprise claim wording to `寄連結信` and `連結 QR`; printed QR sheets and status messages now use the same wording. Internal token and collection names remain unchanged for backward compatibility.
+- Production terminology release: Firebase Hosting version `f3e8e99658f53a35` on 2026-08-14.

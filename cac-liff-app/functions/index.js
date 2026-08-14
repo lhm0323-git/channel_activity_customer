@@ -669,7 +669,7 @@ exports.createBooking = onCall({ secrets: [mailerEncryptionKey] }, async (reques
       claimEmailStatus = await sendBookingClaimEmail(bookingRef, actor);
     } catch (error) {
       claimEmailStatus = "FAILED";
-      console.warn("Claim email was not sent for " + bookingRef.id + ": " + error.message);
+      console.warn("Link email was not sent for " + bookingRef.id + ": " + error.message);
     }
   }
   return { bookingId: bookingRef.id, claimToken, claimEmailStatus };
@@ -1198,7 +1198,7 @@ exports.connectMailerCallback = onRequest({ secrets: [mailerEncryptionKey] }, as
     }, { merge: true });
     await stateRef.delete();
     await writeBookingAuditRecord({ action: "CONNECT_GMAIL_MAILER", bookingId: "", actor: { uid: stateSnap.data().actorUid, email: stateSnap.data().actorEmail, role: "ADMIN" } });
-    return finish("Gmail 已連結", "預約認領信將由已設定的健檢中心信箱寄出。");
+    return finish("Gmail 已連結", "預約連結信將由已設定的健檢中心信箱寄出。");
   } catch (error) {
     console.error("Gmail mailer callback failed", error.message);
     return finish("Gmail 連結失敗", "無法完成授權。請回後台重新設定或重新連結。", 500);
