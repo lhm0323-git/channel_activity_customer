@@ -2099,14 +2099,23 @@ ${selectedItems
   };
   const handleBatchSendClaimEmails = async () => {
     const targets = selectedAdminBookings.filter((booking) => !booking.lineUserId && String(booking.customerEmail || "").trim());
-    if (!targets.length) { setAdminStatus(lang === "en" ? "Select email-only bookings first" : "請勾選已填 Email、尚未綁定 LINE 的預約"); return; }
-    setAdminStatus(lang === "en" ? `Sending ${targets.length} link email(s)...` : `正在寄送 ${targets.length} 封連結信...`);
-    const results = await Promise.allSettled(targets.map((booking) => sendBookingClaimEmail(booking.bookingId)));
-    const failed = results.filter((result) => result.status === "rejected").length;
-    setAdminStatus(lang === "en" ? `${targets.length - failed} link email(s) sent${failed ? `, ${failed} failed` : ""}` : `已寄出 ${targets.length - failed} 封連結信${failed ? `，${failed} 封失敗` : ""}`);
-    setSelectedAdminBookingIds([]); handleLoadAdminBookings();
+    if (!targets.length) { setAdminStatus(lang === "en" ? "Select email-only bookings first" : "\u8acb\u52fe\u9078\u5df2\u586b Email\u3001\u5c1a\u672a\u9023\u7d50 LINE \u7684\u9810\u7d04"); return; }
+    let succeeded = 0;
+    let failed = 0;
+    for (let index = 0; index < targets.length; index += 1) {
+      setAdminStatus(lang === "en" ? `Sending link email ${index + 1}/${targets.length}...` : `\u6b63\u5728\u5bc4\u9001\u7b2c ${index + 1}/${targets.length} \u5c01\u9023\u7d50\u4fe1...`);
+      try {
+        await sendBookingClaimEmail(targets[index].bookingId);
+        succeeded += 1;
+      } catch (_) {
+        failed += 1;
+      }
+      if (index < targets.length - 1) await new Promise((resolve) => window.setTimeout(resolve, 1200));
+    }
+    setAdminStatus(lang === "en" ? `${succeeded} link email(s) sent${failed ? `, ${failed} failed` : ""}` : `\u5df2\u5bc4\u51fa ${succeeded} \u5c01\u9023\u7d50\u4fe1${failed ? `\uff0c${failed} \u5c01\u5931\u6557` : ""}`);
+    setSelectedAdminBookingIds([]);
+    handleLoadAdminBookings();
   };
-
   const handlePrintSelectedClaimQrs = async () => {
     const targets = selectedAdminBookings.filter((booking) => booking.status !== "CANCELLED" && !booking.lineUserId);
     if (!targets.length) { setAdminStatus(lang === "en" ? "Select unlinked active bookings first" : "請勾選尚未綁定 LINE 的有效預約"); return; }

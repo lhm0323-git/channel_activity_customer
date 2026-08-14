@@ -87,7 +87,7 @@ async function sendCancellationNotice(bookingRef, booking) {
     try {
       const settings = await getMailerSettings(true);
       const message = buildCancellationEmail(booking);
-      await sendGmailMessage(settings, email, message.subject, message.text);
+      await sendGmailMessage(settings, email, message.subject, message.text, message.html);
       await bookingRef.update({
         cancelNoticeStatus: "SENT",
         cancelNoticeChannel: "EMAIL",
@@ -187,25 +187,36 @@ function customerLineClaimUrl(claimToken) {
   return "https://liff.line.me/" + LIFF_ID + "?view=my-bookings&claimToken=" + encodeURIComponent(claimToken);
 }
 
-function buildClaimEmail(bookingId, booking) {
-  const claimUrl = customerLineClaimUrl(booking.customerClaimToken);
-  const name = cleanHeader(booking.customerName || "");
-  const packageName = cleanHeader(booking.packageName || "健檢套餐");
-  const date = cleanHeader(booking.appointmentDate || "");
-  return {
-    subject: "屏基健檢中心：預約確認與 LINE 綁定",
-    text: [
-      name ? name + " 您好：" : "您好：",
-      "您的健檢預約已建立。",
-      "套餐：" + packageName,
-      "暫定日期：" + date,
-      "請開啟下列連結，於 LINE 完成綁定後即可查詢預約、提出改期並接收提醒：",
-      claimUrl,
-      "若無法開啟，請聯繫屏基健檢中心。",
-    ].join("\n"),
-  };
+function escapeEmailHtml(value) {
+  return String(value || "").replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" })[character]);
 }
 
+function buildClaimEmail(bookingId, booking) {
+  const clinicName = "\u5c4f\u57fa\u5065\u6aa2\u4e2d\u5fc3";
+  const claimUrl = customerLineClaimUrl(booking.customerClaimToken);
+  const name = cleanHeader(booking.customerName || "");
+  const packageName = cleanHeader(booking.packageName || "\u5065\u6aa2\u5957\u9910");
+  const date = cleanHeader(booking.appointmentDate || "");
+  const expiresOn = cleanHeader(booking.claimExpiresOn || claimExpiryDate(date) || "");
+  const greeting = name ? name + " \u60a8\u597d\uff1a" : "\u60a8\u597d\uff1a";
+  const support = "08-736-8686 \u8f49 5720 (10~14)";
+  const address = "\u5c4f\u6771\u5e02\u5927\u9023\u8def 66 \u865f\uff0c\u6069\u6148\u5927\u6a13 2 \u6a13\u5065\u6aa2\u4e2d\u5fc3";
+  const subject = clinicName + "\uff5c" + date + " \u5065\u6aa2\u9810\u7d04\u78ba\u8a8d";
+  const text = [
+    greeting,
+    "\u60a8\u7684\u5c4f\u57fa\u5065\u6aa2\u4e2d\u5fc3\u5065\u6aa2\u9810\u7d04\u5df2\u5efa\u7acb\u3002",
+    "\u5957\u9910\uff1a" + packageName,
+    "\u66ab\u5b9a\u65e5\u671f\uff1a" + date,
+    "\u8acb\u65bc " + expiresOn + " \u524d\u958b\u555f\u4e0b\u5217\u9023\u7d50\uff0c\u5728 LINE \u5b8c\u6210\u9810\u7d04\u9023\u7d50\u3002\u5b8c\u6210\u5f8c\u53ef\u67e5\u8a62\u9810\u7d04\u3001\u63d0\u51fa\u6539\u671f\u4e26\u63a5\u6536\u5230\u6aa2\u63d0\u9192\uff1a",
+    claimUrl,
+    "",
+    "\u672c\u4fe1\u7531\u5c4f\u57fa\u5065\u6aa2\u4e2d\u5fc3\u9810\u7d04\u7cfb\u7d71\u5bc4\u767c\u3002\u82e5\u60a8\u672a\u7533\u8acb\u6b64\u9810\u7d04\uff0c\u8acb\u52ff\u9ede\u64ca\u9023\u7d50\uff0c\u4e26\u806f\u7e6b\u6211\u5011\u78ba\u8a8d\u3002",
+    clinicName + "\uff5c\u670d\u52d9\u5c08\u7dda\uff1a" + support,
+    "\u5730\u5740\uff1a" + address,
+  ].join("\n");
+  const html = "<!doctype html><html><body style=\"margin:0;background:#f8fafc;font-family:Arial,'Microsoft JhengHei',sans-serif;color:#172033\"><main style=\"max-width:620px;margin:24px auto;background:#ffffff;border:1px solid #dbe4ee;border-radius:10px;padding:28px\"><h1 style=\"margin:0 0 18px;font-size:22px\">" + clinicName + "</h1><p>" + escapeEmailHtml(greeting) + "</p><p>\u60a8\u7684\u5065\u6aa2\u9810\u7d04\u5df2\u5efa\u7acb\u3002</p><table style=\"border-collapse:collapse;width:100%;margin:18px 0\"><tr><td style=\"padding:8px;border-bottom:1px solid #e2e8f0;color:#475569\">\u5957\u9910</td><td style=\"padding:8px;border-bottom:1px solid #e2e8f0\">" + escapeEmailHtml(packageName) + "</td></tr><tr><td style=\"padding:8px;border-bottom:1px solid #e2e8f0;color:#475569\">\u66ab\u5b9a\u65e5\u671f</td><td style=\"padding:8px;border-bottom:1px solid #e2e8f0\">" + escapeEmailHtml(date) + "</td></tr></table><p>\u8acb\u65bc " + escapeEmailHtml(expiresOn) + " \u524d\u5b8c\u6210 LINE \u9810\u7d04\u9023\u7d50\u3002</p><p style=\"margin:24px 0\"><a href=\"" + escapeEmailHtml(claimUrl) + "\" style=\"display:inline-block;background:#008f6f;color:#ffffff;padding:13px 20px;border-radius:6px;text-decoration:none;font-weight:700\">\u958b\u555f LINE \u5b8c\u6210\u9810\u7d04\u9023\u7d50</a></p><p style=\"font-size:13px;color:#64748b;line-height:1.6\">\u672c\u4fe1\u7531\u5c4f\u57fa\u5065\u6aa2\u4e2d\u5fc3\u9810\u7d04\u7cfb\u7d71\u5bc4\u767c\u3002\u82e5\u60a8\u672a\u7533\u8acb\u6b64\u9810\u7d04\uff0c\u8acb\u52ff\u9ede\u64ca\u9023\u7d50\uff0c\u4e26\u806f\u7e6b\u6211\u5011\u78ba\u8a8d\u3002<br>\u670d\u52d9\u5c08\u7dda\uff1a" + support + "<br>\u5730\u5740\uff1a" + address + "</p></main></body></html>";
+  return { subject, text, html };
+}
 async function getMailerSettings(requireConnected = true) {
   const snap = await admin.firestore().doc(MAILER_SETTINGS_PATH).get();
   if (!snap.exists) throw new HttpsError("failed-precondition", "Gmail sender has not been configured");
@@ -219,7 +230,7 @@ async function getMailerSettings(requireConnected = true) {
   };
 }
 
-async function sendGmailMessage(settings, recipient, subject, textBody) {
+async function sendGmailMessage(settings, recipient, subject, textBody, htmlBody = "") {
   const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -232,16 +243,26 @@ async function sendGmailMessage(settings, recipient, subject, textBody) {
   });
   const tokenJson = await tokenResponse.json();
   if (!tokenResponse.ok || !tokenJson.access_token) throw new Error("Gmail token refresh failed: " + (tokenJson.error || tokenResponse.status));
-  const raw = Buffer.from([
-    "From: " + encodeMimeHeader("屏基健檢中心") + " <" + cleanHeader(settings.senderEmail) + ">",
+  const headers = [
+    "From: " + encodeMimeHeader("\u5c4f\u57fa\u5065\u6aa2\u4e2d\u5fc3") + " <" + cleanHeader(settings.senderEmail) + ">",
     "To: " + cleanHeader(recipient),
+    "Reply-To: " + cleanHeader(settings.senderEmail),
     "Subject: " + encodeMimeHeader(subject),
     "MIME-Version: 1.0",
-    "Content-Type: text/plain; charset=UTF-8",
-    "Content-Transfer-Encoding: 8bit",
-    "",
-    String(textBody || ""),
-  ].join("\r\n"), "utf8").toString("base64url");
+  ];
+  const messageLines = [...headers];
+  if (htmlBody) {
+    const boundary = "cac-link-" + crypto.randomBytes(12).toString("hex");
+    messageLines.push(
+      "Content-Type: multipart/alternative; boundary=\"" + boundary + "\"", "",
+      "--" + boundary, "Content-Type: text/plain; charset=UTF-8", "Content-Transfer-Encoding: 8bit", "", String(textBody || ""),
+      "--" + boundary, "Content-Type: text/html; charset=UTF-8", "Content-Transfer-Encoding: 8bit", "", String(htmlBody),
+      "--" + boundary + "--"
+    );
+  } else {
+    messageLines.push("Content-Type: text/plain; charset=UTF-8", "Content-Transfer-Encoding: 8bit", "", String(textBody || ""));
+  }
+  const raw = Buffer.from(messageLines.join("\r\n"), "utf8").toString("base64url");
   const response = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
     method: "POST",
     headers: { Authorization: "Bearer " + tokenJson.access_token, "Content-Type": "application/json" },
@@ -249,7 +270,6 @@ async function sendGmailMessage(settings, recipient, subject, textBody) {
   });
   if (!response.ok) throw new Error("Gmail send failed: " + response.status);
 }
-
 async function sendBookingClaimEmail(bookingRef, actor = { role: "SYSTEM" }) {
   const snap = await bookingRef.get();
   if (!snap.exists) throw new HttpsError("not-found", "Booking not found");
@@ -260,7 +280,7 @@ async function sendBookingClaimEmail(bookingRef, actor = { role: "SYSTEM" }) {
   try {
     const settings = await getMailerSettings(true);
     const message = buildClaimEmail(bookingRef.id, booking);
-    await sendGmailMessage(settings, email, message.subject, message.text);
+    await sendGmailMessage(settings, email, message.subject, message.text, message.html);
     await bookingRef.update({
       claimEmailStatus: "SENT",
       claimEmailSentAt: FieldValue.serverTimestamp(),

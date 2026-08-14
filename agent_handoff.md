@@ -460,3 +460,13 @@ Do not rely on routine email delivery until Google OAuth is published/verified o
 
 - Renamed staff-facing enterprise claim wording to `寄連結信` and `連結 QR`; printed QR sheets and status messages now use the same wording. Internal token and collection names remain unchanged for backward compatibility.
 - Production terminology release: Firebase Hosting version `f3e8e99658f53a35` on 2026-08-14.
+
+## 2026-08-14 - Booking link email deliverability
+
+- Production now sends the enterprise booking-link email as `multipart/alternative`: a readable plain-text fallback plus a simple HTML version with the clinic name, booking package, appointment date, link expiry, contact phone, address, and a single LINE-link button. Dynamic booking values are HTML-escaped.
+- The subject is now `屏基健檢中心｜<日期> 健檢預約確認`; the sender remains the configured Gmail account. The message contains no ID/passport number, phone number, questionnaire data, Firestore document ID, or QR attachment.
+- `寄連結信` sends selected Email-only, LINE-unlinked bookings sequentially with a 1.2-second interval and shows `第 n/總數` progress. This reduces identical burst traffic but Gmail acceptance does not guarantee inbox placement.
+- Production deployment: Functions `createBooking`, `sendBookingClaimEmailAsStaff`, and `cancelBooking` updated successfully; Hosting release `c6bac4b76ed5539f`.
+- Verification: `node --check functions/index.js`; 36 `npm test` checks; production `npm run build`; Firebase Functions and Hosting deploy succeeded.
+- Acceptance: send to several staff-controlled inboxes, verify subject/body/button, then mark a legitimate message as `非垃圾郵件` if Gmail classifies it incorrectly. Long-term deliverability requires an authenticated hospital-owned sending domain with SPF/DKIM/DMARC; do not treat the temporary `@gmail.com` sender as a guaranteed production delivery channel.
+- Local CLI note: on this workstation Firebase Functions HTTP discovery fails with local `fetch failed`. Deploy Functions with `$env:FIREBASE_FUNCTIONS_DISCOVERY_OUTPUT_PATH='true'; firebase deploy --only functions:<name> --project channel-activity-customer` to use manifest-file discovery. This is a workstation CLI workaround, not a runtime setting.
