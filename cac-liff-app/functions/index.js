@@ -1213,7 +1213,7 @@ exports.sendBookingClaimEmailAsStaff = onCall({ secrets: [mailerEncryptionKey] }
   const status = await sendBookingClaimEmail(bookingRef, actor);
   return { status };
 });
-exports.exportBookingClaimsAsStaff = onCall(async (request) => {
+exports.exportBookingClaimsAsStaff = onCall({ invoker: "public" }, async (request) => {
   const actor = await assertStaff(request);
   const bookingIds = Array.isArray(request.data?.bookingIds) ? request.data.bookingIds : [];
   const uniqueIds = [...new Set(bookingIds.map((value) => text(value, 200)).filter(Boolean))].slice(0, 200);

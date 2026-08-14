@@ -538,3 +538,9 @@ pm test, staging build, and staging Hosting deployment.
 - Files: `cac-liff-app/functions/index.js`, `cac-liff-app/firestore.rules`, `cac-liff-app/src/App.jsx`, `cac-liff-app/src/firebase.js`, `cac-liff-app/src/core.js`, `cac-liff-app/src/core.test.js`.
 - Verification: `npm test`, `node --check functions/index.js`, `git diff --check`, and production Vite build passed. Deployment is pending explicit approval because this introduces a protected claim-token collection and Functions change in production.
 - Acceptance after deployment: import a two-row enterprise CSV, select both rows, use `認領 QR`, scan one QR in LINE, verify only that booking becomes LINE-linked and the token cannot be reused; select an email-only row and use `寄認領信`.
+## 2026-08-14 - Enterprise claim workflow deployed
+
+- Production deployment completed: Firebase Hosting release `06ecf9db5850b738`, Firestore Rules, and `exportBookingClaimsAsStaff` Function revision `exportbookingclaimsasstaff-00002-zup`.
+- The export Callable has `allUsers -> roles/run.invoker` only at its Cloud Run ingress so Firebase callable requests can reach the handler. It continues to call `assertStaff`; an anonymous protocol probe returns HTTP 401 and no claim data.
+- `bookingClaims` remains fully denied to client Firestore access. New QR and email links contain only a random one-time token, with expiry two calendar days before the appointment.
+- Acceptance: select active unlinked enterprise rows in Booking List, use `認領 QR` to print a staff-only sheet, scan one QR in LINE, then verify the token cannot be reused. Select an email-only unlinked row and use `寄認領信`.

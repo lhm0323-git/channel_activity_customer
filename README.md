@@ -352,3 +352,9 @@ Staff can enter and update a booking's medical record number in the booking-deta
 ## Enterprise group booking claims
 
 For CSV-imported enterprise rosters, select the imported bookings in `預約清單` and use `認領 QR` to print one QR per employee. The QR has a random, single-use claim token only; the employee opens it in LINE to link the booking. `寄認領信` sends the same token-only linking URL to selected email-only, LINE-unlinked bookings. Claim links expire two calendar days before the appointment. Do not send QR sheets through unrestricted public channels.
+## 2026-08-14 - Enterprise claim workflow deployed
+
+- Production deployment completed: Firebase Hosting release `06ecf9db5850b738`, Firestore Rules, and `exportBookingClaimsAsStaff` Function revision `exportbookingclaimsasstaff-00002-zup`.
+- The export Callable has `allUsers -> roles/run.invoker` only at its Cloud Run ingress so Firebase callable requests can reach the handler. It continues to call `assertStaff`; an anonymous protocol probe returns HTTP 401 and no claim data.
+- `bookingClaims` remains fully denied to client Firestore access. New QR and email links contain only a random one-time token, with expiry two calendar days before the appointment.
+- Acceptance: select active unlinked enterprise rows in Booking List, use `認領 QR` to print a staff-only sheet, scan one QR in LINE, then verify the token cannot be reused. Select an email-only unlinked row and use `寄認領信`.
