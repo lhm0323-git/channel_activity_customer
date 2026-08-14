@@ -348,3 +348,4 @@ Staff can enter and update a booking's medical record number in the booking-deta
 ## Current operational update
 
 - Booking List supports contextual multi-select actions: Confirm, Reminder, Print, and Cancel. The action strip appears only after one or more bookings are selected; click a row to edit its details.
+- Booking List selection controls use 20px checkboxes. The final column shows preventive-care lookup readiness; it is prepared for future authorized National Health Administration eligibility results without exposing full identifiers.

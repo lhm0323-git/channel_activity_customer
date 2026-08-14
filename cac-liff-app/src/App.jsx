@@ -1715,6 +1715,19 @@ ${selectedItems
     if (booking.customerClaimToken) return lang === "en" ? "Awaiting claim" : "\u5f85\u53d7\u6aa2\u8005\u8a8d\u9818";
     return lang === "en" ? "Manual follow-up" : "\u5f85\u4eba\u5de5\u806f\u7e6b";
   };
+  const preventiveCareEligibilityLabel = (booking) => {
+    const status = String(booking.preventiveEligibilityStatus || booking.preventiveEligibility?.status || "").trim().toUpperCase();
+    const labels = {
+      ELIGIBLE: lang === "en" ? "Eligible" : "符合資格",
+      INELIGIBLE: lang === "en" ? "Not eligible" : "不符合資格",
+      PENDING: lang === "en" ? "Pending review" : "待確認",
+      ERROR: lang === "en" ? "Lookup failed" : "查詢失敗",
+    };
+    if (status) return labels[status] || status;
+    return booking.idNumberMasked
+      ? (lang === "en" ? "Pending lookup" : "待查詢")
+      : (lang === "en" ? "ID required" : "未填證號");
+  };
   const handleConfirmBooking = async (booking) => {
     try {
       const result = await confirmBooking(booking.bookingId);
@@ -4081,7 +4094,7 @@ ${selectedItems
 
           <div className="bg-white border border-slate-200 rounded-lg flex-1 min-h-0 flex flex-col overflow-hidden">
             <div className="hidden lg:grid flex-none grid-cols-12 bg-slate-100 text-xs font-bold text-slate-600 px-4 py-2.5 border-b border-slate-200">
-              <div className="col-span-1"><input type="checkbox" checked={allAdminBookingsSelected} onChange={toggleAllAdminBookings} aria-label={t.selectAllBookings} /></div>
+              <div className="col-span-1"><input type="checkbox" className="h-5 w-5 shrink-0 rounded border-slate-400 text-indigo-600 focus:ring-2 focus:ring-indigo-500" checked={allAdminBookingsSelected} onChange={toggleAllAdminBookings} aria-label={t.selectAllBookings} /></div>
               <div className="col-span-1"><button className="font-bold" onClick={() => toggleAdminSort("date")}>{t.appointmentDate}{adminSortMark("date")}</button></div>
               <div className="col-span-2"><button className="font-bold" onClick={() => toggleAdminSort("customer")}>{t.customer}{adminSortMark("customer")}</button></div>
               <div className="col-span-1">{lang === "en" ? "MRN" : "病歷號碼"}</div>
@@ -4091,7 +4104,7 @@ ${selectedItems
               <div className="col-span-1"><button className="font-bold" onClick={() => toggleAdminSort("status")}>{t.status}{adminSortMark("status")}</button></div>
               <div className="col-span-1"><button className="font-bold" onClick={() => toggleAdminSort("notice")}>{t.notice}{adminSortMark("notice")}</button></div>
               <div className="col-span-1"><button className="font-bold" onClick={() => toggleAdminSort("amount")}>{t.amount}{adminSortMark("amount")}</button></div>
-              <div className="col-span-1 text-right">{t.operation}</div>
+              <div className="col-span-1 text-right">{lang === "en" ? "Preventive care" : "癌篩資格"}</div>
             </div>
 
             <div className="flex-1 lg:overflow-y-auto divide-y divide-slate-100">
@@ -4103,7 +4116,7 @@ ${selectedItems
               </div>
               {sortedAdminBookings.length ? sortedAdminBookings.map((booking) => (
                 <div key={booking.bookingId} onClick={() => setAdminDetailBooking(booking)} className="admin-booking-row grid grid-cols-2 lg:grid-cols-12 items-center gap-x-3 gap-y-2 px-4 py-3 text-sm cursor-pointer hover:bg-slate-50 transition-colors">
-                  <div className="col-span-1"><input type="checkbox" checked={selectedAdminBookingIds.includes(booking.bookingId)} onClick={(e) => e.stopPropagation()} onChange={() => toggleAdminBookingSelection(booking.bookingId)} aria-label={t.customer} /></div>
+                  <div className="col-span-1"><input type="checkbox" className="h-5 w-5 shrink-0 rounded border-slate-400 text-indigo-600 focus:ring-2 focus:ring-indigo-500" checked={selectedAdminBookingIds.includes(booking.bookingId)} onClick={(e) => e.stopPropagation()} onChange={() => toggleAdminBookingSelection(booking.bookingId)} aria-label={t.customer} /></div>
                   <div className="col-span-1 text-slate-600"><span className="lg:hidden block text-[10px] text-slate-400">{t.appointmentDate}</span>{booking.appointmentDate || "-"}</div>
                   <div className="col-span-2 font-bold text-slate-800"><span className="lg:hidden block text-[10px] font-normal text-slate-400">{t.customer}</span>{booking.customerName || booking.name || booking.customerId}</div>
                   <div className="col-span-1 text-slate-600"><span className="lg:hidden block text-[10px] text-slate-400">{lang === "en" ? "MRN" : "病歷號碼"}</span>{booking.medicalRecordNumber || "-"}</div>
@@ -4113,8 +4126,9 @@ ${selectedItems
                   <div className="col-span-1 text-slate-600"><span className="lg:hidden block text-[10px] text-slate-400">{t.status}</span>{statusLabel(booking.status)}{booking.checkInSerial && <div className="mt-0.5 font-mono text-xs font-bold text-indigo-600">{booking.checkInSerial}</div>}</div>
                   <div className="col-span-1 text-slate-600"><span className="lg:hidden block text-[10px] text-slate-400">{t.notice}</span>{noticeLabel(booking)}</div>
                   <div className="col-span-1 font-mono text-slate-700"><span className="lg:hidden block font-sans text-[10px] text-slate-400">{t.amount}</span>NT$ {Number(booking.finalPrice || 0).toLocaleString()}</div>
-                  <div className="col-span-1 flex items-center justify-end text-slate-400" aria-label={lang === "en" ? "Open booking details" : "開啟預約詳情"}>
-                    <ChevronRight className="h-4 w-4" />
+                  <div className="col-span-1 text-right text-slate-600">
+                    <span className="lg:hidden block text-[10px] text-slate-400">{lang === "en" ? "Preventive care" : "癌篩資格"}</span>
+                    <span className="text-xs font-bold">{preventiveCareEligibilityLabel(booking)}</span>
                   </div>
                 </div>
               )) : (

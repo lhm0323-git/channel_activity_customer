@@ -518,3 +518,12 @@ pm test, staging build, and staging Hosting deployment.
 - Files: `cac-liff-app/src/App.jsx`.
 - Verification: `npm test` passed (34 checks); `npm run build` passed. Existing Vite chunk-size warning remains.
 - Deployment: production Firebase Hosting release 6750828ccc52d940 on 2026-08-14.
+
+## 2026-08-14 - Booking list selection and preventive-care readiness
+
+- Enlarged the select-all and row checkboxes to a fixed 20px target with visible keyboard focus styling.
+- Replaced the unused final operation column with Preventive care eligibility. It currently reports `Pending lookup` when a masked ID exists, or `ID required` when no ID was supplied; future API results can write `ELIGIBLE`, `INELIGIBLE`, `PENDING`, or `ERROR` without another list-layout change.
+- Full ID/passport values are deliberately not displayed or sent from the list. The later National Health Administration integration must use a staff-authorized lookup flow with an explicitly entered full identifier and minimal stored result.
+- Files: `cac-liff-app/src/App.jsx`.
+- Verification: `npm test` passed (34 checks); `npm run build` passed. Existing Vite chunk-size warning remains.
+- Deployment: production Firebase Hosting release e03ffd84536bc554 on 2026-08-14.
