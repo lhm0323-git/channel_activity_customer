@@ -53,26 +53,63 @@ function buildCancellationMessage(booking) {
   };
 }
 
-async function sendCancellationLineNotice(bookingRef, booking) {
-  if (!booking.lineUserId) return "NOT_LINKED";
-  try {
-    await pushLineMessage(lineChannelAccessToken.value(), booking.lineUserId, buildCancellationMessage(booking));
-    await bookingRef.update({
-      cancelNoticeStatus: "SENT",
-      cancelNoticeSentAt: FieldValue.serverTimestamp(),
-      cancelNoticeError: null,
-      updatedAt: FieldValue.serverTimestamp(),
-    });
-    return "SENT";
-  } catch (error) {
-    console.warn("Cancellation LINE notice failed for " + bookingRef.id + ": " + error.message);
-    await bookingRef.update({
-      cancelNoticeStatus: "FAILED",
-      cancelNoticeError: String(error && error.message || error).slice(0, 500),
-      updatedAt: FieldValue.serverTimestamp(),
-    });
-    return "FAILED";
+function buildCancellationEmail(booking) {
+  const date = booking.appointmentDate || "";
+  const packageName = booking.packageName || "\u5065\u6aa2\u5957\u9910";
+  return {
+    subject: "\u5c4f\u57fa\u5065\u6aa2\u4e2d\u5fc3\uff1a\u9810\u7d04\u5df2\u53d6\u6d88",
+    text: "\u60a8\u539f\u8a02 " + date + " \u7684\u300c" + packageName + "\u300d\u9810\u7d04\u5df2\u53d6\u6d88\u3002\n\n\u5982\u9700\u91cd\u65b0\u9810\u7d04\uff0c\u8acb\u7531\u5c4f\u57fa\u5065\u6aa2\u4e2d\u5fc3 LINE \u5b98\u65b9\u5e33\u865f\u958b\u555f\u300c\u627e\u65b9\u6848 / \u9810\u7d04\u300d\u3002",
+  };
+}
+
+async function sendCancellationNotice(bookingRef, booking) {
+  const email = String(booking.customerEmail || booking.email || "").trim().toLowerCase();
+  let deliveryError = null;
+
+  if (booking.lineUserId) {
+    try {
+      await pushLineMessage(lineChannelAccessToken.value(), booking.lineUserId, buildCancellationMessage(booking));
+      await bookingRef.update({
+        cancelNoticeStatus: "SENT",
+        cancelNoticeChannel: "LINE",
+        cancelNoticeSentAt: FieldValue.serverTimestamp(),
+        cancelNoticeError: null,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      return "LINE";
+    } catch (error) {
+      deliveryError = error;
+      console.warn("Cancellation LINE notice failed for " + bookingRef.id + ": " + error.message);
+    }
   }
+
+  if (validEmail(email)) {
+    try {
+      const settings = await getMailerSettings(true);
+      const message = buildCancellationEmail(booking);
+      await sendGmailMessage(settings, email, message.subject, message.text);
+      await bookingRef.update({
+        cancelNoticeStatus: "SENT",
+        cancelNoticeChannel: "EMAIL",
+        cancelNoticeSentAt: FieldValue.serverTimestamp(),
+        cancelNoticeError: null,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      return "EMAIL";
+    } catch (error) {
+      console.warn("Cancellation email notice failed for " + bookingRef.id + ": " + error.message);
+      deliveryError = deliveryError || error;
+    }
+  }
+
+  const error = deliveryError || new Error("Booking has no LINE user ID or valid email address");
+  await bookingRef.update({
+    cancelNoticeStatus: "FAILED",
+    cancelNoticeChannel: "NONE",
+    cancelNoticeError: String(error && error.message || error).slice(0, 500),
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+  return "FAILED";
 }
 function buildD1Email(booking) {
   const date = booking.appointmentDate || "";
@@ -601,7 +638,7 @@ exports.createBooking = onCall({ secrets: [mailerEncryptionKey] }, async (reques
   return { bookingId: bookingRef.id, claimToken, claimEmailStatus };
 });
 
-exports.cancelBooking = onCall({ secrets: [lineChannelAccessToken] }, async (request) => {
+exports.cancelBooking = onCall({ secrets: [lineChannelAccessToken, mailerEncryptionKey] }, async (request) => {
   if (!request.auth?.uid) throw new HttpsError("unauthenticated", "A signed-in session is required");
   const bookingId = text(request.data?.bookingId, 200);
   if (!bookingId) throw new HttpsError("invalid-argument", "Booking ID is required");
@@ -620,7 +657,7 @@ exports.cancelBooking = onCall({ secrets: [lineChannelAccessToken] }, async (req
     writeBookingAudit(transaction, db, { action: "CANCEL", bookingId, actor, before: booking, after: { ...booking, ...patch } });
     cancelledBooking = { ...booking, status: "CANCELLED" };
   });
-  const cancelNoticeStatus = cancelledBooking ? await sendCancellationLineNotice(bookingRef, cancelledBooking) : "ALREADY_CANCELLED";
+  const cancelNoticeStatus = cancelledBooking ? await sendCancellationNotice(bookingRef, cancelledBooking) : "ALREADY_CANCELLED";
   return { cancelled: true, cancelNoticeStatus };
 });
 

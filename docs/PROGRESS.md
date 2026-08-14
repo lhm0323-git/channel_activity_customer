@@ -501,3 +501,12 @@ pm test, staging build, and staging Hosting deployment.
 - Firestore Rules now resolve staff identity from the signed custom-token `staffKey`, while retaining the bootstrap administrator email.
 - Verification: `npm test`, production build, Hosting HTTP 200 with bundle `index-B7-VDxKH.js`, and production Function ACTIVE.
 - Rollback: Firebase Hosting channel `pre-hospital-login-20260813` preserves the previous live version until 2026-08-20.
+
+## 2026-08-14 - Cancellation notification email fallback
+
+- `cancelBooking` now delivers cancellation notices through LINE first. If no LINE account is linked, or LINE delivery fails, CAC sends the same cancellation notice through the configured Gmail sender when a valid booking email exists.
+- Booking records now retain `cancelNoticeStatus`, `cancelNoticeChannel` (`LINE`, `EMAIL`, or `NONE`), timestamp, and delivery error when applicable. Cancellation remains final even if notification delivery fails.
+- Both My Bookings and staff Booking List show whether the notice was sent through LINE, email, or failed.
+- Files: `cac-liff-app/functions/index.js`, `cac-liff-app/src/App.jsx`.
+- Verification: `node --check functions/index.js`, `npm run build`, Function revision `cancelbooking-00004-rug`, and Hosting release `b038ae62216fd59f` deployed to production.
+- Remaining acceptance: cancel an email-only booking and verify receipt from the configured Gmail sender.

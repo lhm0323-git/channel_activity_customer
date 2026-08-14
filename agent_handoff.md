@@ -415,3 +415,10 @@ Do not rely on routine email delivery until Google OAuth is published/verified o
 - Production deployment completed: Hosting, Firestore Rules, and only the `signInWithHospitalAccount` Function.
 - Do not replace the production site with the broader P0/staging working tree. Start future production work from the current production-equivalent commit and isolate releases.
 - Rollback Hosting channel available until 2026-08-20: `pre-hospital-login-20260813`.
+
+## 2026-08-14 - Cancellation Email fallback deployed
+
+- Production `cancelBooking` now sends LINE first, then falls back to Gmail when LINE is unavailable or delivery fails and the booking has a valid email.
+- Delivery fields: `cancelNoticeStatus`, `cancelNoticeChannel`, `cancelNoticeSentAt`, and `cancelNoticeError`.
+- Deployed Function revision: `cancelbooking-00004-rug`; Hosting release: `b038ae62216fd59f`.
+- Validate with an email-only booking cancellation; do not use a real patient record for routine testing.

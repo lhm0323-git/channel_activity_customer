@@ -1635,7 +1635,7 @@ ${selectedItems
     try {
       const result = await cancelBooking(booking.bookingId);
       const notice = result?.cancelNoticeStatus;
-      setMyBookingStatus(result.localOnly ? "\u5df2\u53d6\u6d88\u672c\u6a5f\u66ab\u5b58\u9810\u7d04" : notice === "SENT" ? "\u9810\u7d04\u5df2\u53d6\u6d88\uff0c\u5df2\u767c\u9001 LINE \u901a\u77e5" : notice === "FAILED" ? "\u9810\u7d04\u5df2\u53d6\u6d88\uff0cLINE \u901a\u77e5\u767c\u9001\u5931\u6557" : "\u5df2\u53d6\u6d88\u9810\u7d04");
+      setMyBookingStatus(result.localOnly ? "\u5df2\u53d6\u6d88\u672c\u6a5f\u66ab\u5b58\u9810\u7d04" : notice === "LINE" ? "\u9810\u7d04\u5df2\u53d6\u6d88\uff0c\u5df2\u767c\u9001 LINE \u901a\u77e5" : notice === "EMAIL" ? "\u9810\u7d04\u5df2\u53d6\u6d88\uff0c\u5df2\u5bc4\u9001 Email \u901a\u77e5" : notice === "FAILED" ? "\u9810\u7d04\u5df2\u53d6\u6d88\uff0c\u901a\u77e5\u767c\u9001\u5931\u6557" : "\u5df2\u53d6\u6d88\u9810\u7d04");
       handleLoadMyBookings();
     } catch (error) {
       setMyBookingStatus(lang === "en" ? `Cancel failed: ${error.message}` : `\u53d6\u6d88\u5931\u6557\uff1a${error.message}`);
@@ -1747,7 +1747,7 @@ ${selectedItems
     try {
       const result = await cancelBooking(booking.bookingId);
       const notice = result?.cancelNoticeStatus;
-      setAdminStatus(lang === "en" ? (notice === "SENT" ? "Booking cancelled and LINE notice sent" : notice === "FAILED" ? "Booking cancelled; LINE notice failed" : "Booking cancelled") : (notice === "SENT" ? "\u9810\u7d04\u5df2\u53d6\u6d88\uff0c\u5df2\u767c\u9001 LINE \u901a\u77e5" : notice === "FAILED" ? "\u9810\u7d04\u5df2\u53d6\u6d88\uff0cLINE \u901a\u77e5\u767c\u9001\u5931\u6557" : "\u9810\u7d04\u5df2\u53d6\u6d88"));
+      setAdminStatus(lang === "en" ? (notice === "LINE" ? "Booking cancelled and LINE notice sent" : notice === "EMAIL" ? "Booking cancelled and email notice sent" : notice === "FAILED" ? "Booking cancelled; notification failed" : "Booking cancelled") : (notice === "LINE" ? "\u9810\u7d04\u5df2\u53d6\u6d88\uff0c\u5df2\u767c\u9001 LINE \u901a\u77e5" : notice === "EMAIL" ? "\u9810\u7d04\u5df2\u53d6\u6d88\uff0c\u5df2\u5bc4\u9001 Email \u901a\u77e5" : notice === "FAILED" ? "\u9810\u7d04\u5df2\u53d6\u6d88\uff0c\u901a\u77e5\u767c\u9001\u5931\u6557" : "\u5df2\u53d6\u6d88\u9810\u7d04"));
       setAdminDetailBooking(null);
       handleLoadAdminBookings();
     } catch (error) {
