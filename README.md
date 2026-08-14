@@ -349,3 +349,6 @@ Staff can enter and update a booking's medical record number in the booking-deta
 
 - Booking List supports contextual multi-select actions: Confirm, Reminder, Print, and Cancel. The action strip appears only after one or more bookings are selected; click a row to edit its details.
 - Booking List selection controls use 20px checkboxes. The final column shows preventive-care lookup readiness; it is prepared for future authorized National Health Administration eligibility results without exposing full identifiers.
+## Enterprise group booking claims
+
+For CSV-imported enterprise rosters, select the imported bookings in `預約清單` and use `認領 QR` to print one QR per employee. The QR has a random, single-use claim token only; the employee opens it in LINE to link the booking. `寄認領信` sends the same token-only linking URL to selected email-only, LINE-unlinked bookings. Claim links expire two calendar days before the appointment. Do not send QR sheets through unrestricted public channels.

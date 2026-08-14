@@ -527,3 +527,14 @@ pm test, staging build, and staging Hosting deployment.
 - Files: `cac-liff-app/src/App.jsx`.
 - Verification: `npm test` passed (34 checks); `npm run build` passed. Existing Vite chunk-size warning remains.
 - Deployment: production Firebase Hosting release e03ffd84536bc554 on 2026-08-14.
+
+## 2026-08-14 - Enterprise claim QR and batch claim email (pending production deployment)
+
+- Replaced the Booking List selection-strip `Clear` action with `寄認領信`. It sends the existing Gmail claim email only to selected active bookings with an email address and no LINE identity.
+- Added `認領 QR`: selected active, unlinked bookings receive a staff-only printable A4 QR sheet. Each QR contains only a 48-character random claim token in a LIFF URL; it does not contain booking ID, name, phone, ID number, or Firestore path.
+- Added protected `bookingClaims/{token}` mapping documents. They hold the booking reference, active flag and expiry date (appointment date minus two days). Firestore Rules deny all client access to this collection. A claim deactivates the token after successful LINE binding.
+- CSV now accepts and exports optional `employeeNumber` (aliases: `employeeId`, `employeeNo`, `staffNo`); this is printed on the staff QR sheet for enterprise distribution.
+- Legacy claim URLs that already include a booking ID remain supported. New email and QR claim links are token-only.
+- Files: `cac-liff-app/functions/index.js`, `cac-liff-app/firestore.rules`, `cac-liff-app/src/App.jsx`, `cac-liff-app/src/firebase.js`, `cac-liff-app/src/core.js`, `cac-liff-app/src/core.test.js`.
+- Verification: `npm test`, `node --check functions/index.js`, `git diff --check`, and production Vite build passed. Deployment is pending explicit approval because this introduces a protected claim-token collection and Functions change in production.
+- Acceptance after deployment: import a two-row enterprise CSV, select both rows, use `認領 QR`, scan one QR in LINE, verify only that booking becomes LINE-linked and the token cannot be reused; select an email-only row and use `寄認領信`.

@@ -519,6 +519,7 @@ export function buildChecklistPayload(booking) {
 
 export const BOOKING_CSV_HEADERS = [
   "name",
+  "employeeNumber",
   "phone",
   "email",
   "id",
@@ -538,6 +539,7 @@ function csvCell(value) {
 export function exportBookingsCsv(bookings) {
   const rows = bookings.map((booking) => [
     booking.customerName || booking.name || "",
+    booking.employeeNumber || "",
     booking.customerPhone || booking.phone || "",
     booking.customerEmail || booking.email || "",
     booking.idNumber || booking.idNumberMasked || "",
@@ -571,6 +573,7 @@ export function parseBookingImportCsv(text) {
     return {
       rowNumber: rowIndex + 2,
       name: value("name"),
+      employeeNumber: value("employeenumber", "employeeid", "employeeno", "staffno"),
       phone: value("phone"),
       email: value("email"),
       idNumber: value("id", "idNumber"),

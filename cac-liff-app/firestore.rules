@@ -32,6 +32,9 @@ service cloud.firestore {
       allow read: if isStaff() || ownsResource();
       allow create, update, delete: if false;
     }
+    match /bookingClaims/{claimToken} {
+      allow read, write: if false;
+    }
     match /auditLogs/{auditId} {
       allow read: if isAdmin();
       allow create, update, delete: if false;

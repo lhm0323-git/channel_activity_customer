@@ -445,6 +445,14 @@ run("booking CSV import accepts short id and date headers with blank status", ()
   assert.equal(rows[0].status, "BOOKED");
 });
 
+run("booking CSV import accepts employee number aliases", () => {
+  const rows = parseBookingImportCsv([
+    "name,employeeId,phone,date,packageName",
+    "Corporate Staff,E-001,0912000000,2026-08-12,Basic package",
+  ].join("\n"));
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].employeeNumber, "E-001");
+});
 run("booking CSV import normalizes slash date format", () => {
   const rows = parseBookingImportCsv([
     "name,phone,date,packageName",

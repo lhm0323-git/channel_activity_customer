@@ -91,6 +91,7 @@ import {
   getGmailMailerStatus,
   startGmailMailerAuthorization,
   sendBookingClaimEmail,
+  exportBookingClaims,
   saveBookingBlockedDate,
   saveCustomerQuestionnaireResponse,
   saveBookingQuestionnaireResponseAsStaff,
@@ -357,10 +358,10 @@ function managedPackageDocId(name) {
   return encodeURIComponent(String(name || "")).replace(/\./g, "%2E");
 }
 
-function customerLineClaimLink(bookingId, claimToken) {
+function customerLineClaimLink(claimToken) {
   const liffId = import.meta.env.VITE_LIFF_ID;
-  if (!liffId || !bookingId || !claimToken) return "";
-  return `https://liff.line.me/${liffId}?view=my-bookings&claimBooking=${encodeURIComponent(bookingId)}&claimToken=${encodeURIComponent(claimToken)}`;
+  if (!liffId || !claimToken) return "";
+  return `https://liff.line.me/${liffId}?view=my-bookings&claimToken=${encodeURIComponent(claimToken)}`;
 }
 
 function readPublicViewFromUrl() {
@@ -1561,7 +1562,7 @@ ${selectedItems
       const claimToken = readLiffQueryParam("claimToken");
       if (claimBooking || claimToken) {
         if (!lineProfile?.accessToken) throw new Error(lang === "en" ? "Open this link from the LINE official account" : "請從 LINE 官方帳號開啟此綁定連結");
-        await claimBookingWithLine(claimBooking, claimToken, lineProfile.accessToken);
+        await claimBookingWithLine(claimToken, lineProfile.accessToken, claimBooking);
         const url = new URL(window.location.href);
         url.searchParams.set("view", "my-bookings");
         url.searchParams.delete("claimBooking");
@@ -2096,6 +2097,37 @@ ${selectedItems
     setSelectedAdminBookingIds([]);
     handleLoadAdminBookings();
   };
+  const handleBatchSendClaimEmails = async () => {
+    const targets = selectedAdminBookings.filter((booking) => !booking.lineUserId && String(booking.customerEmail || "").trim());
+    if (!targets.length) { setAdminStatus(lang === "en" ? "Select email-only bookings first" : "請勾選已填 Email、尚未綁定 LINE 的預約"); return; }
+    setAdminStatus(lang === "en" ? `Sending ${targets.length} claim email(s)...` : `正在寄送 ${targets.length} 封認領信...`);
+    const results = await Promise.allSettled(targets.map((booking) => sendBookingClaimEmail(booking.bookingId)));
+    const failed = results.filter((result) => result.status === "rejected").length;
+    setAdminStatus(lang === "en" ? `${targets.length - failed} claim email(s) sent${failed ? `, ${failed} failed` : ""}` : `已寄出 ${targets.length - failed} 封認領信${failed ? `，${failed} 封失敗` : ""}`);
+    setSelectedAdminBookingIds([]); handleLoadAdminBookings();
+  };
+
+  const handlePrintSelectedClaimQrs = async () => {
+    const targets = selectedAdminBookings.filter((booking) => booking.status !== "CANCELLED" && !booking.lineUserId);
+    if (!targets.length) { setAdminStatus(lang === "en" ? "Select unlinked active bookings first" : "請勾選尚未綁定 LINE 的有效預約"); return; }
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) { setAdminStatus(lang === "en" ? "Allow pop-ups to print claim QR codes" : "請允許瀏覽器彈出視窗，才能列印認領 QR"); return; }
+    try {
+      setAdminStatus(lang === "en" ? "Creating claim QR codes..." : "正在產生認領 QR...");
+      const result = await exportBookingClaims(targets.map((booking) => booking.bookingId));
+      const allRows = result.data?.rows || [];
+      const rows = allRows.filter((row) => row.claimUrl && !row.error);
+      const failed = allRows.filter((row) => row.error);
+      const cards = await Promise.all(rows.map(async (row) => {
+        const qr = await QRCode.toDataURL(row.claimUrl, { width: 320, margin: 1, errorCorrectionLevel: "M" });
+        const employee = row.employeeNumber ? `員工編號：${row.employeeNumber}` : "";
+        return `<article class="card"><h1>${escapeHtml(row.customerName || "-")}</h1><p>${escapeHtml(employee)}</p><p>${escapeHtml(row.appointmentDate || "")} ｜ ${escapeHtml(row.packageName || "")}</p><img src="${qr}" alt="認領 QR"><small>請於 ${escapeHtml(row.claimExpiresOn || "-")} 前，以 LINE 掃描並完成認領。</small></article>`;
+      }));
+      printWindow.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>企業健檢認領 QR</title><style>@page{size:A4;margin:10mm}body{font-family:"Microsoft JhengHei",Arial,sans-serif;color:#111827}.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8mm}.card{border:1px solid #94a3b8;padding:6mm;break-inside:avoid;text-align:center}.card h1{margin:0;font-size:22px}.card p{margin:4px 0;font-size:14px}.card img{width:48mm;height:48mm}.card small{display:block;color:#475569;font-size:12px}</style></head><body><div class="grid">${cards.join("")}</div><script>window.onload=()=>window.print()</script></body></html>`);
+      printWindow.document.close();
+      setAdminStatus(lang === "en" ? `${rows.length} claim QR codes ready${failed.length ? `, ${failed.length} unavailable` : ""}` : `已產生 ${rows.length} 張認領 QR${failed.length ? `，${failed.length} 筆無法產生` : ""}`);
+    } catch (error) { printWindow.close(); setAdminStatus(lang === "en" ? `Claim QR failed: ${error.message}` : `認領 QR 產生失敗：${error.message}`); }
+  };
   const downloadCsv = async (filename, csvText) => {
     const blob = new Blob(["\ufeff", csvText], { type: "text/csv;charset=utf-8" });
     if (window.showSaveFilePicker) {
@@ -2180,9 +2212,10 @@ ${selectedItems
         });
         payload.booking.status = row.status;
         payload.booking.source = "STAFF_CSV";
+        payload.booking.employeeNumber = row.employeeNumber || "";
         try {
-          await saveBooking(payload, { lineAccessToken: "", requireStaffSession: true });
-          results.push({ rowNumber: row.rowNumber, name: row.name, success: true, message: "???" });
+          const saved = await saveBooking(payload, { lineAccessToken: "", requireStaffSession: true });
+          results.push({ rowNumber: row.rowNumber, name: row.name, bookingId: saved.bookingId, success: true, message: "已建立" });
         } catch (error) {
           results.push({ rowNumber: row.rowNumber, name: row.name, success: false, message: error.message || "Firebase ????" });
         }
@@ -2190,6 +2223,8 @@ ${selectedItems
 
       setCsvImportLog(results);
       if (adminStartDate && adminEndDate) await handleLoadAdminBookings();
+      const importedRows = results.filter((result) => result.success && result.bookingId);
+      if (importedRows.length) setSelectedAdminBookingIds(importedRows.map((result) => result.bookingId));
       const imported = results.filter((result) => result.success).length;
       const failed = results.length - imported;
       setAdminStatus(lang === "en" ? "CSV import: " + imported + " succeeded, " + failed + " failed" : "CSV ????? " + imported + " ???? " + failed + " ?");
@@ -4056,7 +4091,8 @@ ${selectedItems
               <button onClick={handleBatchSendD1Notices} className="rounded bg-amber-500 px-2.5 py-1.5 text-xs font-bold text-white">{lang === "en" ? "Reminder" : "提醒"}</button>
               <button onClick={handlePrintSelectedBookings} className="rounded bg-slate-800 px-2.5 py-1.5 text-xs font-bold text-white">{t.print}</button>
               <button onClick={handleBatchCancelBookings} className="rounded bg-rose-600 px-2.5 py-1.5 text-xs font-bold text-white">{lang === "en" ? "Cancel" : "取消"}</button>
-              <button onClick={() => setSelectedAdminBookingIds([])} className="px-1.5 py-1 text-xs font-bold text-slate-500 hover:text-slate-800" aria-label={lang === "en" ? "Clear selection" : "清除勾選"}>{lang === "en" ? "Clear" : "清除"}</button>
+              <button onClick={handleBatchSendClaimEmails} className="rounded bg-blue-600 px-2.5 py-1.5 text-xs font-bold text-white">{lang === "en" ? "Claim email" : "寄認領信"}</button>
+              <button onClick={handlePrintSelectedClaimQrs} className="rounded bg-violet-600 px-2.5 py-1.5 text-xs font-bold text-white">{lang === "en" ? "Claim QR" : "認領 QR"}</button>
             </div>
           )}
           <button onClick={handleExportAdminBookings} disabled={!visibleAdminBookings.length} className="px-4 py-2 rounded-md bg-white border border-slate-300 text-slate-700 text-sm font-bold disabled:opacity-40">{t.exportCsv}</button>

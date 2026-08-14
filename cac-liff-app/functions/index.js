@@ -176,12 +176,19 @@ function encodeMimeHeader(value) {
     : header;
 }
 
-function customerLineClaimUrl(bookingId, claimToken) {
-  return "https://liff.line.me/" + LIFF_ID + "?view=my-bookings&claimBooking=" + encodeURIComponent(bookingId) + "&claimToken=" + encodeURIComponent(claimToken);
+function claimExpiryDate(appointmentDate) {
+  if (!validDate(appointmentDate)) return "";
+  const date = new Date(appointmentDate + "T00:00:00Z");
+  date.setUTCDate(date.getUTCDate() - 2);
+  return date.toISOString().slice(0, 10);
+}
+
+function customerLineClaimUrl(claimToken) {
+  return "https://liff.line.me/" + LIFF_ID + "?view=my-bookings&claimToken=" + encodeURIComponent(claimToken);
 }
 
 function buildClaimEmail(bookingId, booking) {
-  const claimUrl = customerLineClaimUrl(bookingId, booking.customerClaimToken);
+  const claimUrl = customerLineClaimUrl(booking.customerClaimToken);
   const name = cleanHeader(booking.customerName || "");
   const packageName = cleanHeader(booking.packageName || "健檢套餐");
   const date = cleanHeader(booking.appointmentDate || "");
@@ -572,6 +579,33 @@ exports.signInWithHospitalAccount = onCall(async (request) => {
   });
   return { customToken, staffKey, empid: userId, role: staffRole };
 });
+async function issueBookingClaim(bookingRef, actor = { role: "SYSTEM" }, { reissue = false } = {}) {
+  const db = admin.firestore();
+  return db.runTransaction(async (transaction) => {
+    const bookingSnap = await transaction.get(bookingRef);
+    if (!bookingSnap.exists) throw new HttpsError("not-found", "Booking not found");
+    const booking = bookingSnap.data();
+    if (booking.status === "CANCELLED") throw new HttpsError("failed-precondition", "Cancelled bookings cannot be claimed");
+    if (booking.lineUserId) throw new HttpsError("failed-precondition", "Booking is already linked to LINE");
+    const expiresOn = claimExpiryDate(booking.appointmentDate);
+    if (!expiresOn || expiresOn < taipeiDate(0)) throw new HttpsError("failed-precondition", "Claim link has expired");
+    const existingToken = String(booking.customerClaimToken || "");
+    if (existingToken && !reissue) {
+      const existingRef = db.doc("bookingClaims/" + existingToken);
+      const existingSnap = await transaction.get(existingRef);
+      if (!existingSnap.exists || existingSnap.data().active !== false) {
+        transaction.set(existingRef, { bookingId: bookingRef.id, expiresOn, active: true, createdAt: FieldValue.serverTimestamp(), createdBy: actor.email || actor.uid || actor.role || "SYSTEM" }, { merge: true });
+        transaction.update(bookingRef, { claimStatus: "PENDING", claimExpiresOn: expiresOn, updatedAt: FieldValue.serverTimestamp() });
+        return { claimToken: existingToken, expiresOn };
+      }
+    }
+    if (existingToken) transaction.set(db.doc("bookingClaims/" + existingToken), { active: false, revokedAt: FieldValue.serverTimestamp() }, { merge: true });
+    const claimToken = crypto.randomBytes(24).toString("hex");
+    transaction.set(db.doc("bookingClaims/" + claimToken), { bookingId: bookingRef.id, expiresOn, active: true, createdAt: FieldValue.serverTimestamp(), createdBy: actor.email || actor.uid || actor.role || "SYSTEM" });
+    transaction.update(bookingRef, { customerClaimToken: claimToken, claimStatus: "PENDING", claimExpiresOn: expiresOn, updatedAt: FieldValue.serverTimestamp() });
+    return { claimToken, expiresOn };
+  });
+}
 exports.createBooking = onCall({ secrets: [mailerEncryptionKey] }, async (request) => {
   if (!request.auth?.uid) throw new HttpsError("unauthenticated", "A signed-in session is required");
   const payload = request.data?.payload;
@@ -601,6 +635,8 @@ exports.createBooking = onCall({ secrets: [mailerEncryptionKey] }, async (reques
   const customerRef = db.doc("customers/" + customerId);
   const blockedRef = db.doc("bookingBlockedDates/" + appointmentDate);
   const claimToken = lineProfile ? "" : crypto.randomBytes(24).toString("hex");
+  const claimExpiresOn = claimToken ? claimExpiryDate(appointmentDate) : "";
+  const claimRef = claimToken ? db.doc("bookingClaims/" + claimToken) : null;
   const now = FieldValue.serverTimestamp();
   const requestedStatus = text(bookingInput.status, 20).toUpperCase();
   const status = isStaff && STAFF_BOOKING_STATUSES.has(requestedStatus) ? requestedStatus : "BOOKED";
@@ -611,8 +647,8 @@ exports.createBooking = onCall({ secrets: [mailerEncryptionKey] }, async (reques
     notificationChannel: lineProfile ? "LINE" : customerEmail ? "EMAIL" : "NONE", channel: text(bookingInput.channel, 120) || "GENERAL",
     appointmentDate, packageName: text(bookingInput.packageName, 200), selectedItems,
     listPrice: number(bookingInput.listPrice), discountRate: number(bookingInput.discountRate), finalPrice: number(bookingInput.finalPrice),
-    status, notes: text(bookingInput.notes, 2000), ownerUid: request.auth.uid, createdAt: now, updatedAt: now,
-    ...(claimToken ? { customerClaimToken: claimToken } : {}),
+    status, notes: text(bookingInput.notes, 2000), employeeNumber: text(bookingInput.employeeNumber, 120), ownerUid: request.auth.uid, createdAt: now, updatedAt: now,
+    ...(claimToken ? { customerClaimToken: claimToken, claimStatus: "PENDING", claimExpiresOn } : {}),
   };
   await db.runTransaction(async (transaction) => {
     const blocked = await transaction.get(blockedRef);
@@ -624,6 +660,7 @@ exports.createBooking = onCall({ secrets: [mailerEncryptionKey] }, async (reques
       ownerUid: request.auth.uid, createdAt: now, updatedAt: now,
     }, { merge: true });
     transaction.set(bookingRef, booking);
+    if (claimRef) transaction.set(claimRef, { bookingId: bookingRef.id, expiresOn: claimExpiresOn, active: true, createdAt: now, createdBy: actor.email || actor.uid || actor.role || "SYSTEM" });
     transaction.set(db.doc("checklists/" + bookingRef.id), { bookingId: bookingRef.id, ...checklistFor(selectedItems), generatedAt: now, printedAt: null });
   });
   let claimEmailStatus = "NOT_REQUESTED";
@@ -783,12 +820,28 @@ exports.claimMyLineBookings = onCall(async (request) => {
 });
 exports.claimBookingWithLine = onCall(async (request) => {
   if (!request.auth?.uid) throw new HttpsError("unauthenticated", "A signed-in session is required");
-  const bookingId = String(request.data?.bookingId || "").trim();
   const claimToken = String(request.data?.claimToken || "").trim();
-  if (!bookingId || !claimToken || claimToken.length !== 48) throw new HttpsError("invalid-argument", "A valid booking claim link is required");
+  const legacyBookingId = String(request.data?.bookingId || "").trim();
+  if (!claimToken || claimToken.length !== 48) throw new HttpsError("invalid-argument", "A valid booking claim link is required");
   const profile = await verifyLineAccessToken(request.data?.accessToken);
-  const bookingRef = admin.firestore().doc("bookings/" + bookingId);
-  await admin.firestore().runTransaction(async (transaction) => {
+  const db = admin.firestore();
+  await db.runTransaction(async (transaction) => {
+    let bookingRef = null;
+    let claimRef = null;
+    const protectedClaimRef = db.doc("bookingClaims/" + claimToken);
+    const protectedClaimSnap = await transaction.get(protectedClaimRef);
+    if (protectedClaimSnap.exists) {
+      const claim = protectedClaimSnap.data();
+      if (claim.active === false || !claim.bookingId || (claim.expiresOn && claim.expiresOn < taipeiDate(0))) {
+        throw new HttpsError("permission-denied", "This booking claim link is invalid or has expired");
+      }
+      bookingRef = db.doc("bookings/" + claim.bookingId);
+      claimRef = protectedClaimRef;
+    } else if (legacyBookingId) {
+      bookingRef = db.doc("bookings/" + legacyBookingId);
+    } else {
+      throw new HttpsError("permission-denied", "This booking claim link is invalid or has expired");
+    }
     const bookingSnap = await transaction.get(bookingRef);
     if (!bookingSnap.exists) throw new HttpsError("not-found", "Booking not found");
     const booking = bookingSnap.data();
@@ -796,6 +849,7 @@ exports.claimBookingWithLine = onCall(async (request) => {
     if (savedToken.length !== claimToken.length || !crypto.timingSafeEqual(Buffer.from(savedToken), Buffer.from(claimToken))) {
       throw new HttpsError("permission-denied", "This booking claim link is invalid or has already been used");
     }
+    if (booking.status === "CANCELLED" || booking.lineUserId) throw new HttpsError("failed-precondition", "This booking can no longer be claimed");
     transaction.update(bookingRef, {
       ownerUid: request.auth.uid,
       customerId: profile.userId,
@@ -803,10 +857,12 @@ exports.claimBookingWithLine = onCall(async (request) => {
       lineDisplayName: profile.displayName || "",
       notificationChannel: "LINE",
       customerClaimToken: FieldValue.delete(),
+      claimStatus: "CLAIMED",
       lineClaimedAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     });
-    transaction.set(admin.firestore().doc("customers/" + profile.userId), {
+    if (claimRef) transaction.update(claimRef, { active: false, claimedAt: FieldValue.serverTimestamp() });
+    transaction.set(db.doc("customers/" + profile.userId), {
       customerId: profile.userId,
       name: booking.customerName || profile.displayName || "",
       phone: booking.customerPhone || "",
@@ -818,7 +874,6 @@ exports.claimBookingWithLine = onCall(async (request) => {
   });
   return { claimed: true };
 });
-
 exports.getPublicManagedPackages = onCall(async (request) => {
   const inviteToken = text(request.data?.inviteToken, 160);
   const db = admin.firestore();
@@ -1157,4 +1212,31 @@ exports.sendBookingClaimEmailAsStaff = onCall({ secrets: [mailerEncryptionKey] }
   const bookingRef = admin.firestore().doc("bookings/" + bookingId);
   const status = await sendBookingClaimEmail(bookingRef, actor);
   return { status };
+});
+exports.exportBookingClaimsAsStaff = onCall(async (request) => {
+  const actor = await assertStaff(request);
+  const bookingIds = Array.isArray(request.data?.bookingIds) ? request.data.bookingIds : [];
+  const uniqueIds = [...new Set(bookingIds.map((value) => text(value, 200)).filter(Boolean))].slice(0, 200);
+  if (!uniqueIds.length) throw new HttpsError("invalid-argument", "Select at least one booking");
+  const rows = [];
+  for (const bookingId of uniqueIds) {
+    try {
+      const bookingRef = admin.firestore().doc("bookings/" + bookingId);
+      const issued = await issueBookingClaim(bookingRef, actor);
+      const bookingSnap = await bookingRef.get();
+      const booking = bookingSnap.data() || {};
+      rows.push({
+        bookingId,
+        customerName: text(booking.customerName, 160),
+        employeeNumber: text(booking.employeeNumber, 120),
+        appointmentDate: text(booking.appointmentDate, 10),
+        packageName: text(booking.packageName, 200),
+        claimUrl: customerLineClaimUrl(issued.claimToken),
+        claimExpiresOn: issued.expiresOn,
+      });
+    } catch (error) {
+      rows.push({ bookingId, error: String(error?.message || error).slice(0, 240) });
+    }
+  }
+  return { rows };
 });

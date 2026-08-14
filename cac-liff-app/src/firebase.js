@@ -244,10 +244,10 @@ export async function listMyBookings(lineAccessToken = "") {
   return sortBookings(snapshot.docs.map((docSnap) => ({ bookingId: docSnap.id, ...docSnap.data() })));
 }
 
-export async function claimBookingWithLine(bookingId, claimToken, accessToken) {
+export async function claimBookingWithLine(claimToken, accessToken, legacyBookingId = "") {
   if (!db || !functions) throw new Error("LINE booking claim is unavailable");
   await ensurePublicUser();
-  return httpsCallable(functions, "claimBookingWithLine")({ bookingId, claimToken, accessToken });
+  return httpsCallable(functions, "claimBookingWithLine")({ claimToken, accessToken, bookingId: legacyBookingId });
 }
 
 export async function requestBookingChange(change) {
@@ -340,6 +340,11 @@ export async function sendBookingClaimEmail(bookingId) {
   requireStaffFunction();
   if (!functions) throw new Error("Firebase is not configured");
   return httpsCallable(functions, "sendBookingClaimEmailAsStaff")({ bookingId });
+}
+export async function exportBookingClaims(bookingIds) {
+  requireStaffFunction();
+  if (!functions) throw new Error("Firebase is not configured");
+  return httpsCallable(functions, "exportBookingClaimsAsStaff")({ bookingIds });
 }
 export async function sendD1Notice(bookingId) {
   if (!functions) throw new Error("Firebase is not configured");
