@@ -683,6 +683,7 @@ const App = () => {
   const [adminDetailBooking, setAdminDetailBooking] = useState(null);
   const [reportDetailBooking, setReportDetailBooking] = useState(null);
   const [selectedAdminBookingIds, setSelectedAdminBookingIds] = useState([]);
+  const [showClaimActions, setShowClaimActions] = useState(false);
   const [pendingChanges, setPendingChanges] = useState([]);
   const [adminStatus, setAdminStatus] = useState("");
   const [csvImportLog, setCsvImportLog] = useState([]);
@@ -1861,6 +1862,8 @@ ${selectedItems
   const adminSortMark = (key) => adminSort.key === key ? (adminSort.direction === "asc" ? " ?" : " ?") : "";
 
   const selectedAdminBookings = visibleAdminBookings.filter((booking) => selectedAdminBookingIds.includes(booking.bookingId));
+  const selectedAdminActionMode = selectedAdminBookings.length && selectedAdminBookings.every((booking) => booking.status === "CONFIRMED") ? "REMIND" : selectedAdminBookings.length && selectedAdminBookings.every((booking) => booking.status !== "CONFIRMED" && booking.status !== "CANCELLED") ? "CONFIRM" : "MIXED";
+  const selectedClaimBookings = selectedAdminBookings.filter((booking) => !booking.lineUserId && booking.customerClaimToken);
   const allAdminBookingsSelected = visibleAdminBookings.length > 0 && selectedAdminBookingIds.length === visibleAdminBookings.length;
 
   const toggleAdminBookingSelection = (bookingId) => {
@@ -2083,18 +2086,19 @@ ${selectedItems
   };
 
   const handlePrintClaimQRCodes = async () => {
-    const targets = selectedAdminBookings.filter((booking) => !booking.lineUserId && booking.customerClaimToken);
+    const targets = selectedClaimBookings;
     if (!targets.length) { setAdminStatus(lang === "en" ? "Select unlinked bookings with claim links first" : "請勾選尚未綁定 LINE 且有綁定連結的預約"); return; }
     const printWindow = window.open("", "_blank");
-    if (!printWindow) { setAdminStatus(lang === "en" ? "Allow pop-ups to export QR PDF" : "請允許瀏覽器彈出視窗以匯出 QR PDF"); return; }
-    setAdminStatus(lang === "en" ? "Preparing claim QR codes..." : "正在產生 LINE 綁定 QR Code...");
+    if (!printWindow) { setAdminStatus(lang === "en" ? "Allow pop-ups to print QR sheets" : "請允許瀏覽器彈出視窗以列印 QR 名單"); return; }
+    setAdminStatus(lang === "en" ? "Preparing claim QR sheets..." : "正在產生 LINE 綁定 QR 名單...");
     try {
       const escape = (value) => String(value || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
       const cards = await Promise.all(targets.map(async (booking) => ({ booking, qr: await QRCode.toDataURL(customerLineClaimLink(booking.bookingId, booking.customerClaimToken), { width: 360, margin: 1 }) })));
-      printWindow.document.write(`<!doctype html><meta charset="utf-8"><title>LINE 綁定 QR Code</title><style>@page{size:A4;margin:12mm}body{font-family:Arial,"Microsoft JhengHei",sans-serif;color:#0f172a}.card{break-inside:avoid;border:1px solid #cbd5e1;border-radius:8px;padding:12mm;margin:0 0 8mm;display:flex;gap:12mm;align-items:center}.card img{width:42mm;height:42mm}.name{font-size:18px;font-weight:700}.meta{margin-top:6px;color:#475569;font-size:14px}</style><h1>屏基健檢中心 LINE 綁定</h1><p>請由手機 LINE 掃描個人 QR Code 完成綁定。</p>${cards.map(({ booking, qr }) => `<section class="card"><img src="${qr}" alt="LINE 綁定 QR Code"><div><div class="name">${escape(booking.customerName || booking.name || "未命名")}</div><div class="meta">套餐：${escape(booking.packageName || "-")}</div><div class="meta">預約日期：${escape(booking.appointmentDate || "-")}</div></div></section>`).join("")}<script>window.onload=()=>window.print()<\/script>`);
+      const pages = Array.from({ length: Math.ceil(cards.length / 20) }, (_, index) => cards.slice(index * 20, index * 20 + 20));
+      printWindow.document.write(`<!doctype html><meta charset="utf-8"><title>LINE 綁定 QR 名單</title><style>@page{size:A4;margin:7mm}body{font-family:Arial,"Microsoft JhengHei",sans-serif;color:#0f172a;margin:0}.page{height:283mm;break-after:page}.page:last-child{break-after:auto}.header{height:8mm;font-size:10px;font-weight:700}.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));grid-template-rows:repeat(5,50mm);gap:2mm}.card{border:1px solid #cbd5e1;border-radius:4px;padding:2mm;display:flex;gap:2mm;align-items:center;overflow:hidden}.card img{width:24mm;height:24mm;flex:none}.name{font-size:11px;font-weight:700;word-break:break-all}.meta{margin-top:1mm;color:#475569;font-size:8px;line-height:1.25;word-break:break-all}</style>${pages.map((page, pageIndex) => `<section class="page"><div class="header">屏基健檢中心 LINE 綁定 QR 名單｜第 ${pageIndex + 1} 頁</div><div class="grid">${page.map(({ booking, qr }) => `<article class="card"><img src="${qr}" alt="LINE 綁定 QR Code"><div><div class="name">${escape(booking.customerName || booking.name || "未命名")}</div><div class="meta">${escape(booking.packageName || "-")}</div><div class="meta">${escape(booking.appointmentDate || "-")}</div></div></article>`).join("")}</div></section>`).join("")}<script>window.onload=()=>window.print()<\/script>`);
       printWindow.document.close();
-      setAdminStatus(lang === "en" ? `Prepared ${cards.length} QR codes; choose Save as PDF` : `已產生 ${cards.length} 張 QR Code，請在列印視窗選擇「另存為 PDF」`);
-    } catch (error) { printWindow.close(); setAdminStatus(lang === "en" ? `QR export failed: ${error.message}` : `QR PDF 匯出失敗：${error.message}`); }
+      setAdminStatus(lang === "en" ? `Prepared ${cards.length} QR codes, 20 per A4 page` : `已產生 ${cards.length} 張 QR Code，每張 A4 最多 20 人`);
+    } catch (error) { printWindow.close(); setAdminStatus(lang === "en" ? `QR export failed: ${error.message}` : `QR 名單列印失敗：${error.message}`); }
   };
   const downloadCsv = async (filename, csvText) => {
     const blob = new Blob(["\ufeff", csvText], { type: "text/csv;charset=utf-8" });
@@ -3987,13 +3991,13 @@ ${selectedItems
           {selectedAdminBookings.length > 0 && (
             <div className="flex flex-wrap items-center gap-1.5 rounded-md border border-indigo-200 bg-indigo-50 px-2 py-1.5">
               <span className="px-1 text-xs font-black text-indigo-800">{lang === "en" ? `${selectedAdminBookings.length} selected` : `已選 ${selectedAdminBookings.length} 筆`}</span>
-              <button onClick={handleBatchConfirmBookings} className="rounded bg-emerald-600 px-2.5 py-1.5 text-xs font-bold text-white">{t.confirm}</button>
-              <button onClick={handleBatchSendD1Notices} className="rounded bg-amber-500 px-2.5 py-1.5 text-xs font-bold text-white">{lang === "en" ? "Reminder" : "提醒"}</button>
-              <button onClick={handlePrintSelectedBookings} className="rounded bg-slate-800 px-2.5 py-1.5 text-xs font-bold text-white">{t.print}</button>
-              <button onClick={handleBatchSendClaimEmails} className="rounded bg-indigo-600 px-2.5 py-1.5 text-xs font-bold text-white">{lang === "en" ? "Link email" : "寄綁定信"}</button>
-              <button onClick={handlePrintClaimQRCodes} className="rounded bg-violet-700 px-2.5 py-1.5 text-xs font-bold text-white">{lang === "en" ? "QR PDF" : "QR PDF"}</button>
-              <button onClick={handleBatchCancelBookings} className="rounded bg-rose-600 px-2.5 py-1.5 text-xs font-bold text-white">{lang === "en" ? "Cancel" : "取消"}</button>
               <button onClick={() => setSelectedAdminBookingIds([])} className="px-1.5 py-1 text-xs font-bold text-slate-500 hover:text-slate-800" aria-label={lang === "en" ? "Clear selection" : "清除勾選"}>{lang === "en" ? "Clear" : "清除"}</button>
+              {selectedAdminActionMode === "CONFIRM" && <button onClick={handleBatchConfirmBookings} className="rounded bg-emerald-600 px-2.5 py-1.5 text-xs font-bold text-white">{lang === "en" ? "Confirm booking" : "確認預約"}</button>}
+              {selectedAdminActionMode === "REMIND" && <button onClick={handleBatchSendD1Notices} className="rounded bg-amber-500 px-2.5 py-1.5 text-xs font-bold text-white">{lang === "en" ? "Send check-in reminder" : "發送到檢提醒"}</button>}
+              {selectedAdminActionMode === "MIXED" && <span className="px-1 text-xs font-bold text-amber-700">{lang === "en" ? "Select one status at a time" : "請分開勾選待確認與已確認預約"}</span>}
+              {selectedClaimBookings.length > 0 && <button onClick={() => setShowClaimActions(true)} className="rounded bg-indigo-600 px-2.5 py-1.5 text-xs font-bold text-white">{lang === "en" ? "LINE linking" : "LINE 綁定"}</button>}
+              <button onClick={handleBatchCancelBookings} className="rounded bg-rose-600 px-2.5 py-1.5 text-xs font-bold text-white">{lang === "en" ? "Cancel booking" : "取消預約"}</button>
+              <button onClick={handlePrintSelectedBookings} className="rounded bg-slate-800 px-2.5 py-1.5 text-xs font-bold text-white">{lang === "en" ? "Print check-in sheets" : "列印當日流程單"}</button>
             </div>
           )}
           <button onClick={handleExportAdminBookings} disabled={!visibleAdminBookings.length} className="px-4 py-2 rounded-md bg-white border border-slate-300 text-slate-700 text-sm font-bold disabled:opacity-40">{t.exportCsv}</button>
@@ -4244,6 +4248,18 @@ ${selectedItems
         </div>
       )}
 
+      {showClaimActions && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/45 p-4" onClick={() => setShowClaimActions(false)}>
+          <div className="w-full max-w-md rounded-lg bg-white p-5 shadow-2xl" onClick={(event) => event.stopPropagation()}>
+            <div className="mb-3 flex items-center justify-between"><div><h3 className="text-lg font-black text-slate-900">LINE 綁定</h3><p className="mt-1 text-xs text-slate-500">已選 {selectedClaimBookings.length} 筆尚未綁定的預約。</p></div><button type="button" onClick={() => setShowClaimActions(false)} className="rounded p-2 text-slate-500 hover:bg-slate-100" aria-label="關閉"><X className="h-5 w-5" /></button></div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <button type="button" disabled={selectedClaimBookings.filter((booking) => booking.customerEmail).length === 0 || selectedClaimBookings.filter((booking) => booking.customerEmail).length > 30} onClick={() => { setShowClaimActions(false); handleBatchSendClaimEmails(); }} className="rounded-md bg-indigo-600 px-3 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-40">寄送綁定 Email<br /><span className="text-xs font-normal">每批最多 30 封</span></button>
+              <button type="button" onClick={() => { setShowClaimActions(false); handlePrintClaimQRCodes(); }} className="rounded-md bg-violet-700 px-3 py-3 text-sm font-bold text-white">列印綁定 QR 名單<br /><span className="text-xs font-normal">每張 A4 最多 20 人</span></button>
+            </div>
+            <p className="mt-3 text-xs leading-relaxed text-slate-500">QR 名單可交由企業／團檢窗口轉發；於列印視窗可選擇「另存為 PDF」。</p>
+          </div>
+        </div>
+      )}
       {showStaffLoginModal && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/45 p-4" onClick={() => setShowStaffLoginModal(false)}>
           <div className="w-full max-w-md rounded-lg bg-white p-5 shadow-2xl" onClick={(event) => event.stopPropagation()}>
