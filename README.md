@@ -1,4 +1,4 @@
-# 屏基健檢中心 CAC 數位預約系統
+﻿# 屏基健檢中心 CAC 數位預約系統
 
 CAC（Channel–Activity–Customer）是屏基健檢中心的 Firebase + LINE LIFF MVP。第一期提供民眾套餐選擇與預約，並讓健檢中心人員管理套餐、預約、當日清單與 D-1 LINE 通知。
 
@@ -344,3 +344,10 @@ Staff can enter and update a booking's medical record number in the booking-deta
 - Built-in questionnaires carry forward stable history fields such as disease history, allergies, family history, education, identity category, genetic history, and rubella vaccination. Current medication, recent symptoms, lifestyle behavior, mental-health screening, and pregnancy plans remain blank for each new booking.
 - Reopening the same booking still loads every saved answer. New custom questions and imported questions default to not carrying forward.
 - Production Hosting version: `2519d7c7722ff1e5`.
+
+## System and IT handoff documentation
+
+- Current approved implementation roadmap: [`健檢中心三層數位系統 Implementation Plan v2.2（2026 下半年）.md`](健檢中心三層數位系統%20Implementation%20Plan%20v2.2（2026%20下半年）.md)
+- Current architecture and requirement boundary: [`docs/CAC_ARCHITECTURE.md`](docs/CAC_ARCHITECTURE.md)
+- Hospital IT integration and operating guide: [`docs/IT_INTEGRATION_GUIDE.md`](docs/IT_INTEGRATION_GUIDE.md)
+- The IT guide documents the current production topology, user workflows, callable Functions, Firestore boundaries, hospital SSO inputs, cancer-screening API requirements, deployment, monitoring, and known gaps. It contains no credentials or patient data.
