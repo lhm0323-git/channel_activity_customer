@@ -506,8 +506,30 @@
 
                                                                                },
                                                            "entryPoint":  "sendBookingClaimEmailAsStaff"
-                                                       }
-                  },
+                                                       },
+                      "sendBookingClaimEmailsAsStaff":  {
+                                                            "availableMemoryMb":  null,
+                                                            "timeoutSeconds":  null,
+                                                            "minInstances":  null,
+                                                            "maxInstances":  null,
+                                                            "ingressSettings":  null,
+                                                            "concurrency":  null,
+                                                            "serviceAccountEmail":  null,
+                                                            "vpc":  null,
+                                                            "platform":  "gcfv2",
+                                                            "secretEnvironmentVariables":  [
+                                                                                               {
+                                                                                                   "key":  "MAILER_ENCRYPTION_KEY"
+                                                                                               }
+                                                                                           ],
+                                                            "labels":  {
+
+                                                                       },
+                                                            "callableTrigger":  {
+
+                                                                                },
+                                                            "entryPoint":  "sendBookingClaimEmailsAsStaff"
+                                                        }                  },
     "specVersion":  "v1alpha1",
     "requiredAPIs":  [
                          {
