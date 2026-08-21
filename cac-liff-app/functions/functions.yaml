@@ -1,0 +1,536 @@
+{
+    "endpoints":  {
+                      "signInWithHospitalAccount":  {
+                                                        "availableMemoryMb":  null,
+                                                        "timeoutSeconds":  null,
+                                                        "minInstances":  null,
+                                                        "maxInstances":  null,
+                                                        "ingressSettings":  null,
+                                                        "concurrency":  null,
+                                                        "serviceAccountEmail":  null,
+                                                        "vpc":  null,
+                                                        "platform":  "gcfv2",
+                                                        "labels":  {
+
+                                                                   },
+                                                        "callableTrigger":  {
+
+                                                                            },
+                                                        "entryPoint":  "signInWithHospitalAccount"
+                                                    },
+                      "createBooking":  {
+                                            "availableMemoryMb":  null,
+                                            "timeoutSeconds":  null,
+                                            "minInstances":  null,
+                                            "maxInstances":  null,
+                                            "ingressSettings":  null,
+                                            "concurrency":  null,
+                                            "serviceAccountEmail":  null,
+                                            "vpc":  null,
+                                            "platform":  "gcfv2",
+                                            "labels":  {
+
+                                                       },
+                                            "callableTrigger":  {
+
+                                                                },
+                                            "entryPoint":  "createBooking",
+                                            "secretEnvironmentVariables":  [
+                                                                               {
+                                                                                   "key":  "MAILER_ENCRYPTION_KEY"
+                                                                               },
+                                                                               {
+                                                                                   "key":  "LINE_CHANNEL_ACCESS_TOKEN"
+                                                                               }
+                                                                           ]
+                                        },
+                      "cancelBooking":  {
+                                            "availableMemoryMb":  null,
+                                            "timeoutSeconds":  null,
+                                            "minInstances":  null,
+                                            "maxInstances":  null,
+                                            "ingressSettings":  null,
+                                            "concurrency":  null,
+                                            "serviceAccountEmail":  null,
+                                            "vpc":  null,
+                                            "platform":  "gcfv2",
+                                            "secretEnvironmentVariables":  [
+                                                                               {
+                                                                                   "key":  "LINE_CHANNEL_ACCESS_TOKEN"
+                                                                               }
+                                                                           ],
+                                            "labels":  {
+
+                                                       },
+                                            "callableTrigger":  {
+
+                                                                },
+                                            "entryPoint":  "cancelBooking"
+                                        },
+                      "requestBookingChange":  {
+                                                   "availableMemoryMb":  null,
+                                                   "timeoutSeconds":  null,
+                                                   "minInstances":  null,
+                                                   "maxInstances":  null,
+                                                   "ingressSettings":  null,
+                                                   "concurrency":  null,
+                                                   "serviceAccountEmail":  null,
+                                                   "vpc":  null,
+                                                   "platform":  "gcfv2",
+                                                   "labels":  {
+
+                                                              },
+                                                   "callableTrigger":  {
+
+                                                                       },
+                                                   "entryPoint":  "requestBookingChange"
+                                               },
+                      "saveMyQuestionnaireResponse":  {
+                                                          "availableMemoryMb":  null,
+                                                          "timeoutSeconds":  null,
+                                                          "minInstances":  null,
+                                                          "maxInstances":  null,
+                                                          "ingressSettings":  null,
+                                                          "concurrency":  null,
+                                                          "serviceAccountEmail":  null,
+                                                          "vpc":  null,
+                                                          "platform":  "gcfv2",
+                                                          "labels":  {
+
+                                                                     },
+                                                          "callableTrigger":  {
+
+                                                                              },
+                                                          "entryPoint":  "saveMyQuestionnaireResponse"
+                                                      },
+                      "getBookingQuestionnaireResponseAsStaff":  {
+                                                                     "availableMemoryMb":  null,
+                                                                     "timeoutSeconds":  null,
+                                                                     "minInstances":  null,
+                                                                     "maxInstances":  null,
+                                                                     "ingressSettings":  null,
+                                                                     "concurrency":  null,
+                                                                     "serviceAccountEmail":  null,
+                                                                     "vpc":  null,
+                                                                     "platform":  "gcfv2",
+                                                                     "labels":  {
+
+                                                                                },
+                                                                     "callableTrigger":  {
+
+                                                                                         },
+                                                                     "entryPoint":  "getBookingQuestionnaireResponseAsStaff"
+                                                                 },
+                      "saveBookingQuestionnaireResponseAsStaff":  {
+                                                                      "availableMemoryMb":  null,
+                                                                      "timeoutSeconds":  null,
+                                                                      "minInstances":  null,
+                                                                      "maxInstances":  null,
+                                                                      "ingressSettings":  null,
+                                                                      "concurrency":  null,
+                                                                      "serviceAccountEmail":  null,
+                                                                      "vpc":  null,
+                                                                      "platform":  "gcfv2",
+                                                                      "labels":  {
+
+                                                                                 },
+                                                                      "callableTrigger":  {
+
+                                                                                          },
+                                                                      "entryPoint":  "saveBookingQuestionnaireResponseAsStaff"
+                                                                  },
+                      "getLineCustomerProfile":  {
+                                                     "availableMemoryMb":  null,
+                                                     "timeoutSeconds":  null,
+                                                     "minInstances":  null,
+                                                     "maxInstances":  null,
+                                                     "ingressSettings":  null,
+                                                     "concurrency":  null,
+                                                     "serviceAccountEmail":  null,
+                                                     "vpc":  null,
+                                                     "platform":  "gcfv2",
+                                                     "labels":  {
+
+                                                                },
+                                                     "callableTrigger":  {
+
+                                                                         },
+                                                     "entryPoint":  "getLineCustomerProfile"
+                                                 },
+                      "claimMyLineBookings":  {
+                                                  "availableMemoryMb":  null,
+                                                  "timeoutSeconds":  null,
+                                                  "minInstances":  null,
+                                                  "maxInstances":  null,
+                                                  "ingressSettings":  null,
+                                                  "concurrency":  null,
+                                                  "serviceAccountEmail":  null,
+                                                  "vpc":  null,
+                                                  "platform":  "gcfv2",
+                                                  "labels":  {
+
+                                                             },
+                                                  "callableTrigger":  {
+
+                                                                      },
+                                                  "entryPoint":  "claimMyLineBookings"
+                                              },
+                      "claimBookingWithLine":  {
+                                                   "availableMemoryMb":  null,
+                                                   "timeoutSeconds":  null,
+                                                   "minInstances":  null,
+                                                   "maxInstances":  null,
+                                                   "ingressSettings":  null,
+                                                   "concurrency":  null,
+                                                   "serviceAccountEmail":  null,
+                                                   "vpc":  null,
+                                                   "platform":  "gcfv2",
+                                                   "labels":  {
+
+                                                              },
+                                                   "callableTrigger":  {
+
+                                                                       },
+                                                   "entryPoint":  "claimBookingWithLine"
+                                               },
+                      "getPublicManagedPackages":  {
+                                                       "availableMemoryMb":  null,
+                                                       "timeoutSeconds":  null,
+                                                       "minInstances":  null,
+                                                       "maxInstances":  null,
+                                                       "ingressSettings":  null,
+                                                       "concurrency":  null,
+                                                       "serviceAccountEmail":  null,
+                                                       "vpc":  null,
+                                                       "platform":  "gcfv2",
+                                                       "labels":  {
+
+                                                                  },
+                                                       "callableTrigger":  {
+
+                                                                           },
+                                                       "entryPoint":  "getPublicManagedPackages"
+                                                   },
+                      "createPackageInvite":  {
+                                                  "availableMemoryMb":  null,
+                                                  "timeoutSeconds":  null,
+                                                  "minInstances":  null,
+                                                  "maxInstances":  null,
+                                                  "ingressSettings":  null,
+                                                  "concurrency":  null,
+                                                  "serviceAccountEmail":  null,
+                                                  "vpc":  null,
+                                                  "platform":  "gcfv2",
+                                                  "labels":  {
+
+                                                             },
+                                                  "callableTrigger":  {
+
+                                                                      },
+                                                  "entryPoint":  "createPackageInvite"
+                                              },
+                      "revokePackageInvite":  {
+                                                  "availableMemoryMb":  null,
+                                                  "timeoutSeconds":  null,
+                                                  "minInstances":  null,
+                                                  "maxInstances":  null,
+                                                  "ingressSettings":  null,
+                                                  "concurrency":  null,
+                                                  "serviceAccountEmail":  null,
+                                                  "vpc":  null,
+                                                  "platform":  "gcfv2",
+                                                  "labels":  {
+
+                                                             },
+                                                  "callableTrigger":  {
+
+                                                                      },
+                                                  "entryPoint":  "revokePackageInvite"
+                                              },
+                      "acknowledgeD1LineNotice":  {
+                                                      "availableMemoryMb":  null,
+                                                      "timeoutSeconds":  null,
+                                                      "minInstances":  null,
+                                                      "maxInstances":  null,
+                                                      "ingressSettings":  null,
+                                                      "concurrency":  null,
+                                                      "serviceAccountEmail":  null,
+                                                      "vpc":  null,
+                                                      "platform":  "gcfv2",
+                                                      "labels":  {
+
+                                                                 },
+                                                      "callableTrigger":  {
+
+                                                                          },
+                                                      "entryPoint":  "acknowledgeD1LineNotice"
+                                                  },
+                      "sendD1LineNotice":  {
+                                               "availableMemoryMb":  null,
+                                               "timeoutSeconds":  null,
+                                               "minInstances":  null,
+                                               "maxInstances":  null,
+                                               "ingressSettings":  null,
+                                               "concurrency":  null,
+                                               "serviceAccountEmail":  null,
+                                               "vpc":  null,
+                                               "platform":  "gcfv2",
+                                               "secretEnvironmentVariables":  [
+                                                                                  {
+                                                                                      "key":  "LINE_CHANNEL_ACCESS_TOKEN"
+                                                                                  }
+                                                                              ],
+                                               "labels":  {
+
+                                                          },
+                                               "callableTrigger":  {
+
+                                                                   },
+                                               "entryPoint":  "sendD1LineNotice"
+                                           },
+                      "sendD1LineNotices":  {
+                                                "availableMemoryMb":  null,
+                                                "timeoutSeconds":  null,
+                                                "minInstances":  null,
+                                                "maxInstances":  null,
+                                                "ingressSettings":  null,
+                                                "concurrency":  null,
+                                                "serviceAccountEmail":  null,
+                                                "vpc":  null,
+                                                "platform":  "gcfv2",
+                                                "secretEnvironmentVariables":  [
+                                                                                   {
+                                                                                       "key":  "LINE_CHANNEL_ACCESS_TOKEN"
+                                                                                   }
+                                                                               ],
+                                                "labels":  {
+
+                                                           },
+                                                "scheduleTrigger":  {
+                                                                        "schedule":  "0 9 * * *",
+                                                                        "retryConfig":  {
+
+                                                                                        },
+                                                                        "timeZone":  "Asia/Taipei"
+                                                                    },
+                                                "entryPoint":  "sendD1LineNotices"
+                                            },
+                      "updateBookingAsStaff":  {
+                                                   "availableMemoryMb":  null,
+                                                   "timeoutSeconds":  null,
+                                                   "minInstances":  null,
+                                                   "maxInstances":  null,
+                                                   "ingressSettings":  null,
+                                                   "concurrency":  null,
+                                                   "serviceAccountEmail":  null,
+                                                   "vpc":  null,
+                                                   "platform":  "gcfv2",
+                                                   "labels":  {
+
+                                                              },
+                                                   "callableTrigger":  {
+
+                                                                       },
+                                                   "entryPoint":  "updateBookingAsStaff",
+                                                   "secretEnvironmentVariables":  [
+                                                                                      {
+                                                                                          "key":  "LINE_CHANNEL_ACCESS_TOKEN"
+                                                                                      }
+                                                                                  ]
+                                               },
+                      "approveBookingChangeAsStaff":  {
+                                                          "availableMemoryMb":  null,
+                                                          "timeoutSeconds":  null,
+                                                          "minInstances":  null,
+                                                          "maxInstances":  null,
+                                                          "ingressSettings":  null,
+                                                          "concurrency":  null,
+                                                          "serviceAccountEmail":  null,
+                                                          "vpc":  null,
+                                                          "platform":  "gcfv2",
+                                                          "labels":  {
+
+                                                                     },
+                                                          "callableTrigger":  {
+
+                                                                              },
+                                                          "entryPoint":  "approveBookingChangeAsStaff",
+                                                          "secretEnvironmentVariables":  [
+                                                                                             {
+                                                                                                 "key":  "LINE_CHANNEL_ACCESS_TOKEN"
+                                                                                             }
+                                                                                         ]
+                                                      },
+                      "checkInBookingAsStaff":  {
+                                                    "availableMemoryMb":  null,
+                                                    "timeoutSeconds":  null,
+                                                    "minInstances":  null,
+                                                    "maxInstances":  null,
+                                                    "ingressSettings":  null,
+                                                    "concurrency":  null,
+                                                    "serviceAccountEmail":  null,
+                                                    "vpc":  null,
+                                                    "platform":  "gcfv2",
+                                                    "labels":  {
+
+                                                               },
+                                                    "callableTrigger":  {
+
+                                                                        },
+                                                    "entryPoint":  "checkInBookingAsStaff"
+                                                },
+                      "confirmBookingWithSerial":  {
+                                                       "availableMemoryMb":  null,
+                                                       "timeoutSeconds":  null,
+                                                       "minInstances":  null,
+                                                       "maxInstances":  null,
+                                                       "ingressSettings":  null,
+                                                       "concurrency":  null,
+                                                       "serviceAccountEmail":  null,
+                                                       "vpc":  null,
+                                                       "platform":  "gcfv2",
+                                                       "labels":  {
+
+                                                                  },
+                                                       "callableTrigger":  {
+
+                                                                           },
+                                                       "entryPoint":  "confirmBookingWithSerial"
+                                                   },
+                      "configureGmailMailer":  {
+                                                   "availableMemoryMb":  null,
+                                                   "timeoutSeconds":  null,
+                                                   "minInstances":  null,
+                                                   "maxInstances":  null,
+                                                   "ingressSettings":  null,
+                                                   "concurrency":  null,
+                                                   "serviceAccountEmail":  null,
+                                                   "vpc":  null,
+                                                   "platform":  "gcfv2",
+                                                   "secretEnvironmentVariables":  [
+                                                                                      {
+                                                                                          "key":  "MAILER_ENCRYPTION_KEY"
+                                                                                      }
+                                                                                  ],
+                                                   "labels":  {
+
+                                                              },
+                                                   "callableTrigger":  {
+
+                                                                       },
+                                                   "entryPoint":  "configureGmailMailer"
+                                               },
+                      "getGmailMailerStatus":  {
+                                                   "availableMemoryMb":  null,
+                                                   "timeoutSeconds":  null,
+                                                   "minInstances":  null,
+                                                   "maxInstances":  null,
+                                                   "ingressSettings":  null,
+                                                   "concurrency":  null,
+                                                   "serviceAccountEmail":  null,
+                                                   "vpc":  null,
+                                                   "platform":  "gcfv2",
+                                                   "labels":  {
+
+                                                              },
+                                                   "callableTrigger":  {
+
+                                                                       },
+                                                   "entryPoint":  "getGmailMailerStatus"
+                                               },
+                      "startGmailMailerAuthorization":  {
+                                                            "availableMemoryMb":  null,
+                                                            "timeoutSeconds":  null,
+                                                            "minInstances":  null,
+                                                            "maxInstances":  null,
+                                                            "ingressSettings":  null,
+                                                            "concurrency":  null,
+                                                            "serviceAccountEmail":  null,
+                                                            "vpc":  null,
+                                                            "platform":  "gcfv2",
+                                                            "secretEnvironmentVariables":  [
+                                                                                               {
+                                                                                                   "key":  "MAILER_ENCRYPTION_KEY"
+                                                                                               }
+                                                                                           ],
+                                                            "labels":  {
+
+                                                                       },
+                                                            "callableTrigger":  {
+
+                                                                                },
+                                                            "entryPoint":  "startGmailMailerAuthorization"
+                                                        },
+                      "connectMailerCallback":  {
+                                                    "availableMemoryMb":  null,
+                                                    "timeoutSeconds":  null,
+                                                    "minInstances":  null,
+                                                    "maxInstances":  null,
+                                                    "ingressSettings":  null,
+                                                    "concurrency":  null,
+                                                    "serviceAccountEmail":  null,
+                                                    "vpc":  null,
+                                                    "platform":  "gcfv2",
+                                                    "secretEnvironmentVariables":  [
+                                                                                       {
+                                                                                           "key":  "MAILER_ENCRYPTION_KEY"
+                                                                                       }
+                                                                                   ],
+                                                    "labels":  {
+
+                                                               },
+                                                    "httpsTrigger":  {
+
+                                                                     },
+                                                    "entryPoint":  "connectMailerCallback"
+                                                },
+                      "sendBookingClaimEmailAsStaff":  {
+                                                           "availableMemoryMb":  null,
+                                                           "timeoutSeconds":  null,
+                                                           "minInstances":  null,
+                                                           "maxInstances":  null,
+                                                           "ingressSettings":  null,
+                                                           "concurrency":  null,
+                                                           "serviceAccountEmail":  null,
+                                                           "vpc":  null,
+                                                           "platform":  "gcfv2",
+                                                           "secretEnvironmentVariables":  [
+                                                                                              {
+                                                                                                  "key":  "MAILER_ENCRYPTION_KEY"
+                                                                                              }
+                                                                                          ],
+                                                           "labels":  {
+
+                                                                      },
+                                                           "callableTrigger":  {
+
+                                                                               },
+                                                           "entryPoint":  "sendBookingClaimEmailAsStaff"
+                                                       }
+                  },
+    "specVersion":  "v1alpha1",
+    "requiredAPIs":  [
+                         {
+                             "api":  "cloudscheduler.googleapis.com",
+                             "reason":  "Needed for scheduled functions."
+                         }
+                     ],
+    "extensions":  {
+
+                   },
+    "params":  [
+                   {
+                       "type":  "secret",
+                       "name":  "LINE_CHANNEL_ACCESS_TOKEN"
+                   },
+                   {
+                       "type":  "secret",
+                       "name":  "MAILER_ENCRYPTION_KEY"
+                   },
+                   {
+                       "name":  "HOSPITAL_TOKEN_API_URL",
+                       "type":  "string",
+                       "default":  "https://orapi.ptch.org.tw/TokenAPI/v1/api/GetToken"
+                   }
+               ]
+}

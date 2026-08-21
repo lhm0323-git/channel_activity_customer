@@ -38,6 +38,9 @@ function buildD1Message(bookingId, booking, ackToken) {
     },
   };
 }
+function buildBookingNotice(id,b,k,o=""){const p=b.packageName||"健檢套餐";const t=k==="RESCHEDULED"?"您的「"+p+"」預約已改期。\n原預約日期："+o+"\n新預約日期："+b.appointmentDate:"您已成功預約「"+p+"」。\n預約日期："+b.appointmentDate;return {type:"text",text:"屏基健檢中心通知\n"+t+"\nhttps://liff.line.me/"+LIFF_ID+"?view=my-bookings&bookingId="+encodeURIComponent(id)}}
+async function sendBookingNotice(r,b,k,o=""){if(!b.lineUserId)return "NOT_LINKED";try{await pushLineMessage(lineChannelAccessToken.value(),b.lineUserId,buildBookingNotice(r.id,b,k,o));return "SENT"}catch(e){console.warn(k+" LINE notice failed for "+r.id+": "+e.message);return "FAILED"}}
+
 
 function buildCancellationMessage(booking) {
   const date = booking.appointmentDate || "";
@@ -435,7 +438,7 @@ async function assertPackageBookingAccess(transaction, db, bookingInput, isStaff
     if (!inviteSnap?.exists || !inviteIsActive(inviteSnap.data(), packageName)) throw new HttpsError("permission-denied", "This invitation link is invalid or expired");
   }
 }
-exports.createBooking = onCall({ secrets: [mailerEncryptionKey] }, async (request) => {
+exports.createBooking = onCall({ secrets: [mailerEncryptionKey, lineChannelAccessToken] }, async (request) => {
   if (!request.auth?.uid) throw new HttpsError("unauthenticated", "A signed-in session is required");
   const payload = request.data?.payload;
   if (!payload || typeof payload !== "object") throw new HttpsError("invalid-argument", "Booking payload is required");
@@ -498,7 +501,7 @@ exports.createBooking = onCall({ secrets: [mailerEncryptionKey] }, async (reques
       console.warn("Claim email was not sent for " + bookingRef.id + ": " + error.message);
     }
   }
-  return { bookingId: bookingRef.id, claimToken, claimEmailStatus };
+  const bookingConfirmationNoticeStatus=await sendBookingNotice(bookingRef,booking,"CONFIRMED"); return { bookingId: bookingRef.id, claimToken, claimEmailStatus, bookingConfirmationNoticeStatus };
 });
 
 exports.cancelBooking = onCall({ secrets: [lineChannelAccessToken] }, async (request) => {
@@ -826,13 +829,14 @@ function safeStaffBookingPatch(input) {
   return patch;
 }
 
-exports.updateBookingAsStaff = onCall({ invoker: "public" }, async (request) => {
+exports.updateBookingAsStaff = onCall({ invoker: "public", secrets: [lineChannelAccessToken] }, async (request) => {
   const actor = await assertStaff(request);
   const bookingId = text(request.data?.bookingId, 200);
   if (!bookingId) throw new HttpsError("invalid-argument", "bookingId is required");
   const patch = safeStaffBookingPatch(request.data?.fields);
   const db = admin.firestore();
   const bookingRef = db.doc("bookings/" + bookingId);
+  let changed = null;
   await db.runTransaction(async (transaction) => {
     const bookingSnap = await transaction.get(bookingRef);
     if (!bookingSnap.exists) throw new HttpsError("not-found", "Booking not found");
@@ -844,6 +848,7 @@ exports.updateBookingAsStaff = onCall({ invoker: "public" }, async (request) => 
       ...(dateChanged ? { status: "BOOKED", checkInSerial: null, checkInSequence: null, d1NoticeSentAt: null, d1AcknowledgedAt: null, d1NoticeStatus: null } : {}),
       updatedAt: FieldValue.serverTimestamp(),
     };
+    if (dateChanged) changed = { booking: { ...booking, ...nextPatch }, previousDate: booking.appointmentDate || "" };
     transaction.update(bookingRef, nextPatch);
     if (nextPatch.selectedItems) transaction.set(db.doc("checklists/" + bookingId), { bookingId, ...checklistFor(nextPatch.selectedItems), generatedAt: FieldValue.serverTimestamp(), printedAt: null }, { merge: true });
     if (booking.customerId) transaction.set(db.doc("customers/" + booking.customerId), {
@@ -852,14 +857,15 @@ exports.updateBookingAsStaff = onCall({ invoker: "public" }, async (request) => 
     }, { merge: true });
     writeBookingAudit(transaction, db, { action: "UPDATE", bookingId, actor, before: booking, after: { ...booking, ...nextPatch } });
   });
-  return { updated: true };
+  return { updated: true, rescheduleNoticeStatus: changed ? await sendBookingNotice(bookingRef, changed.booking, "RESCHEDULED", changed.previousDate) : "NOT_RESCHEDULED" };
 });
-exports.approveBookingChangeAsStaff = onCall(async (request) => {
+exports.approveBookingChangeAsStaff = onCall({ secrets: [lineChannelAccessToken] }, async (request) => {
   const actor = await assertStaff(request);
   const requestId = text(request.data?.requestId, 200);
   if (!requestId) throw new HttpsError("invalid-argument", "requestId is required");
   const db = admin.firestore();
   const changeRef = db.doc("bookingChangeRequests/" + requestId);
+  let changed = null; let changedRef = null;
   await db.runTransaction(async (transaction) => {
     const changeSnap = await transaction.get(changeRef);
     if (!changeSnap.exists) throw new HttpsError("not-found", "Change request not found");
@@ -872,10 +878,11 @@ exports.approveBookingChangeAsStaff = onCall(async (request) => {
     if (!validDate(change.requestedAppointmentDate)) throw new HttpsError("invalid-argument", "Invalid requested appointment date");
     const patch = { appointmentDate: change.requestedAppointmentDate, status: "BOOKED", checkInSerial: null, checkInSequence: null, d1NoticeSentAt: null, d1AcknowledgedAt: null, d1NoticeStatus: null, updatedAt: FieldValue.serverTimestamp() };
     transaction.update(bookingRef, patch);
+    changed = { booking: { ...booking, ...patch }, previousDate: booking.appointmentDate || "" }; changedRef = bookingRef;
     transaction.update(changeRef, { status: "approved", approvedAt: FieldValue.serverTimestamp(), approvedBy: actor.email, updatedAt: FieldValue.serverTimestamp() });
     writeBookingAudit(transaction, db, { action: "APPROVE_CHANGE", bookingId: bookingRef.id, actor, before: booking, after: { ...booking, ...patch } });
   });
-  return { approved: true };
+  return { approved: true, rescheduleNoticeStatus: changed ? await sendBookingNotice(changedRef, changed.booking, "RESCHEDULED", changed.previousDate) : "NOT_RESCHEDULED" };
 });
 
 exports.checkInBookingAsStaff = onCall(async (request) => {
