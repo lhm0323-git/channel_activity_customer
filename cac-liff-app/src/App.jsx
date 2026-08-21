@@ -755,16 +755,6 @@ const App = () => {
   useEffect(() => {
     loadBlockedBookingDates().catch((error) => console.warn("Blocked-date load failed", error));
   }, []);
-  // 初始化載入 Tailwind
-  useEffect(() => {
-    if (!document.getElementById("tailwind-cdn")) {
-      const script = document.createElement("script");
-      script.id = "tailwind-cdn";
-      script.src = "https://cdn.tailwindcss.com";
-      document.head.appendChild(script);
-    }
-  }, []);
-
   useEffect(() => {
     let cancelled = false;
     (staffUser ? listManagedPackages() : listPublicManagedPackages(inviteToken)).then((result) => {
