@@ -2035,6 +2035,39 @@ ${selectedItems
     printBookings(selectedAdminBookings);
   };
 
+  const handleBatchConfirmBookings = async () => {
+    const targets = selectedAdminBookings.filter((booking) => booking.status !== "CONFIRMED" && booking.status !== "CANCELLED");
+    if (!targets.length) { setAdminStatus(lang === "en" ? "No selected bookings need confirmation" : "所選預約都已確認或已取消"); return; }
+    setAdminStatus(lang === "en" ? `Confirming ${targets.length} bookings...` : `正在確認 ${targets.length} 筆預約...`);
+    const results = await Promise.allSettled(targets.map((booking) => confirmBooking(booking.bookingId)));
+    const failed = results.filter((result) => result.status === "rejected").length;
+    setAdminStatus(lang === "en" ? `${targets.length - failed} confirmed${failed ? `, ${failed} failed` : ""}` : `已確認 ${targets.length - failed} 筆${failed ? `，${failed} 筆失敗` : ""}`);
+    setSelectedAdminBookingIds([]);
+    handleLoadAdminBookings();
+  };
+
+  const handleBatchCancelBookings = async () => {
+    const targets = selectedAdminBookings.filter((booking) => booking.status !== "CANCELLED");
+    if (!targets.length) { setAdminStatus(lang === "en" ? "No active bookings selected" : "沒有可取消的已選預約"); return; }
+    if (!window.confirm(lang === "en" ? `Cancel ${targets.length} selected bookings? Customers will receive a LINE or email notice when available.` : `確定取消已選的 ${targets.length} 筆預約？有 LINE 或 Email 聯絡資料者將同時收到通知。`)) return;
+    setAdminStatus(lang === "en" ? `Cancelling ${targets.length} bookings...` : `正在取消 ${targets.length} 筆預約...`);
+    const results = await Promise.allSettled(targets.map((booking) => cancelBooking(booking.bookingId)));
+    const failed = results.filter((result) => result.status === "rejected").length;
+    setAdminStatus(lang === "en" ? `${targets.length - failed} cancelled${failed ? `, ${failed} failed` : ""}` : `已取消 ${targets.length - failed} 筆${failed ? `，${failed} 筆失敗` : ""}`);
+    setSelectedAdminBookingIds([]);
+    handleLoadAdminBookings();
+  };
+
+  const handleBatchSendD1Notices = async () => {
+    const targets = selectedAdminBookings.filter((booking) => booking.status === "CONFIRMED");
+    if (!targets.length) { setAdminStatus(lang === "en" ? "Select confirmed bookings to send reminders" : "請勾選已確認的預約以發送提醒"); return; }
+    setAdminStatus(lang === "en" ? `Sending ${targets.length} reminders...` : `正在發送 ${targets.length} 筆提醒...`);
+    const results = await Promise.allSettled(targets.map((booking) => sendD1Notice(booking.bookingId)));
+    const failed = results.filter((result) => result.status === "rejected").length;
+    setAdminStatus(lang === "en" ? `${targets.length - failed} reminders sent${failed ? `, ${failed} unavailable` : ""}` : `已發送 ${targets.length - failed} 筆提醒${failed ? `，${failed} 筆無法發送` : ""}`);
+    setSelectedAdminBookingIds([]);
+    handleLoadAdminBookings();
+  };
   const downloadCsv = async (filename, csvText) => {
     const blob = new Blob(["\ufeff", csvText], { type: "text/csv;charset=utf-8" });
     if (window.showSaveFilePicker) {
@@ -3923,7 +3956,16 @@ ${selectedItems
             </select>
           </label>
           <button onClick={handleLoadAdminBookings} className="px-4 py-2 rounded-md bg-slate-900 text-white text-sm font-bold">{t.load}</button>
-          <button onClick={handlePrintSelectedBookings} disabled={!selectedAdminBookings.length} className="px-4 py-2 rounded-md bg-emerald-600 text-white text-sm font-bold disabled:opacity-40">{t.printSelected}</button>
+          {selectedAdminBookings.length > 0 && (
+            <div className="flex items-center gap-1.5 rounded-md border border-indigo-200 bg-indigo-50 px-2 py-1.5">
+              <span className="px-1 text-xs font-black text-indigo-800">{lang === "en" ? `${selectedAdminBookings.length} selected` : `已選 ${selectedAdminBookings.length} 筆`}</span>
+              <button onClick={handleBatchConfirmBookings} className="rounded bg-emerald-600 px-2.5 py-1.5 text-xs font-bold text-white">{t.confirm}</button>
+              <button onClick={handleBatchSendD1Notices} className="rounded bg-amber-500 px-2.5 py-1.5 text-xs font-bold text-white">{lang === "en" ? "Reminder" : "提醒"}</button>
+              <button onClick={handlePrintSelectedBookings} className="rounded bg-slate-800 px-2.5 py-1.5 text-xs font-bold text-white">{t.print}</button>
+              <button onClick={handleBatchCancelBookings} className="rounded bg-rose-600 px-2.5 py-1.5 text-xs font-bold text-white">{lang === "en" ? "Cancel" : "取消"}</button>
+              <button onClick={() => setSelectedAdminBookingIds([])} className="px-1.5 py-1 text-xs font-bold text-slate-500 hover:text-slate-800" aria-label={lang === "en" ? "Clear selection" : "清除勾選"}>{lang === "en" ? "Clear" : "清除"}</button>
+            </div>
+          )}
           <button onClick={handleExportAdminBookings} disabled={!visibleAdminBookings.length} className="px-4 py-2 rounded-md bg-white border border-slate-300 text-slate-700 text-sm font-bold disabled:opacity-40">{t.exportCsv}</button>
           <label className="px-4 py-2 rounded-md bg-white border border-slate-300 text-slate-700 text-sm font-bold cursor-pointer">
             {t.importCsv}
@@ -3959,7 +4001,7 @@ ${selectedItems
 
           <div className="bg-white border border-slate-200 rounded-lg flex-1 min-h-0 flex flex-col overflow-hidden">
             <div className="hidden lg:grid flex-none grid-cols-12 bg-slate-100 text-xs font-bold text-slate-600 px-4 py-2.5 border-b border-slate-200">
-              <div className="col-span-1"><input type="checkbox" checked={allAdminBookingsSelected} onChange={toggleAllAdminBookings} aria-label={t.selectAllBookings} /></div>
+              <div className="col-span-1"><input type="checkbox" className="h-5 w-5 shrink-0 rounded border-slate-400 text-indigo-600 focus:ring-2 focus:ring-indigo-500" checked={allAdminBookingsSelected} onChange={toggleAllAdminBookings} aria-label={t.selectAllBookings} /></div>
               <div className="col-span-1"><button className="font-bold" onClick={() => toggleAdminSort("date")}>{t.appointmentDate}{adminSortMark("date")}</button></div>
               <div className="col-span-2"><button className="font-bold" onClick={() => toggleAdminSort("customer")}>{t.customer}{adminSortMark("customer")}</button></div>
               <div className="col-span-1">{lang === "en" ? "MRN" : "病歷號碼"}</div>
@@ -3969,7 +4011,7 @@ ${selectedItems
               <div className="col-span-1"><button className="font-bold" onClick={() => toggleAdminSort("status")}>{t.status}{adminSortMark("status")}</button></div>
               <div className="col-span-1"><button className="font-bold" onClick={() => toggleAdminSort("notice")}>{t.notice}{adminSortMark("notice")}</button></div>
               <div className="col-span-1"><button className="font-bold" onClick={() => toggleAdminSort("amount")}>{t.amount}{adminSortMark("amount")}</button></div>
-              <div className="col-span-1 text-right">{t.operation}</div>
+              <div className="col-span-1 text-right" aria-label={lang === "en" ? "Open booking details" : "開啟預約詳情"} />
             </div>
 
             <div className="flex-1 lg:overflow-y-auto divide-y divide-slate-100">
@@ -3981,7 +4023,7 @@ ${selectedItems
               </div>
               {sortedAdminBookings.length ? sortedAdminBookings.map((booking) => (
                 <div key={booking.bookingId} onClick={() => setAdminDetailBooking(booking)} className="admin-booking-row grid grid-cols-2 lg:grid-cols-12 items-center gap-x-3 gap-y-2 px-4 py-3 text-sm cursor-pointer hover:bg-slate-50 transition-colors">
-                  <div className="col-span-1"><input type="checkbox" checked={selectedAdminBookingIds.includes(booking.bookingId)} onClick={(e) => e.stopPropagation()} onChange={() => toggleAdminBookingSelection(booking.bookingId)} aria-label={t.customer} /></div>
+                  <div className="col-span-1"><input type="checkbox" className="h-5 w-5 shrink-0 rounded border-slate-400 text-indigo-600 focus:ring-2 focus:ring-indigo-500" checked={selectedAdminBookingIds.includes(booking.bookingId)} onClick={(e) => e.stopPropagation()} onChange={() => toggleAdminBookingSelection(booking.bookingId)} aria-label={t.customer} /></div>
                   <div className="col-span-1 text-slate-600"><span className="lg:hidden block text-[10px] text-slate-400">{t.appointmentDate}</span>{booking.appointmentDate || "-"}</div>
                   <div className="col-span-2 font-bold text-slate-800"><span className="lg:hidden block text-[10px] font-normal text-slate-400">{t.customer}</span>{booking.customerName || booking.name || booking.customerId}</div>
                   <div className="col-span-1 text-slate-600"><span className="lg:hidden block text-[10px] text-slate-400">{lang === "en" ? "MRN" : "病歷號碼"}</span>{booking.medicalRecordNumber || "-"}</div>
@@ -3991,13 +4033,7 @@ ${selectedItems
                   <div className="col-span-1 text-slate-600"><span className="lg:hidden block text-[10px] text-slate-400">{t.status}</span>{statusLabel(booking.status)}{booking.checkInSerial && <div className="mt-0.5 font-mono text-xs font-bold text-indigo-600">{booking.checkInSerial}</div>}</div>
                   <div className="col-span-1 text-slate-600"><span className="lg:hidden block text-[10px] text-slate-400">{t.notice}</span>{noticeLabel(booking)}</div>
                   <div className="col-span-1 font-mono text-slate-700"><span className="lg:hidden block font-sans text-[10px] text-slate-400">{t.amount}</span>NT$ {Number(booking.finalPrice || 0).toLocaleString()}</div>
-                  <div className="col-span-1 text-right flex flex-wrap items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-                    {booking.status !== "CONFIRMED" && booking.status !== "CANCELLED" && <button onClick={() => handleConfirmBooking(booking)} className="text-xs px-2 py-1 rounded bg-emerald-600 text-white font-bold">{t.confirm}</button>}
-                    {booking.status !== "CANCELLED" && <button onClick={() => handleCancelAdminBooking(booking)} className="text-xs px-2 py-1 rounded bg-rose-600 text-white font-bold">{lang === "en" ? "Cancel" : "\u53d6\u6d88"}</button>}
-                    {booking.status === "CONFIRMED" && <button onClick={() => handleSendD1Notice(booking)} className="text-xs px-2 py-1 rounded bg-amber-500 text-white font-bold">{lang === "en" ? "Reminder" : "\u63d0\u9192"}</button>}
-                    {booking.status !== "CANCELLED" && booking.customerEmail && !booking.lineUserId && <button onClick={() => handleResendClaimEmail(booking)} className="text-xs px-2 py-1 rounded bg-indigo-600 text-white font-bold">{lang === "en" ? "Email" : "寄信"}</button>}
-                    {booking.status !== "CANCELLED" && <button onClick={() => printBookings([booking])} className="text-xs px-2 py-1 rounded bg-slate-900 text-white font-bold">{t.print}</button>}
-                  </div>
+                  <div className="col-span-1 flex items-center justify-end text-slate-400" aria-label={lang === "en" ? "Open booking details" : "開啟預約詳情"}><ChevronRight className="h-4 w-4" /></div>
                 </div>
               )) : (
                 <div className="p-12 text-center text-sm text-slate-400">{t.noBookings}</div>
