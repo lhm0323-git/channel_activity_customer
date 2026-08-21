@@ -56,6 +56,10 @@ const staffEmail = "csv-staff@example.com";
 await signOut(auth);
 await createUserWithEmailAndPassword(auth, staffEmail, "csv-import-test-password");
 await admin.firestore(adminApp).doc("staffUsers/" + staffEmail).set({ email: staffEmail, active: true, role: "STAFF" });
+const bulkClaimEmails = httpsCallable(functions, "sendBookingClaimEmailsAsStaff");
+await assert.rejects(bulkClaimEmails({ bookingIds: [] }));
+await assert.rejects(bulkClaimEmails({ bookingIds: Array.from({ length: 31 }, (_, index) => `booking-${index}`) }));
+console.log("ok - claim-email batch rejects an empty selection");
 const createStaffImport = httpsCallable(functions, "createBooking");
 const imported = await createStaffImport({
   payload: {

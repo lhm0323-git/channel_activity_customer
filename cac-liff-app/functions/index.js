@@ -175,38 +175,30 @@ async function getMailerSettings(requireConnected = true) {
   };
 }
 
-async function sendGmailMessage(settings, recipient, subject, textBody, htmlBody = "") {
+async function getGmailAccessToken(settings) {
   const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      client_id: settings.clientId,
-      client_secret: settings.clientSecret,
-      refresh_token: settings.refreshToken,
-      grant_type: "refresh_token",
-    }),
+    body: new URLSearchParams({ client_id: settings.clientId, client_secret: settings.clientSecret, refresh_token: settings.refreshToken, grant_type: "refresh_token" }),
   });
   const tokenJson = await tokenResponse.json();
   if (!tokenResponse.ok || !tokenJson.access_token) throw new Error("Gmail token refresh failed: " + (tokenJson.error || tokenResponse.status));
+  return tokenJson.access_token;
+}
+
+async function sendGmailMessage(settings, recipient, subject, textBody, htmlBody = "", accessToken = "") {
   const raw = Buffer.from([
     "From: " + encodeMimeHeader("屏基健檢中心") + " <" + cleanHeader(settings.senderEmail) + ">",
-    "To: " + cleanHeader(recipient),
-    "Subject: " + encodeMimeHeader(subject),
-    "MIME-Version: 1.0",
-    "Content-Type: " + (htmlBody ? "text/html" : "text/plain") + "; charset=UTF-8",
-    "Content-Transfer-Encoding: 8bit",
-    "",
-    String(htmlBody || textBody || ""),
+    "To: " + cleanHeader(recipient), "Subject: " + encodeMimeHeader(subject), "MIME-Version: 1.0",
+    "Content-Type: " + (htmlBody ? "text/html" : "text/plain") + "; charset=UTF-8", "Content-Transfer-Encoding: 8bit", "", String(htmlBody || textBody || ""),
   ].join("\r\n"), "utf8").toString("base64url");
   const response = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
-    method: "POST",
-    headers: { Authorization: "Bearer " + tokenJson.access_token, "Content-Type": "application/json" },
-    body: JSON.stringify({ raw }),
+    method: "POST", headers: { Authorization: "Bearer " + (accessToken || await getGmailAccessToken(settings)), "Content-Type": "application/json" }, body: JSON.stringify({ raw }),
   });
   if (!response.ok) throw new Error("Gmail send failed: " + response.status);
 }
 
-async function sendBookingClaimEmail(bookingRef, actor = { role: "SYSTEM" }) {
+async function sendBookingClaimEmail(bookingRef, actor = { role: "SYSTEM" }, mailer = {}) {
   const snap = await bookingRef.get();
   if (!snap.exists) throw new HttpsError("not-found", "Booking not found");
   const booking = snap.data();
@@ -214,23 +206,14 @@ async function sendBookingClaimEmail(bookingRef, actor = { role: "SYSTEM" }) {
   if (!validEmail(email)) throw new HttpsError("failed-precondition", "Booking has no valid email address");
   if (!booking.customerClaimToken) throw new HttpsError("failed-precondition", "Booking has no LINE claim link");
   try {
-    const settings = await getMailerSettings(true);
+    const settings = mailer.settings || await getMailerSettings(true);
     const message = buildClaimEmail(bookingRef.id, booking);
-    await sendGmailMessage(settings, email, message.subject, message.text, message.html);
-    await bookingRef.update({
-      claimEmailStatus: "SENT",
-      claimEmailSentAt: FieldValue.serverTimestamp(),
-      claimEmailError: null,
-      updatedAt: FieldValue.serverTimestamp(),
-    });
+    await sendGmailMessage(settings, email, message.subject, message.text, message.html, mailer.accessToken);
+    await bookingRef.update({ claimEmailStatus: "SENT", claimEmailSentAt: FieldValue.serverTimestamp(), claimEmailError: null, updatedAt: FieldValue.serverTimestamp() });
     if (actor?.email) await writeBookingAuditRecord({ action: "SEND_CLAIM_EMAIL", bookingId: bookingRef.id, actor });
     return "SENT";
   } catch (error) {
-    await bookingRef.update({
-      claimEmailStatus: "FAILED",
-      claimEmailError: String(error && error.message || error).slice(0, 300),
-      updatedAt: FieldValue.serverTimestamp(),
-    });
+    await bookingRef.update({ claimEmailStatus: "FAILED", claimEmailError: String(error && error.message || error).slice(0, 300), updatedAt: FieldValue.serverTimestamp() });
     throw error;
   }
 }
@@ -1124,4 +1107,24 @@ exports.sendBookingClaimEmailAsStaff = onCall({ secrets: [mailerEncryptionKey] }
   const bookingRef = admin.firestore().doc("bookings/" + bookingId);
   const status = await sendBookingClaimEmail(bookingRef, actor);
   return { status };
+});
+exports.sendBookingClaimEmailsAsStaff = onCall({ secrets: [mailerEncryptionKey] }, async (request) => {
+  const actor = await assertStaff(request);
+  const bookingIds = [...new Set(Array.isArray(request.data?.bookingIds) ? request.data.bookingIds.map((value) => text(value, 200)).filter(Boolean) : [])];
+  if (!bookingIds.length || bookingIds.length > 30) throw new HttpsError("invalid-argument", "Select between 1 and 30 bookings");
+  const mailer = { settings: await getMailerSettings(true) };
+  mailer.accessToken = await getGmailAccessToken(mailer.settings);
+  const result = { sent: [], skipped: [], failed: [] };
+  for (let index = 0; index < bookingIds.length; index += 1) {
+    const bookingRef = admin.firestore().doc("bookings/" + bookingIds[index]);
+    const snap = await bookingRef.get();
+    const booking = snap.exists ? snap.data() : null;
+    if (!booking || booking.lineUserId || !validEmail(String(booking.customerEmail || "").trim().toLowerCase()) || !booking.customerClaimToken) result.skipped.push(bookingIds[index]);
+    else {
+      try { await sendBookingClaimEmail(bookingRef, actor, mailer); result.sent.push(bookingIds[index]); }
+      catch (error) { result.failed.push({ bookingId: bookingIds[index], message: String(error?.message || error).slice(0, 160) }); }
+    }
+    if (index < bookingIds.length - 1) await new Promise((resolve) => setTimeout(resolve, 1200));
+  }
+  return result;
 });

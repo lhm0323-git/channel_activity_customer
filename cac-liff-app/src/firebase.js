@@ -341,6 +341,12 @@ export async function sendBookingClaimEmail(bookingId) {
   if (!functions) throw new Error("Firebase is not configured");
   return httpsCallable(functions, "sendBookingClaimEmailAsStaff")({ bookingId });
 }
+
+export async function sendBookingClaimEmails(bookingIds) {
+  requireStaffFunction();
+  if (!functions) throw new Error("Firebase is not configured");
+  return httpsCallable(functions, "sendBookingClaimEmailsAsStaff")({ bookingIds });
+}
 export async function sendD1Notice(bookingId) {
   if (!functions) throw new Error("Firebase is not configured");
   const user = auth?.currentUser;
