@@ -1,6 +1,6 @@
-﻿import assert from "node:assert/strict";
+import assert from "node:assert/strict";
 import { initializeApp, deleteApp } from "firebase/app";
-import { getAuth, connectAuthEmulator, signInAnonymously, createUserWithEmailAndPassword, signOut } from "firebase/auth";
+import { getAuth, connectAuthEmulator, signInAnonymously, createUserWithEmailAndPassword, signInWithCustomToken, signOut } from "firebase/auth";
 import { createRequire } from "node:module";
 import { getFunctions, connectFunctionsEmulator, httpsCallable } from "firebase/functions";
 import { getFirestore, connectFirestoreEmulator, doc, getDoc, setDoc, terminate } from "firebase/firestore";
@@ -73,6 +73,21 @@ const importedBooking = await getDoc(doc(db, "bookings", imported.data.bookingId
 assert.equal(importedBooking.data().customerEmail, "");
 assert.equal(importedBooking.data().notificationChannel, "NONE");
 console.log("ok - active staff CSV import accepts blank Email and LINE ID");
+
+await admin.firestore(adminApp).doc("staffUsers/ptch:07911").set({ empid: "07911", active: true, role: "STAFF" });
+await signOut(auth);
+const hospitalToken = await admin.auth(adminApp).createCustomToken("ptch:07911", { staffKey: "ptch:07911", empid: "07911", staffRole: "STAFF", authSource: "PTCH" });
+await signInWithCustomToken(auth, hospitalToken);
+const createHospitalStaffImport = httpsCallable(functions, "createBooking");
+const hospitalImported = await createHospitalStaffImport({
+  payload: {
+    customer: { name: "Hospital staff import", phone: "0999000001", email: "", idNumberMasked: "" },
+    booking: { source: "STAFF_CSV", appointmentDate: "2099-01-04", channel: "GENERAL", packageName: "P0 Hospital Package", selectedItems: [{ id: "item-3", name: "P0 Hospital Item", category: "test", price: 100 }], listPrice: 100, discountRate: 0, finalPrice: 100, notes: "" },
+  },
+  lineAccessToken: "",
+});
+assert.ok(hospitalImported.data.bookingId);
+console.log("ok - hospital custom-token staff CSV import accepts blank Email and LINE ID");
 
 const saveQuestionnaireAsStaff = httpsCallable(functions, "saveBookingQuestionnaireResponseAsStaff");
 const getQuestionnaireAsStaff = httpsCallable(functions, "getBookingQuestionnaireResponseAsStaff");

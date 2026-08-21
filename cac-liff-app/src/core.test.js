@@ -30,6 +30,7 @@ import {
   validateQuestionnaireSchema,
   QUESTIONNAIRES,
 } from "./questionnaire.js";
+import { hospitalStaffKey, validateHospitalTokenResponse } from "../functions/hospital-auth.cjs";
 
 run("questionnaire validation and printing html generator", () => {
   const schema = getQuestionnaireById("general-health");
@@ -96,6 +97,15 @@ run("questionnaire preserves explicit staff override over built-in defaults", ()
   assert.equal(normalized.sections[0].questions[2].carryForward, false);
 });
 
+run("hospital staff identifiers use a stable Firebase staff key", () => {
+  assert.equal(hospitalStaffKey("07911"), "ptch:07911");
+  assert.throws(() => hospitalStaffKey("invalid/id"), /invalid employee ID/);
+});
+
+run("hospital token endpoint response requires a non-empty access token", () => {
+  assert.equal(validateHospitalTokenResponse({ access_token: "server-issued-token" }), true);
+  assert.throws(() => validateHospitalTokenResponse({}), /access token/);
+});
 function run(name, fn) {
   try {
     fn();

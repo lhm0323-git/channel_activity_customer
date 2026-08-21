@@ -26,6 +26,7 @@ import {
   signInAnonymously,
   signInWithPopup,
   signInWithRedirect,
+  signInWithCustomToken,
   signOut,
 } from "firebase/auth";
 import { filterBookingsByChannel } from "./core.js";
@@ -78,7 +79,7 @@ export function watchStaffAuth(callback) {
 }
 
 export async function signInStaff() {
-  if (!auth) throw new Error("Firebase 尚未設定，無法登入員工帳號");
+  if (!auth) throw new Error("Firebase is not configured. Staff login is unavailable.");
   try {
     const result = await signInWithPopup(auth, provider);
     return result.user;
@@ -91,6 +92,15 @@ export async function signInStaff() {
   }
 }
 
+export async function signInWithHospitalAccount({ userId, password }) {
+  if (!auth || !functions) throw new Error("Firebase is not configured. Hospital staff login is unavailable.");
+  const result = await httpsCallable(functions, "signInWithHospitalAccount")({ userId, password });
+  const customToken = String(result.data?.customToken || "");
+  if (!customToken) throw new Error("Hospital verification did not create a CAC session.");
+  const credential = await signInWithCustomToken(auth, customToken);
+  await credential.user.getIdToken(true);
+  return credential.user;
+}
 export async function signOutStaff() {
   if (auth) await signOut(auth);
 }
@@ -106,11 +116,12 @@ export async function saveBooking(payload, { allowBlockedDate = false, lineAcces
   }
 
   const currentUser = await ensurePublicUser();
-  if (requireStaffSession && !currentUser?.email) {
-    throw new Error("CSV ??????? Google ?????????????????");
+  const tokenResult = await currentUser?.getIdTokenResult(true);
+  const isStaffSession = Boolean(currentUser?.email || tokenResult?.claims?.staffKey);
+  if (requireStaffSession && !isStaffSession) {
+    throw new Error("CSV import requires an authorized staff session.");
   }
-  // Refresh after an account change so callable requests use the current Google staff token.
-  await currentUser?.getIdToken(true);
+  // Refresh after an account change so callable requests use the current staff token.
   if (!functions) throw new Error("Booking service is unavailable");
   const result = await httpsCallable(functions, "createBooking")({ payload, lineAccessToken });
   return { ...result.data, localOnly: false };
@@ -424,11 +435,17 @@ export async function saveManagedItem(item) {
   return { localOnly: false };
 }
 
-export async function getStaffUser(email) {
-  if (!db || !email) return null;
-  const cleanEmail = String(email).trim().toLowerCase();
-  const snap = await getDoc(doc(db, "staffUsers", cleanEmail));
-  return snap.exists() ? { email: cleanEmail, ...snap.data() } : null;
+function staffUserKey(identity) {
+  const value = String(identity || "").trim();
+  if (!value) throw new Error("Enter a Google email or PTCH employee ID.");
+  return value.includes("@") ? value.toLowerCase() : `ptch:${value}`;
+}
+
+export async function getStaffUser(identity) {
+  if (!db || !identity) return null;
+  const staffKey = staffUserKey(identity);
+  const snap = await getDoc(doc(db, "staffUsers", staffKey));
+  return snap.exists() ? { staffKey, ...snap.data() } : null;
 }
 
 export async function listAuditLogs({ pageSize = 100, cursor = null } = {}) {
@@ -445,25 +462,29 @@ export async function listAuditLogs({ pageSize = 100, cursor = null } = {}) {
     hasMore,
   };
 }
+
 export async function listStaffUsers() {
   if (!db) return [];
   const snapshot = await getDocs(collection(db, "staffUsers"));
-  return snapshot.docs.map((docSnap) => ({ email: docSnap.id, ...docSnap.data() }));
+  return snapshot.docs.map((docSnap) => ({ staffKey: docSnap.id, ...docSnap.data() }));
 }
 
-export async function saveStaffUser(email, active = true, role = "STAFF") {
+export async function saveStaffUser(identity, active = true, role = "STAFF") {
   if (!db) return { localOnly: true };
-  const cleanEmail = String(email || "").trim().toLowerCase();
-  if (!cleanEmail || !cleanEmail.includes("@")) throw new Error("Invalid email");
-  await setDoc(doc(db, "staffUsers", cleanEmail), {
-    email: cleanEmail,
+  const raw = String(identity || "").trim();
+  const staffKey = staffUserKey(raw);
+  const isEmail = raw.includes("@");
+  if (!isEmail && !/^[A-Za-z0-9_-]{2,64}$/.test(raw)) throw new Error("Invalid PTCH employee ID format.");
+  await setDoc(doc(db, "staffUsers", staffKey), {
+    staffKey,
+    email: isEmail ? raw.toLowerCase() : "",
+    empid: isEmail ? "" : raw,
     active,
     role: role === "ADMIN" ? "ADMIN" : "STAFF",
     updatedAt: serverTimestamp(),
   }, { merge: true });
-  return { email: cleanEmail, localOnly: false };
+  return { staffKey, identity: raw, localOnly: false };
 }
-
 export async function deleteManagedPackage(name, itemIds = []) {
   if (!db) return { localOnly: true };
   await setDoc(doc(db, "managedPackages", packageDocId(name)), {

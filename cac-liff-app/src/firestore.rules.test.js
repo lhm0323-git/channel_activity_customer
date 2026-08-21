@@ -17,6 +17,7 @@ try {
     await setDoc(doc(db, "bookings", "staff-edit"), { ownerUid: "patient-uid", customerName: "Patient" });
     await setDoc(doc(db, "staffUsers", "staff@example.com"), { email: "staff@example.com", active: true });
     await setDoc(doc(db, "staffUsers", "disabled@example.com"), { email: "disabled@example.com", active: false });
+    await setDoc(doc(db, "staffUsers", "ptch:07911"), { empid: "07911", active: true, role: "STAFF" });
     await setDoc(doc(db, "auditLogs", "booking-update"), { bookingId: "staff-edit", action: "UPDATE" });
     await setDoc(doc(db, "managedPackages", "internal-package"), { name: "Internal package", visibility: "INTERNAL" });
   });
@@ -31,10 +32,14 @@ try {
   const staff = testEnv.authenticatedContext("staff-uid", { email: "staff@example.com" }).firestore();
   const disabledStaff = testEnv.authenticatedContext("disabled-uid", { email: "disabled@example.com" }).firestore();
   const bootstrapAdmin = testEnv.authenticatedContext("admin-uid", { email: "lhm0323@gmail.com" }).firestore();
+  const hospitalStaff = testEnv.authenticatedContext("ptch:07911", { staffKey: "ptch:07911", empid: "07911" }).firestore();
   await assertFails(updateDoc(doc(staff, "bookings", "staff-edit"), { notes: "staff correction" }));
   await assertFails(updateDoc(doc(disabledStaff, "bookings", "staff-edit"), { notes: "should fail" }));
   await assertSucceeds(getDoc(doc(bootstrapAdmin, "auditLogs", "booking-update")));
   await assertFails(getDoc(doc(staff, "auditLogs", "booking-update")));
+  await assertSucceeds(getDoc(doc(hospitalStaff, "managedPackages", "internal-package")));
+  await assertFails(updateDoc(doc(hospitalStaff, "bookings", "staff-edit"), { notes: "forged direct write" }));
+  await assertFails(getDoc(doc(hospitalStaff, "auditLogs", "booking-update")));
   await assertFails(getDoc(doc(patient, "managedPackages", "internal-package")));
   await assertSucceeds(getDoc(doc(staff, "managedPackages", "internal-package")));
 
