@@ -146,6 +146,10 @@ function customerLineClaimUrl(bookingId, claimToken) {
   return "https://liff.line.me/" + LIFF_ID + "?view=my-bookings&claimBooking=" + encodeURIComponent(bookingId) + "&claimToken=" + encodeURIComponent(claimToken);
 }
 
+function escapeHtml(value) {
+  return String(value || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
 function buildClaimEmail(bookingId, booking) {
   const claimUrl = customerLineClaimUrl(bookingId, booking.customerClaimToken);
   const name = cleanHeader(booking.customerName || "");
@@ -153,15 +157,8 @@ function buildClaimEmail(bookingId, booking) {
   const date = cleanHeader(booking.appointmentDate || "");
   return {
     subject: "屏基健檢中心：預約確認與 LINE 綁定",
-    text: [
-      name ? name + " 您好：" : "您好：",
-      "您的健檢預約已建立。",
-      "套餐：" + packageName,
-      "暫定日期：" + date,
-      "請開啟下列連結，於 LINE 完成綁定後即可查詢預約、提出改期並接收提醒：",
-      claimUrl,
-      "若無法開啟，請聯繫屏基健檢中心。",
-    ].join("\n"),
+    text: (name ? name + " 您好：" : "您好：") + "\n您的健檢預約已建立。請開啟 LINE 完成綁定。",
+    html: "<main style=\"font-family:Arial,sans-serif;max-width:560px;margin:auto;color:#1e293b\"><h2>屏基健檢中心預約確認</h2><p>" + escapeHtml(name || "您好") + "：</p><p>您的健檢預約已建立。<br>套餐：" + escapeHtml(packageName) + "<br>暫定日期：" + escapeHtml(date) + "</p><p><a href=\"" + claimUrl + "\" style=\"display:inline-block;background:#059669;color:#fff;padding:12px 20px;border-radius:6px;text-decoration:none;font-weight:bold\">開啟 LINE 完成綁定</a></p><p style=\"font-size:12px;color:#64748b\">若無法開啟，請聯繫屏基健檢中心。</p></main>",
   };
 }
 
@@ -178,7 +175,7 @@ async function getMailerSettings(requireConnected = true) {
   };
 }
 
-async function sendGmailMessage(settings, recipient, subject, textBody) {
+async function sendGmailMessage(settings, recipient, subject, textBody, htmlBody = "") {
   const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -196,10 +193,10 @@ async function sendGmailMessage(settings, recipient, subject, textBody) {
     "To: " + cleanHeader(recipient),
     "Subject: " + encodeMimeHeader(subject),
     "MIME-Version: 1.0",
-    "Content-Type: text/plain; charset=UTF-8",
+    "Content-Type: " + (htmlBody ? "text/html" : "text/plain") + "; charset=UTF-8",
     "Content-Transfer-Encoding: 8bit",
     "",
-    String(textBody || ""),
+    String(htmlBody || textBody || ""),
   ].join("\r\n"), "utf8").toString("base64url");
   const response = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
     method: "POST",
@@ -219,7 +216,7 @@ async function sendBookingClaimEmail(bookingRef, actor = { role: "SYSTEM" }) {
   try {
     const settings = await getMailerSettings(true);
     const message = buildClaimEmail(bookingRef.id, booking);
-    await sendGmailMessage(settings, email, message.subject, message.text);
+    await sendGmailMessage(settings, email, message.subject, message.text, message.html);
     await bookingRef.update({
       claimEmailStatus: "SENT",
       claimEmailSentAt: FieldValue.serverTimestamp(),
