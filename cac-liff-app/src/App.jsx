@@ -2676,7 +2676,7 @@ ${selectedItems
                 <Copy className="w-4 h-4" /> 複製
               </button>
               <button
-                onClick={() => setShowBookingModal(true)}
+                onClick={() => { setBookingField("channel", audienceToChannel(packageAudience)); setShowBookingModal(true); }}
                 className="py-3 bg-emerald-600 text-white rounded-lg text-xs font-bold hover:bg-emerald-700 flex justify-center items-center gap-1 shadow-lg shadow-emerald-100"
               >
                 <CheckCircle2 className="w-4 h-4" /> 預約
