@@ -106,6 +106,10 @@ run("hospital token endpoint response requires a non-empty access token", () => 
   assert.equal(validateHospitalTokenResponse({ access_token: "server-issued-token" }), true);
   assert.throws(() => validateHospitalTokenResponse({}), /access token/);
 });
+run("custom package audience is preserved as booking channel", () => {
+  assert.equal(audienceToChannel("A"), "A");
+});
+
 function run(name, fn) {
   try {
     fn();

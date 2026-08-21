@@ -6,11 +6,12 @@ export const CHANNELS = [
 ];
 
 export function audienceToChannel(audience) {
-  const tag = String(audience || "");
+  const tag = String(audience || "").trim();
+  if (!tag || tag === "民眾公用") return "GENERAL";
   if (/\u4f01\u696d|\u5718\u6aa2|\u516c\u6559/.test(tag)) return "CORPORATE";
   if (/\u52de\u5de5/.test(tag)) return "LABOR";
   if (/\u9ad8\u968e/.test(tag)) return "HIGH_END";
-  return "GENERAL";
+  return tag;
 }
 
 export function filterBookingsByChannel(bookings, channel = "ALL") {
