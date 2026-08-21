@@ -1,5 +1,8 @@
 import React, { useState, useMemo, useEffect } from "react";
-import QRCode from "qrcode";
+import QRCode from "qrcode";
+import { PackageComparison } from './components/PackageComparison.jsx';
+import { PublicQuickLinks } from './components/PublicQuickLinks.jsx';
+import { ContactInfoPanel } from './components/ContactInfoPanel.jsx';
 import {
   Search,
   Plus,
@@ -35,7 +38,6 @@ import {
   PUBLIC_AUDIENCES,
   PUBLIC_BODY_PARTS,
   PUBLIC_SEXES,
-  PUBLIC_COMPARISON_ROWS,
   audienceToChannel,
   buildBookingPayload,
   calculatePricing,
@@ -45,8 +47,6 @@ import {
   exportBookingsCsv,
   filterPublicPackageCards,
   generateChecklist,
-  getPublicPackageComparisonValue,
-  sortPublicComparisonCards,
   parseBookingImportCsv,
   parseHealthCsv,
   upcomingBookings,
@@ -107,6 +107,7 @@ import {
   saveChecklist,
   saveStaffUser,
   signInStaff,
+  signInWithHospitalAccount,
   signOutStaff,
   updateBooking,
   watchPendingChangeRequests,
@@ -120,11 +121,23 @@ function isAdminEmail(user) {
 }
 
 async function getStaffAccess(user) {
-  if (!user?.email) return null;
-  if (isAdminEmail(user)) return { role: "ADMIN" };
+  if (!user || user.isAnonymous) return null;
+  const token = await user.getIdTokenResult();
+  const staffKey = token.claims?.staffKey ? String(token.claims.staffKey).trim() : String(user.email || "").trim().toLowerCase();
+  if (!staffKey) return null;
+  if (token.claims?.authSource === "PTCH") {
+    return {
+      role: token.claims?.staffRole === "ADMIN" ? "ADMIN" : "STAFF",
+      staffKey,
+      label: String(token.claims?.empid || user.displayName || staffKey),
+    };
+  }
+  if (isAdminEmail(user)) return { role: "ADMIN", staffKey, label: user.email };
   try {
-    const record = await getStaffUser(user.email);
-    return record && record.active !== false ? { role: record.role === "ADMIN" ? "ADMIN" : "STAFF" } : null;
+    const record = await getStaffUser(staffKey);
+    return record && record.active !== false
+      ? { role: record.role === "ADMIN" ? "ADMIN" : "STAFF", staffKey, label: record.email || record.empid || user.displayName || staffKey }
+      : null;
   } catch {
     return null;
   }
@@ -641,6 +654,9 @@ const App = () => {
   const [staffUser, setStaffUser] = useState(null);
   const [staffRole, setStaffRole] = useState("");
   const [staffStatus, setStaffStatus] = useState("");
+  const [showStaffLoginModal, setShowStaffLoginModal] = useState(false);
+  const [hospitalCredentials, setHospitalCredentials] = useState({ userId: "", password: "" });
+  const [hospitalLoginStatus, setHospitalLoginStatus] = useState("");
   const t = TEXT[lang];
   const [publicFilters, setPublicFilters] = useState({ audience: "全部", sex: "不限", bodyPart: "全部" });
   const [restrictedPackageIds, setRestrictedPackageIds] = useState([]);
@@ -782,7 +798,7 @@ const App = () => {
     let active = true;
     const unsubscribe = watchStaffAuth((user) => {
       (async () => {
-        if (!user?.email) {
+        if (!user || user.isAnonymous) {
           if (!active) return;
           setStaffUser(null);
           setStaffRole("");
@@ -794,13 +810,13 @@ const App = () => {
         if (!access) {
           setStaffUser(null);
           setStaffRole("");
-          setStaffStatus("\u6b64 Google \u5e33\u865f\u672a\u6388\u6b0a\u4f7f\u7528\u5167\u90e8\u5de5\u5177");
+          setStaffStatus("此帳號未授權使用內部工具");
           setMode("public");
           return;
         }
         setStaffUser(user);
         setStaffRole(access.role);
-        setStaffStatus(`\u5df2\u767b\u5165\uff1a${user.email}`);
+        setStaffStatus(`已登入：${access.label || user.email || user.uid}`);
       })();
     });
     return () => {
@@ -1435,26 +1451,46 @@ ${selectedItems
 
   const staffMode = mode === "staff" || mode === "admin" || mode === "reports" || mode === "audit";
 
+  const completeStaffLogin = async (user) => {
+    const access = await getStaffAccess(user);
+    if (!access) {
+      await signOutStaff();
+      setStaffStatus("此帳號未授權使用內部工具");
+      setMode("public");
+      return false;
+    }
+    setStaffUser(user);
+    setStaffRole(access.role);
+    setStaffStatus(`已登入：${access.label || user.email || user.uid}`);
+    setMode("staff");
+    return true;
+  };
+
   const handleStaffLogin = async () => {
     try {
-      setStaffStatus("\u767b\u5165\u4e2d...");
+      setStaffStatus("登入中...");
       const user = await signInStaff();
-      const access = await getStaffAccess(user);
-      if (!access) {
-        await signOutStaff();
-        setStaffStatus("\u6b64 Google \u5e33\u865f\u672a\u6388\u6b0a\u4f7f\u7528\u5167\u90e8\u5de5\u5177");
-        setMode("public");
-        return;
-      }
-      setStaffUser(user);
-        setStaffRole(access.role);
-      setStaffStatus(`\u5df2\u767b\u5165\uff1a${user.email}`);
-      setMode("staff");
+      if (user) await completeStaffLogin(user);
     } catch (error) {
-      setStaffStatus(`\u767b\u5165\u5931\u6557\uff1a${error.message}`);
+      setStaffStatus(`登入失敗：${error.message}`);
     }
   };
 
+  const handleHospitalStaffLogin = async (event) => {
+    event?.preventDefault();
+    try {
+      setHospitalLoginStatus("驗證院內帳號中...");
+      const user = await signInWithHospitalAccount(hospitalCredentials);
+      const accepted = await completeStaffLogin(user);
+      if (accepted) {
+        setHospitalCredentials({ userId: "", password: "" });
+        setHospitalLoginStatus("");
+        setShowStaffLoginModal(false);
+      }
+    } catch (error) {
+      setHospitalLoginStatus(`登入失敗：${error.message}`);
+    }
+  };
   const handleLineLogin = async () => {
     try {
       setLiffMessage(lang === "en" ? "Connecting LINE..." : "正在連結 LINE...");
@@ -1909,7 +1945,7 @@ ${selectedItems
       const result = await saveStaffUser(newStaffEmail, true, newStaffRole);
       setNewStaffEmail("");
       setNewStaffRole("STAFF");
-      setStaffManageStatus(lang === "en" ? `Added ${result.email}` : `\u5df2\u65b0\u589e\uff1a${result.email}`);
+      setStaffManageStatus(lang === "en" ? `Added ${result.identity}` : `已新增：${result.identity}`);
       setStaffAccounts(await listStaffUsers());
     } catch (error) {
       setStaffManageStatus(lang === "en" ? `Add failed: ${error.message}` : `\u65b0\u589e\u5931\u6557\uff1a${error.message}`);
@@ -1919,8 +1955,8 @@ ${selectedItems
   const handleSetStaffActive = async (staff) => {
     try {
       const active = staff.active === false;
-      await saveStaffUser(staff.email, active, staff.role);
-      setStaffManageStatus(lang === "en" ? `${staff.email} ${active ? "enabled" : "disabled"}` : `${staff.email}已${active ? "啟用" : "停用"}`);
+      await saveStaffUser(staff.empid || staff.email, active, staff.role);
+      setStaffManageStatus(lang === "en" ? `${staff.empid || staff.email} ${active ? "enabled" : "disabled"}` : `${staff.empid || staff.email} 已${active ? "啟用" : "停用"}`);
       setStaffAccounts(await listStaffUsers());
     } catch (error) {
       setStaffManageStatus(lang === "en" ? `Update failed: ${error.message}` : `更新失敗：${error.message}`);
@@ -1928,8 +1964,8 @@ ${selectedItems
   };
   const handleSetStaffRole = async (staff, role) => {
     try {
-      await saveStaffUser(staff.email, staff.active !== false, role);
-      setStaffManageStatus(lang === "en" ? `${staff.email} role updated` : `${staff.email} 權限已更新`);
+      await saveStaffUser(staff.empid || staff.email, staff.active !== false, role);
+      setStaffManageStatus(lang === "en" ? `${staff.empid || staff.email} role updated` : `${staff.empid || staff.email} 權限已更新`);
       setStaffAccounts(await listStaffUsers());
     } catch (error) {
       setStaffManageStatus(lang === "en" ? `Role update failed: ${error.message}` : `權限更新失敗：${error.message}`);
@@ -2776,6 +2812,7 @@ ${selectedItems
     );
   };
   const PublicInfoPanel = ({ view }) => {
+    if (view === "contact") return <ContactInfoPanel />;
     if (view === "checkin") return <CheckInInfoPanel />;
     if (view === "prep") return <CheckInInfoPanel prepOnly />;
     if (view === "followup") return <ReportFollowUpPanel />;
@@ -2867,72 +2904,6 @@ ${selectedItems
     setComparisonSort((current) => ({ key, direction: current.key === key && current.direction === "asc" ? "desc" : "asc" }));
   };
 
-  const sortMark = (key) => comparisonSort.key === key ? (comparisonSort.direction === "asc" ? " \u2191" : " \u2193") : "";
-
-  const PackageComparison = ({ cards, compact = false }) => {
-    const sortedCards = sortPublicComparisonCards(cards, comparisonSort, lang);
-    return (
-      <div className="rounded-lg border border-slate-200 bg-white overflow-hidden">
-        <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
-          <div>
-            <h2 className="text-base font-black text-slate-900">{lang === "en" ? "Package comparison" : "\u5957\u9910\u6bd4\u8f03\u7e3d\u8868"}</h2>
-            <p className="text-xs text-slate-500">{lang === "en" ? "Each package is one row; tap headers to sort" : "\u6bcf\u500b\u5957\u9910\u4e00\u5217\uff0c\u9ede\u6b04\u4f4d\u53ef\u6392\u5e8f"}</p>
-          </div>
-        </div>
-        <div className="max-h-[70vh] overflow-auto">
-          <table className="min-w-[980px] border-collapse text-sm">
-            <thead>
-              <tr className="bg-slate-50">
-                <th className="sticky left-0 top-0 z-20 w-36 bg-slate-50 px-3 py-3 text-left text-xs font-black text-slate-600"><button className="text-left font-black" onClick={() => toggleComparisonSort("package")}>{lang === "en" ? "Package" : "\u5957\u9910"}{sortMark("package")}</button></th>
-                {PUBLIC_COMPARISON_ROWS.map((row) => (
-                  <th key={row.key} className="sticky top-0 z-10 min-w-[150px] bg-slate-50 px-3 py-3 text-left text-xs font-black text-slate-600"><button className="text-left font-black" onClick={() => toggleComparisonSort(row.key)}>{lang === "en" ? row.labelEn : row.label}{sortMark(row.key)}</button></th>
-                ))}
-                <th className="sticky top-0 z-10 w-28 bg-slate-50 px-3 py-3 text-left text-xs font-black text-slate-600">{lang === "en" ? "Action" : "\u64cd\u4f5c"}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sortedCards.map((card) => (
-                <tr key={card.name} className="border-t border-slate-100">
-                  <th className="sticky left-0 z-10 bg-white px-3 py-3 text-left align-top">
-                    <button className="font-black text-slate-900 underline decoration-slate-300 underline-offset-4" onClick={() => showComparisonCard(card)}>{card.name}</button>
-                  </th>
-                  {PUBLIC_COMPARISON_ROWS.map((row) => (
-                    <td key={`${card.name}-${row.key}`} className="min-w-[150px] px-3 py-3 align-top text-slate-700 leading-relaxed">
-                      {getPublicPackageComparisonValue(card, row.key, lang)}
-                    </td>
-                  ))}
-                  <td className="w-28 px-3 py-3 align-top">
-                    <button className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-700" onClick={() => showComparisonCard(card)}>{lang === "en" ? "Details" : "\u8a73\u7d30"}</button>
-                    <button className="mt-2 rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white" onClick={() => selectPublicPackage(card)}>{lang === "en" ? "Book" : "\u9810\u7d04"}</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    );
-  };
-  const PublicQuickLinks = () => {
-    const links = [
-      { view: "packages", label: lang === "en" ? "Find package / book" : "\u627e\u65b9\u6848 / \u9810\u7d04", compact: lang === "en" ? "Packages" : "\u627e\u65b9\u6848", Icon: Search },
-      { view: "my-bookings", label: lang === "en" ? "My bookings / changes" : "\u6211\u7684\u9810\u7d04 / \u6539\u671f", compact: lang === "en" ? "Bookings" : "\u6211\u7684\u9810\u7d04", Icon: CheckSquare },
-      { view: "prep", label: lang === "en" ? "Visit instructions" : "\u4f86\u6aa2\u9808\u77e5", compact: lang === "en" ? "Instructions" : "\u4f86\u6aa2\u9808\u77e5", Icon: FileText },
-      { view: "addon-items", label: lang === "en" ? "Add-on items" : "\u52a0\u9078\u9805\u76ee\u53c3\u8003\u8868", compact: lang === "en" ? "Add-ons" : "\u52a0\u9078\u9805\u76ee", Icon: Plus },
-      { view: "followup", label: lang === "en" ? "Report follow-up" : "\u5831\u544a\u8ffd\u8e64", compact: lang === "en" ? "Follow-up" : "\u5831\u544a\u8ffd\u8e64", Icon: RefreshCw },
-      { view: "contact", label: lang === "en" ? "Contact / directions" : "\u806f\u7d61\u4ea4\u901a", compact: lang === "en" ? "Contact" : "\u806f\u7d61\u4ea4\u901a", Icon: PhoneCall },
-    ];
-    return (
-      <div className="grid grid-cols-3 gap-1.5 py-0.5 text-[11px] font-bold lg:flex lg:items-center lg:gap-1.5 lg:overflow-visible lg:text-xs">
-        {links.map(({ view, label, compact, Icon }) => (
-          <button key={view} type="button" onClick={() => openPublicView(view)} className={`inline-flex min-w-0 items-center justify-center gap-1 rounded-md px-1.5 py-2 transition-colors lg:shrink-0 lg:px-2.5 ${publicView === view ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-700 hover:bg-slate-200"}`}>
-            <Icon className="h-3.5 w-3.5 shrink-0" /><span className="truncate lg:hidden">{compact}</span><span className="hidden lg:inline">{label}</span>
-          </button>
-        ))}
-        {!lineProfile && <button type="button" onClick={handleLineLogin} className="col-span-3 inline-flex items-center justify-center gap-1 rounded-md bg-emerald-600 px-2.5 py-2 text-white hover:bg-emerald-700 lg:col-auto lg:shrink-0"><CheckCircle2 className="h-3.5 w-3.5" />{lang === "en" ? "Connect LINE" : "\u9023\u7d50 LINE"}</button>}
-      </div>
-    );
-  };
   const PublicPackageView = () => (
     <main className="flex-1 overflow-y-auto bg-slate-50 flex flex-col min-h-0">
       {publicView === "addon-items" ? (
@@ -2979,7 +2950,7 @@ ${selectedItems
             </div>
           </div>
 
-          {publicPackageLayout === "table" ? <PackageComparison cards={visiblePublicPackageCards} /> : null}
+          {publicPackageLayout === "table" ? <PackageComparison cards={visiblePublicPackageCards} comparisonSort={comparisonSort} lang={lang} onSelectPackage={selectPublicPackage} onShowDetails={showComparisonCard} onToggleSort={toggleComparisonSort} /> : null}
 
           <div className={`${publicPackageLayout === "table" ? "hidden" : "grid"} grid-cols-1 lg:grid-cols-2 gap-4`}>
             {visiblePublicPackageCards.map((card) => {
@@ -4088,7 +4059,7 @@ ${selectedItems
               </div>
               <div className="space-y-2">
                 <div className="grid grid-cols-[1fr_auto] gap-2">
-                  <input type="email" className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm font-normal" placeholder={t.staffEmailPlaceholder} value={newStaffEmail} onChange={(e) => setNewStaffEmail(e.target.value)} />
+                  <input type="text" className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm font-normal" placeholder={lang === "en" ? "Google email or PTCH employee ID" : "Google Email 或院內職編"} value={newStaffEmail} onChange={(e) => setNewStaffEmail(e.target.value)} />
                   <select className="rounded-md border border-slate-300 px-2 py-1.5 text-xs font-bold" value={newStaffRole} onChange={(e) => setNewStaffRole(e.target.value)}><option value="STAFF">{lang === "en" ? "Staff" : "員工"}</option><option value="ADMIN">{lang === "en" ? "Admin" : "管理者"}</option></select>
                 </div>
                 <button onClick={handleAddStaffUser} className="w-full rounded-md bg-slate-900 px-3 py-2 text-sm font-bold text-white">{t.addStaff}</button>
@@ -4096,8 +4067,8 @@ ${selectedItems
               </div>
               <div className="pt-2 border-t border-slate-100 flex flex-wrap gap-1.5 max-h-36 overflow-y-auto">
                 {staffAccounts.length ? staffAccounts.map((staff) => (
-                  <span key={staff.email} className={`inline-flex items-center gap-1 rounded border px-2 py-1 text-xs font-bold ${staff.active === false ? "border-rose-200 bg-rose-50 text-rose-700" : "border-slate-200 bg-slate-100 text-slate-700"}`}>
-                    {staff.email}
+                  <span key={staff.staffKey || staff.email} className={`inline-flex items-center gap-1 rounded border px-2 py-1 text-xs font-bold ${staff.active === false ? "border-rose-200 bg-rose-50 text-rose-700" : "border-slate-200 bg-slate-100 text-slate-700"}`}>
+                    {staff.empid ? `院內職編 ${staff.empid}` : staff.email}
                     <span className="rounded bg-white/70 px-1 text-[10px]">{staff.email === ADMIN_EMAIL || staff.role === "ADMIN" ? "ADMIN" : "STAFF"}</span>
                     {staff.email !== ADMIN_EMAIL && <><button type="button" onClick={() => handleSetStaffActive(staff)} className="rounded px-1 text-[11px] underline" title={staff.active === false ? "Enable" : "Disable"}>{staff.active === false ? (lang === "en" ? "Enable" : "啟用") : (lang === "en" ? "Disable" : "停用")}</button><button type="button" onClick={() => handleSetStaffRole(staff, staff.role === "ADMIN" ? "STAFF" : "ADMIN")} className="rounded px-1 text-[11px] underline">{staff.role === "ADMIN" ? (lang === "en" ? "Make staff" : "改為員工") : (lang === "en" ? "Make admin" : "升為管理者")}</button></>}
                   </span>
@@ -4207,6 +4178,21 @@ ${selectedItems
         </div>
       )}
 
+      {showStaffLoginModal && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/45 p-4" onClick={() => setShowStaffLoginModal(false)}>
+          <div className="w-full max-w-md rounded-lg bg-white p-5 shadow-2xl" onClick={(event) => event.stopPropagation()}>
+            <div className="mb-4 flex items-center justify-between"><div><h3 className="text-lg font-black text-slate-900">員工登入</h3><p className="mt-1 text-xs text-slate-500">院內帳號僅用於本次驗證，不會儲存於 CAC。</p></div><button type="button" onClick={() => setShowStaffLoginModal(false)} className="rounded p-2 text-slate-500 hover:bg-slate-100"><X className="h-5 w-5" /></button></div>
+            <form className="space-y-3" onSubmit={handleHospitalStaffLogin}>
+              <label className="block text-sm font-bold text-slate-700">院內職編<input autoComplete="username" value={hospitalCredentials.userId} onChange={(event) => setHospitalCredentials((current) => ({ ...current, userId: event.target.value }))} className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 font-normal" required /></label>
+              <label className="block text-sm font-bold text-slate-700">院內密碼<input type="password" autoComplete="current-password" value={hospitalCredentials.password} onChange={(event) => setHospitalCredentials((current) => ({ ...current, password: event.target.value }))} className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 font-normal" required /></label>
+              <button type="submit" className="w-full rounded-md bg-slate-900 px-4 py-2.5 text-sm font-bold text-white">以院內帳號登入</button>
+              {hospitalLoginStatus && <p className="text-xs text-slate-600">{hospitalLoginStatus}</p>}
+            </form>
+            <div className="my-4 border-t border-slate-200" />
+            <button type="button" onClick={() => { setShowStaffLoginModal(false); handleStaffLogin(); }} className="w-full rounded-md border border-slate-300 px-4 py-2.5 text-sm font-bold text-slate-700">Google 管理者登入</button>
+          </div>
+        </div>
+      )}
       {remarkEditor && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/40 p-4" onClick={() => setRemarkEditor(null)}>
           <div className="w-full max-w-lg rounded-lg bg-white p-5 shadow-2xl" onClick={(event) => event.stopPropagation()}>
@@ -4231,7 +4217,7 @@ ${selectedItems
           <div className="hidden shrink-0 lg:block">
             <div className="text-sm font-black text-slate-900">{APP_TITLE}</div>
           </div>
-          {mode === "public" && <div className="order-3 w-full min-w-0 lg:order-none lg:w-auto lg:flex-1"><PublicQuickLinks /></div>}
+          {mode === "public" && <div className="order-3 w-full min-w-0 lg:order-none lg:w-auto lg:flex-1"><PublicQuickLinks hasLineProfile={Boolean(lineProfile)} lang={lang} onLineLogin={handleLineLogin} onOpenView={openPublicView} publicView={publicView} /></div>}
           <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
           <button onClick={() => setLang(lang === "zh" ? "en" : "zh")} aria-label="Switch language" className="rounded-md bg-white px-3 py-2 text-xs font-bold text-slate-600 border border-slate-200">{t.langToggle}</button>
           {staffStatus && <span className="hidden md:inline text-xs text-slate-500 max-w-[260px] truncate">{staffStatus}</span>}
@@ -4249,7 +4235,7 @@ ${selectedItems
           {staffUser ? (
             <button onClick={handleStaffLogout} className="rounded-md bg-white px-3 py-2 text-xs font-bold text-slate-600 border border-slate-200">{t.logout}</button>
           ) : (
-            <button onClick={handleStaffLogin} className="rounded-md bg-slate-900 px-3 py-2 text-xs font-bold text-white">{t.staffLogin}</button>
+            <button onClick={() => setShowStaffLoginModal(true)} className="rounded-md bg-slate-900 px-3 py-2 text-xs font-bold text-white">{t.staffLogin}</button>
           )}
         </div>
       </div>
@@ -4351,6 +4337,7 @@ ${selectedItems
 };
 
 export default App;
+
 
 
 
