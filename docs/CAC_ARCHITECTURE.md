@@ -81,6 +81,19 @@ flowchart TB
 | `src/liff.js` | LIFF 初始化、LINE 登入與 access token |
 | `functions/index.js` | 信任邊界：預約寫入、權限驗證、LINE／Gmail、排程與稽核 |
 | `firestore.rules` | 防止民眾直接覆寫預約；限制員工與管理者資料存取 |
+### App.jsx 功能索引（切片讀取入口）
+
+`App.jsx` 仍是頁面組合根；修改前先搜尋下列 symbol，僅讀取其 state、effects、handler、render branch 與測試／介面相依範圍。此表以功能與 symbol 定位，不使用會失效的行號。
+
+| 功能切片 | 主要 symbol／入口 | 所有權與拆分方向 |
+| --- | --- | --- |
+| 共用 shell／載入 | `App`, `openPublicView`, `loadBlockedBookingDates` | URL view、共用載入、staff/public mode；保留在 composition root，避免過早抽 hook。 |
+| 民眾套餐與預約 | `selectPublicPackage`, `setBookingField`, `handleSubmitBooking`, `handleLoadMyBookings`, `handleRequestBookingChange`, `handleCancelMyBooking` | 民眾方案、建立／查詢／改期／取消；下一個民眾端垂直切片候選。 |
+| 套餐工具 | `handleRowClick`, `saveItemEdit`, `savePackage`, `handleCreatePackageInvite`, `handlePrint` | 項目、套餐、通路／邀請與報價；與 `core.js` 計價規則及 `firebase.js` 管理 API 相依。 |
+| 問卷 | `openQuestionnaireForBooking`, `openAdminQuestionnaireForBooking`, `handleSubmitQuestionnaire` | 問卷顯示與保存；schema、驗證與列印保留在 `questionnaire.js`。 |
+| 預約清單與報到 | `handleLoadAdminBookings`, `handleConfirmBooking`, `handleSendD1Notice`, `handleBatchConfirmBookings`, `handleBatchSendClaimEmails`, `handlePrintClaimQRCodes`, `handleCompleteCheckIn` | 後台篩選、確認、通知、批次綁定、報到；下一個後台垂直切片候選。 |
+| 後台設定／稽核 | `handleStaffLogin`, `handleHospitalStaffLogin`, `loadMailerStatus`, `handleConfigureMailer`, `handleLoadAuditLogs`, `handleSetStaffRole` | 員工登入、寄信設定、帳號與稽核；權限判定仍在 Functions／Firestore rules。 |
+| 列印 | `printBookings`, `handlePrintSelectedBookings`, `printCurrentSelection` | 流程單、問卷與 QR 名單的列印入口；只抽出純 render／print helper，不搬動跨功能 state。 |
 
 
 ## App.jsx 拆分原則
@@ -88,6 +101,7 @@ flowchart TB
 - 先抽出只有 props 與畫面事件的低耦合元件；`PackageComparison` 與 `PublicQuickLinks` 是第一個已驗證切片。
 - 以一個垂直功能為單位抽離並完成 build 與瀏覽器 smoke test；不要依固定行數或畫面名稱硬切。
 - 只有 state、effects 與 handler ownership 明確時才建立 feature hook，避免為拆檔增加通用 hook 或 prop drilling。
+- 完成一個切片後，先更新上表的實際檔案路徑與所有權，再處理下一個切片；這是後續 agent 的優先入口。
 - v2.2 是現行業務 roadmap；v2.0/v2.1 僅保留在 `docs/archive/plans/` 作歷史依據。
 ## 4. 身分與權限邊界
 

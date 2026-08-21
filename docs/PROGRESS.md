@@ -22,6 +22,7 @@ Archived files are not default agent context. Read them only for historical evid
 
 - Keep `agent_handoff.md` at roughly 50-60 lines and replace stale state instead of appending a diary.
 - Record only current branch/commit, task-owned dirty files, verification results, blockers, and the first next action.
+- Before every authorized push, reconcile `agent_handoff.md` to the product/deployment commits being pushed. Commit this documentation as a small follow-up slice; do not require it to cite its own commit hash.
 - Use Git history for completed implementation details; do not duplicate every commit in both handoff and progress documents.
 - Archive accumulated chronological notes at a dated boundary rather than allowing this index to grow indefinitely.
 - Update `CAC_ARCHITECTURE.md` only when a structural or integration boundary changes.

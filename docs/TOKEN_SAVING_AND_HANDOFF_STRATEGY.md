@@ -44,7 +44,7 @@ flowchart TD
 ```mermaid
 flowchart TD
     Start[Agent 接收任務] --> T1[步驟 1: 評估任務規模]
-    T1 -->|預期需修改 > 3 個模組| PlanOnly[拆分子任務 / 僅輸出分步計畫]
+    T1 -->|預期需修改 > 3 個模組| PlanOnly[拆分子任務 / 分步計畫]
     T1 -->|單一模組小規模修改| Exec[步驟 2: Grep 局部切片讀取並修改]
     Exec --> Test{執行測試 npm test}
     Test -->|測試通過 Green| Commit[步驟 3: 立即 Git Micro-Commit]
@@ -54,7 +54,7 @@ flowchart TD
     Test2 -->|通過| Commit
     Test2 -->|第 2 次失敗 熔斷觸發| Failsafe[步驟 4: 自動觸發 Failsafe Handoff]
     Failsafe --> H1[將失敗原因與測試 Log 寫入 agent_handoff.md]
-    Failsafe --> H2[執行 git add / commit WIP 並 git push]
+    Failsafe --> H2[暫存明確路徑 / commit WIP 並依授權 push]
     H2 --> Alert[安全停止，提示人類確認]
 ```
 
@@ -76,7 +76,7 @@ flowchart TD
 #### ④ 自動化優雅交接（Automated Graceful Handoff & Push）
 - 當觸發熔斷或執行結束時，Agent 必須保留最後的動作執行：
   1. 將進度更新至 `agent_handoff.md`（遵循極簡格式）。
-  2. 執行 `git add . && git commit -m "wip: checkpoint before handoff" && git push`。
+  2. 僅暫存明確 task-owned 路徑，commit WIP；只有已獲授權時才 push。
   3. 回報已安全存檔，標註停下來的具體問題點。
 
 ---
@@ -98,8 +98,9 @@ docs/
   - 長度嚴格控制在 **50 行以內**。
   - 僅包含：
     1. 當前已通過的最新 Commit Hash 與功能。
-    2. 下一位 Agent 應執行的第 1 件事（明確指出檔案與行號區間）。
+    2. 下一位 Agent 應執行的第 1 件事（明確指出檔案與 symbol／功能切片）。
     3. 執行驗證指令（如 `npm test`）。
+  - 每次 authorized push 前，必須同步反映該次產品／部署 commit 的狀態；不要讓交班文件為了記錄自己的 docs commit 形成無限提交鏈。
 
 ---
 

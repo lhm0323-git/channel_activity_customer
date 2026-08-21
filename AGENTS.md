@@ -11,7 +11,9 @@
 
 - Read `docs/CAC_ARCHITECTURE.md` for the current system map. Do not load archived progress or handoff history unless the task needs historical evidence.
 - Use `agent_handoff.md` as the concise current-state handoff. Use `docs/PROGRESS.md` only as the history index and archive policy.
-- Update the architecture map after structural changes. Keep handoff pointers symbol- or feature-based; line numbers become stale.
+- Before touching `App.jsx`, search the feature map in `docs/CAC_ARCHITECTURE.md`, then inspect only the named symbols and their dependency cone.
+- Before every push, reconcile `agent_handoff.md` with the product/deployment commits included in that push: branch, task-owned dirty files, verification, blockers, and first next action. Do not make the handoff name its own documentation commit.
+- Update `docs/CAC_ARCHITECTURE.md` when a file responsibility, feature ownership, trust boundary, or integration boundary changes. Keep handoff pointers symbol- or feature-based; line numbers become stale.
 
 ## Verification
 
@@ -33,6 +35,7 @@
 - Stage only explicit task-owned paths after reviewing the baseline and diff.
 - Commit only a coherent, verified slice. Do not commit a failing state unless the user explicitly authorizes a WIP checkpoint branch.
 - Push only when the task or repository has explicitly authorized it, the remote branch is known, the commit contains no pre-existing changes, and required verification has passed.
+- For product or deployment work, commit the implementation slice first, then commit the reconciled handoff/architecture documentation before pushing both. Documentation-only work still requires a concise handoff reconciliation before push, but does not require a self-referential commit hash.
 - Low quota or long context does not broaden commit, push, deployment, or destructive-operation authority.
 
 ## Deployment boundary
