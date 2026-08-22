@@ -31,7 +31,7 @@ This file is only the current takeover state. Historical entries are in
 - Public 「我的預約」 now supports Email＋手機末四碼 OTP when LINE is unavailable; the memory-only token expires in 30 minutes, while OTP expires in 10 minutes.
 - Functions keep LINE priority: only bookings without LINE use Gmail for booking, reschedule, cancellation, and D-1 notices. `functions/functions.yaml` must declare `MAILER_ENCRYPTION_KEY` for every sender.
 - Passed: `npm test`, `npm run build`, release-style guard, and `npm run test:functions` (includes forged-token rejection plus cross-browser verified Email session for query, questionnaire, reschedule, and cancellation).
-- Pending explicit authorization: task-only commit/push and production deployment of Hosting plus the listed Functions.
+- Deployed 2026-08-22 08:31 Asia/Taipei: Hosting version `64da06de8fcb5fa4` and the 12 Email/OTP or notification Functions are ACTIVE; commit `8bf83b6` is pushed to `security-p0-staging`.
 
 ## Verification on 2026-08-20
 
