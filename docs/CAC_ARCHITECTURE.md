@@ -145,8 +145,8 @@ sequenceDiagram
 
 Email 現況需區分：
 
-- 員工建立預約後的 LINE 認領信：已串 Gmail API。
-- D-1 Email：現行程式寫入 `mail` 佇列，穩定寄送 worker 尚待確認；LINE D-1 為目前主要已驗收通道。
+- Email/OTP「我的預約」：`requestBookingEmailOtp`、`verifyBookingEmailOtp`、`listMyBookingsByEmailOtp` 與 `getMyQuestionnaireResponseByEmailOtp` 在 Functions 信任邊界內執行。以 Email＋手機末四碼核對；驗證碼 10 分鐘、session 30 分鐘且綁定當前匿名登入身分，重整頁面後不保留 token。
+- 通知：有 LINE ID 者只走 LINE；沒有 LINE 且有有效 Email 者走 Gmail API。預約成功、改期、取消與 D-1 都由 Functions 直接送信，不使用 `mail` 佇列。
 
 ## 6. Firestore 資料分區
 

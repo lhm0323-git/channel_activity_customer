@@ -6,6 +6,7 @@ const { onCall, onRequest, HttpsError } = require("firebase-functions/v2/https")
 const { defineSecret, defineString } = require("firebase-functions/params");
 const logger = require("firebase-functions/logger");
 const { hospitalStaffKey, validateHospitalTokenResponse } = require("./hospital-auth.cjs");
+const { normalizeEmail, phoneLastFour, randomOtp, digest, verifyDigest, randomAccessToken } = require("./email-otp.cjs");
 
 admin.initializeApp();
 
@@ -17,6 +18,13 @@ const hospitalTokenApiUrl = defineString("HOSPITAL_TOKEN_API_URL", {
 const LIFF_ID = "2010725321-sRRkD0Le";
 const MAILER_SETTINGS_PATH = "systemSettings/mailer";
 const MAILER_OAUTH_CALLBACK = "https://us-central1-channel-activity-customer.cloudfunctions.net/connectMailerCallback";
+const EMAIL_OTP_CHALLENGES = "bookingEmailOtpChallenges";
+const EMAIL_ACCESS_SESSIONS = "bookingEmailAccessSessions";
+const EMAIL_OTP_THROTTLES = "bookingEmailOtpThrottles";
+const EMAIL_OTP_EXPIRES_MS = 10 * 60 * 1000;
+const EMAIL_ACCESS_EXPIRES_MS = 30 * 60 * 1000;
+const EMAIL_OTP_MAX_ATTEMPTS = 5;
+const EMAIL_OTP_RESEND_MS = 60 * 1000;
 
 function taipeiDate(offsetDays = 0) {
   const now = new Date();
@@ -45,7 +53,32 @@ function buildD1Message(bookingId, booking, ackToken) {
 }
 
 function buildBookingNotice(id,b,k,o=""){const p=b.packageName||"健檢套餐";const t=k==="RESCHEDULED"?"您的「"+p+"」預約已改期。\n原預約日期："+o+"\n新預約日期："+b.appointmentDate:"您已成功預約「"+p+"」。\n預約日期："+b.appointmentDate;return {type:"text",text:"屏基健檢中心通知\n"+t+"\nhttps://liff.line.me/"+LIFF_ID+"?view=my-bookings&bookingId="+encodeURIComponent(id)}}
-async function sendBookingNotice(r,b,k,o=""){if(!b.lineUserId)return "NOT_LINKED";try{await pushLineMessage(lineChannelAccessToken.value(),b.lineUserId,buildBookingNotice(r.id,b,k,o));return "SENT"}catch(e){console.warn(k+" LINE notice failed for "+r.id+": "+e.message);return "FAILED"}}
+function bookingWebUrl() { return "https://channel-activity-customer.web.app/?view=my-bookings"; }
+function buildBookingEmailNotice(booking, kind, previousDate = "") {
+  const packageName = cleanHeader(booking.packageName || "健檢套餐");
+  const date = cleanHeader(booking.appointmentDate || "");
+  const body = kind === "CANCELLED"
+    ? "您原訂 " + cleanHeader(previousDate || date) + " 的「" + packageName + "」預約已取消。"
+    : kind === "RESCHEDULED"
+      ? "您的「" + packageName + "」預約已改期。原日期：" + cleanHeader(previousDate) + "；新日期：" + date + "。"
+      : "您的「" + packageName + "」預約已建立，暫定日期：" + date + "。";
+  return { subject: "屏基健檢中心：" + (kind === "CANCELLED" ? "預約取消通知" : kind === "RESCHEDULED" ? "預約改期通知" : "預約成功通知"), text: body + "\n\n請至我的預約查詢、改期或取消：" + bookingWebUrl(), html: "<main style=\"font-family:Arial,sans-serif;max-width:560px;margin:auto;color:#1e293b\"><h2>屏基健檢中心通知</h2><p>" + escapeHtml(body) + "</p><p><a href=\"" + bookingWebUrl() + "\" style=\"display:inline-block;background:#0f172a;color:#fff;padding:12px 20px;border-radius:6px;text-decoration:none;font-weight:bold\">查看我的預約</a></p></main>" };
+}
+async function sendEmailBookingNotice(ref, booking, kind, previousDate = "") {
+  const email = normalizeEmail(booking.customerEmail || booking.email);
+  if (!validEmail(email)) return "NOT_CONFIGURED";
+  try {
+    const settings = await getMailerSettings(true);
+    const message = buildBookingEmailNotice(booking, kind, previousDate);
+    await sendGmailMessage(settings, email, message.subject, message.text, message.html);
+    await ref.update({ emailNoticeStatus: "SENT", emailNoticeKind: kind, emailNoticeSentAt: FieldValue.serverTimestamp(), emailNoticeError: null, updatedAt: FieldValue.serverTimestamp() });
+    return "EMAIL_SENT";
+  } catch (error) {
+    await ref.update({ emailNoticeStatus: "FAILED", emailNoticeKind: kind, emailNoticeError: String(error?.message || error).slice(0, 300), updatedAt: FieldValue.serverTimestamp() });
+    return "FAILED";
+  }
+}
+async function sendBookingNotice(r,b,k,o=""){if(!b.lineUserId)return sendEmailBookingNotice(r,b,k,o);try{await pushLineMessage(lineChannelAccessToken.value(),b.lineUserId,buildBookingNotice(r.id,b,k,o));return "SENT"}catch(e){console.warn(k+" LINE notice failed for "+r.id+": "+e.message);return "FAILED"}}
 
 function buildCancellationMessage(booking) {
   const date = booking.appointmentDate || "";
@@ -57,7 +90,7 @@ function buildCancellationMessage(booking) {
 }
 
 async function sendCancellationLineNotice(bookingRef, booking) {
-  if (!booking.lineUserId) return "NOT_LINKED";
+  if (!booking.lineUserId) return sendEmailBookingNotice(bookingRef, booking, "CANCELLED", booking.appointmentDate || "");
   try {
     await pushLineMessage(lineChannelAccessToken.value(), booking.lineUserId, buildCancellationMessage(booking));
     await bookingRef.update({
@@ -89,19 +122,17 @@ function buildD1Email(booking) {
 
 async function queueD1Email(doc, email) {
   const booking = doc.data();
-  await admin.firestore().collection("mail").add({
-    to: [email],
-    message: buildD1Email(booking),
-  });
-  await doc.ref.update({
-    d1NoticeStatus: "EMAIL_QUEUED",
-    d1NoticeChannel: "EMAIL",
-    d1NoticeSentAt: FieldValue.serverTimestamp(),
-    d1NoticeError: null,
-    updatedAt: FieldValue.serverTimestamp(),
-  });
-}
-async function pushLineMessage(token, to, message) {
+  try {
+    const settings = await getMailerSettings(true);
+    const message = buildD1Email(booking);
+    await sendGmailMessage(settings, email, message.subject, message.text);
+    await doc.ref.update({ d1NoticeStatus: "SENT", d1NoticeChannel: "EMAIL", d1NoticeSentAt: FieldValue.serverTimestamp(), d1NoticeError: null, updatedAt: FieldValue.serverTimestamp() });
+    return "EMAIL";
+  } catch (error) {
+    await markD1NoticeFailed(doc, error);
+    throw error;
+  }
+}async function pushLineMessage(token, to, message) {
   const response = await fetch("https://api.line.me/v2/bot/message/push", {
     method: "POST",
     headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
@@ -245,11 +276,8 @@ async function sendD1Notice(doc, actor = { role: "SYSTEM" }) {
       if (actor?.email) await writeBookingAuditRecord({ action: "SEND_D1_NOTICE", bookingId: doc.id, actor });
       return "LINE";
     } catch (error) {
-      if (!email) {
-        await markD1NoticeFailed(doc, error);
-        throw new HttpsError("internal", "LINE reminder could not be sent");
-      }
-      console.warn("LINE reminder failed; queueing email for " + doc.id, error.message);
+      await markD1NoticeFailed(doc, error);
+      throw new HttpsError("internal", "LINE reminder could not be sent");
     }
   }
 
@@ -518,6 +546,99 @@ exports.signInWithHospitalAccount = onCall(async (request) => {
   });
   return { customToken, staffKey, empid: userId, role: staffRole };
 });
+function emailOtpMessage(code) {
+  return {
+    subject: "屏基健檢中心：我的預約驗證碼",
+    text: "您的預約查詢驗證碼為：" + code + "\n此驗證碼 10 分鐘內有效，請勿提供給他人。",
+    html: "<main style=\"font-family:Arial,sans-serif;max-width:560px;margin:auto;color:#1e293b\"><h2>屏基健檢中心</h2><p>您的預約查詢驗證碼：</p><p style=\"font-size:28px;font-weight:bold;letter-spacing:6px\">" + code + "</p><p>此驗證碼 10 分鐘內有效，請勿提供給他人。</p></main>",
+  };
+}
+
+async function emailAccessSession(request, bookingId = "") {
+  const token = String(request.data?.emailAccessToken || request.data?.change?.emailAccessToken || "");
+  if (!token) return null;
+  const snapshot = await admin.firestore().collection(EMAIL_ACCESS_SESSIONS).where("tokenHash", "==", digest(token)).limit(1).get();
+  if (snapshot.empty) return null;
+  const data = snapshot.docs[0].data();
+  const expiresAt = data.expiresAt?.toDate?.() || new Date(data.expiresAt || 0);
+  if (expiresAt <= new Date()) return null;
+  if (data.requesterUid !== request.auth?.uid) return null;
+  if (bookingId && (!Array.isArray(data.bookingIds) || !data.bookingIds.includes(bookingId))) return null;
+  return data;
+}
+
+async function assertCustomerBookingAccess(request, booking) {
+  const actor = await staffProfile(request);
+  if (actor) return actor;
+  if (booking.ownerUid === request.auth?.uid) return { uid: request.auth.uid, role: "CUSTOMER" };
+  const emailAccess = await emailAccessSession(request, booking.bookingId || booking.id || "");
+  if (emailAccess) return { uid: request.auth.uid, role: "EMAIL_OTP", emailAccess: true };
+  throw new HttpsError("permission-denied", "You can only access your own booking");
+}
+
+exports.requestBookingEmailOtp = onCall({ secrets: [mailerEncryptionKey] }, async (request) => {
+  if (!request.auth?.uid) throw new HttpsError("unauthenticated", "A signed-in session is required");
+  const email = normalizeEmail(request.data?.email);
+  const phoneSuffix = phoneLastFour(request.data?.phoneLastFour);
+  if (!validEmail(email) || phoneSuffix.length !== 4) throw new HttpsError("invalid-argument", "Email and phone last four digits are required");
+  const throttleRef = admin.firestore().collection(EMAIL_OTP_THROTTLES).doc(digest(email + "|" + phoneSuffix));
+  const now = new Date();
+  await admin.firestore().runTransaction(async (transaction) => {
+    const throttle = await transaction.get(throttleRef);
+    const lastSentAt = throttle.data()?.lastSentAt?.toDate?.() || new Date(0);
+    if (now.getTime() - lastSentAt.getTime() < EMAIL_OTP_RESEND_MS) throw new HttpsError("resource-exhausted", "Please wait before requesting another code");
+    transaction.set(throttleRef, { lastSentAt: now }, { merge: true });
+  });
+  const challengeRef = admin.firestore().collection(EMAIL_OTP_CHALLENGES).doc();
+  const [customerEmailMatches, legacyEmailMatches] = await Promise.all([
+    admin.firestore().collection("bookings").where("customerEmail", "==", email).get(),
+    admin.firestore().collection("bookings").where("email", "==", email).get(),
+  ]);
+  const bookingIds = [...customerEmailMatches.docs, ...legacyEmailMatches.docs]
+    .filter((snap, index, list) => phoneLastFour(snap.data().customerPhone || snap.data().phone) === phoneSuffix && list.findIndex((item) => item.id === snap.id) === index)
+    .map((snap) => snap.id);
+  const code = randomOtp();
+  await challengeRef.set({ codeHash: digest(code), bookingIds, requesterUid: request.auth.uid, attempts: 0, expiresAt: new Date(now.getTime() + EMAIL_OTP_EXPIRES_MS), createdAt: FieldValue.serverTimestamp() });
+  if (bookingIds.length) {
+    const settings = await getMailerSettings(true);
+    const message = emailOtpMessage(code);
+    await sendGmailMessage(settings, email, message.subject, message.text, message.html);
+  }
+  return { accepted: true, challengeId: challengeRef.id };
+});
+
+exports.verifyBookingEmailOtp = onCall(async (request) => {
+  if (!request.auth?.uid) throw new HttpsError("unauthenticated", "A signed-in session is required");
+  const challengeId = text(request.data?.challengeId, 200);
+  const code = text(request.data?.code, 6);
+  if (!challengeId || !/^\d{6}$/.test(code)) throw new HttpsError("invalid-argument", "A six digit code is required");
+  const challengeRef = admin.firestore().collection(EMAIL_OTP_CHALLENGES).doc(challengeId);
+  let bookingIds = [];
+  await admin.firestore().runTransaction(async (transaction) => {
+    const snap = await transaction.get(challengeRef);
+    if (!snap.exists) throw new HttpsError("permission-denied", "Verification failed");
+    const data = snap.data();
+    const expiresAt = data.expiresAt?.toDate?.() || new Date(data.expiresAt || 0);
+    if (data.requesterUid !== request.auth.uid || expiresAt <= new Date() || Number(data.attempts || 0) >= EMAIL_OTP_MAX_ATTEMPTS || !verifyDigest(code, data.codeHash)) {
+      transaction.update(challengeRef, { attempts: FieldValue.increment(1), updatedAt: FieldValue.serverTimestamp() });
+      throw new HttpsError("permission-denied", "Verification failed");
+    }
+    bookingIds = Array.isArray(data.bookingIds) ? data.bookingIds : [];
+    transaction.update(challengeRef, { verifiedAt: FieldValue.serverTimestamp(), expiresAt: new Date(), codeHash: FieldValue.delete() });
+  });
+  if (!bookingIds.length) throw new HttpsError("permission-denied", "Verification failed");
+  const accessToken = randomAccessToken();
+  await admin.firestore().collection(EMAIL_ACCESS_SESSIONS).add({ tokenHash: digest(accessToken), bookingIds, requesterUid: request.auth.uid, expiresAt: new Date(Date.now() + EMAIL_ACCESS_EXPIRES_MS), createdAt: FieldValue.serverTimestamp() });
+  return { emailAccessToken: accessToken, expiresInSeconds: EMAIL_ACCESS_EXPIRES_MS / 1000 };
+});
+
+exports.listMyBookingsByEmailOtp = onCall(async (request) => {
+  if (!request.auth?.uid) throw new HttpsError("unauthenticated", "A signed-in session is required");
+  const session = await emailAccessSession(request);
+  if (!session) throw new HttpsError("permission-denied", "Email verification is required");
+  const docs = await Promise.all(session.bookingIds.map((bookingId) => admin.firestore().doc("bookings/" + bookingId).get()));
+  return { bookings: docs.filter((snap) => snap.exists).map((snap) => ({ bookingId: snap.id, ...snap.data() })) };
+});
 exports.createBooking = onCall({ secrets: [mailerEncryptionKey, lineChannelAccessToken] }, async (request) => {
   if (!request.auth?.uid) throw new HttpsError("unauthenticated", "A signed-in session is required");
   const payload = request.data?.payload;
@@ -584,7 +705,7 @@ exports.createBooking = onCall({ secrets: [mailerEncryptionKey, lineChannelAcces
   const bookingConfirmationNoticeStatus=await sendBookingNotice(bookingRef,booking,"CONFIRMED"); return { bookingId: bookingRef.id, claimToken, claimEmailStatus, bookingConfirmationNoticeStatus };
 });
 
-exports.cancelBooking = onCall({ secrets: [lineChannelAccessToken] }, async (request) => {
+exports.cancelBooking = onCall({ secrets: [lineChannelAccessToken, mailerEncryptionKey] }, async (request) => {
   if (!request.auth?.uid) throw new HttpsError("unauthenticated", "A signed-in session is required");
   const bookingId = text(request.data?.bookingId, 200);
   if (!bookingId) throw new HttpsError("invalid-argument", "Booking ID is required");
@@ -596,7 +717,7 @@ exports.cancelBooking = onCall({ secrets: [lineChannelAccessToken] }, async (req
     const snap = await transaction.get(bookingRef);
     if (!snap.exists) throw new HttpsError("not-found", "Booking not found");
     const booking = snap.data();
-    if (!actor.email && booking.ownerUid !== request.auth.uid) throw new HttpsError("permission-denied", "You can only cancel your own booking");
+    if (!actor.email && booking.ownerUid !== request.auth.uid && !await emailAccessSession(request, bookingId)) throw new HttpsError("permission-denied", "You can only cancel your own booking");
     if (booking.status === "CANCELLED") return;
     const patch = { status: "CANCELLED", cancelledAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() };
     transaction.update(bookingRef, patch);
@@ -620,7 +741,7 @@ exports.requestBookingChange = onCall(async (request) => {
     const bookingSnap = await transaction.get(bookingRef);
     if (!bookingSnap.exists) throw new HttpsError("not-found", "Booking not found");
     const booking = bookingSnap.data();
-    if (booking.ownerUid !== request.auth.uid) throw new HttpsError("permission-denied", "You can only change your own booking");
+    if (booking.ownerUid !== request.auth.uid && !await emailAccessSession(request, bookingId)) throw new HttpsError("permission-denied", "You can only change your own booking");
     if (booking.status === "CANCELLED") throw new HttpsError("failed-precondition", "Cancelled bookings cannot be changed");
     transaction.set(requestRef, {
       bookingId, customerName: booking.customerName || "", packageName: booking.packageName || "",
@@ -645,13 +766,25 @@ exports.saveMyQuestionnaireResponse = onCall(async (request) => {
     const bookingSnap = await transaction.get(bookingRef);
     if (!bookingSnap.exists) throw new HttpsError("not-found", "Booking not found");
     const booking = bookingSnap.data();
-    if (booking.ownerUid !== request.auth.uid) throw new HttpsError("permission-denied", "You can only update your own questionnaire");
+    if (booking.ownerUid !== request.auth.uid && !await emailAccessSession(request, bookingId)) throw new HttpsError("permission-denied", "You can only update your own questionnaire");
     transaction.set(responseRef, {
       bookingId, customerId: booking.customerId || "", questionnaireId, answers,
       ownerUid: request.auth.uid, updatedAt: FieldValue.serverTimestamp(),
     }, { merge: true });
   });
   return { responseId: responseRef.id };
+});
+exports.getMyQuestionnaireResponseByEmailOtp = onCall(async (request) => {
+  if (!request.auth?.uid) throw new HttpsError("unauthenticated", "A signed-in session is required");
+  const bookingId = text(request.data?.bookingId, 200);
+  const questionnaireId = text(request.data?.questionnaireId, 160);
+  if (!bookingId || !questionnaireId) throw new HttpsError("invalid-argument", "Booking ID and questionnaire ID are required");
+  const bookingSnap = await admin.firestore().doc("bookings/" + bookingId).get();
+  if (!bookingSnap.exists) throw new HttpsError("not-found", "Booking not found");
+  const booking = { bookingId, ...bookingSnap.data() };
+  await assertCustomerBookingAccess(request, booking);
+  const responseSnap = await admin.firestore().doc("customerQuestionnaireResponses/" + bookingId + "_" + questionnaireId).get();
+  return { response: responseSnap.exists ? { bookingId, questionnaireId, answers: safeAnswers(responseSnap.data().answers) } : null };
 });
 exports.getBookingQuestionnaireResponseAsStaff = onCall(async (request) => {
   await assertStaff(request);
@@ -831,7 +964,7 @@ exports.acknowledgeD1LineNotice = onCall(async (request) => {
   return { status: "ACKNOWLEDGED" };
 });
 
-exports.sendD1LineNotice = onCall({ secrets: [lineChannelAccessToken] }, async (request) => {
+exports.sendD1LineNotice = onCall({ secrets: [lineChannelAccessToken, mailerEncryptionKey] }, async (request) => {
   const actor = await assertStaff(request);
   const bookingId = String(request.data && request.data.bookingId || "").trim();
   if (!bookingId) throw new HttpsError("invalid-argument", "bookingId is required");
@@ -843,7 +976,7 @@ exports.sendD1LineNotice = onCall({ secrets: [lineChannelAccessToken] }, async (
   return { status: channel };
 });
 
-exports.sendD1LineNotices = onSchedule({ schedule: "0 9 * * *", timeZone: "Asia/Taipei", secrets: [lineChannelAccessToken] }, async () => {
+exports.sendD1LineNotices = onSchedule({ schedule: "0 9 * * *", timeZone: "Asia/Taipei", secrets: [lineChannelAccessToken, mailerEncryptionKey] }, async () => {
   const targetDate = taipeiDate(1);
   const snapshot = await admin.firestore().collection("bookings").where("appointmentDate", "==", targetDate).get();
   const outcomes = await Promise.all(snapshot.docs.map(async (doc) => {
@@ -909,7 +1042,7 @@ function safeStaffBookingPatch(input) {
   return patch;
 }
 
-exports.updateBookingAsStaff = onCall({ invoker: "public", secrets: [lineChannelAccessToken] }, async (request) => {
+exports.updateBookingAsStaff = onCall({ invoker: "public", secrets: [lineChannelAccessToken, mailerEncryptionKey] }, async (request) => {
   const actor = await assertStaff(request);
   const bookingId = text(request.data?.bookingId, 200);
   if (!bookingId) throw new HttpsError("invalid-argument", "bookingId is required");
@@ -939,7 +1072,7 @@ exports.updateBookingAsStaff = onCall({ invoker: "public", secrets: [lineChannel
   });
   return { updated: true, rescheduleNoticeStatus: changed ? await sendBookingNotice(bookingRef, changed.booking, "RESCHEDULED", changed.previousDate) : "NOT_RESCHEDULED" };
 });
-exports.approveBookingChangeAsStaff = onCall({ secrets: [lineChannelAccessToken] }, async (request) => {
+exports.approveBookingChangeAsStaff = onCall({ secrets: [lineChannelAccessToken, mailerEncryptionKey] }, async (request) => {
   const actor = await assertStaff(request);
   const requestId = text(request.data?.requestId, 200);
   if (!requestId) throw new HttpsError("invalid-argument", "requestId is required");

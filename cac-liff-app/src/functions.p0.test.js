@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { initializeApp, deleteApp } from "firebase/app";
 import { getAuth, connectAuthEmulator, signInAnonymously, createUserWithEmailAndPassword, signInWithCustomToken, signOut } from "firebase/auth";
 import { createRequire } from "node:module";
@@ -18,6 +19,11 @@ const admin = require("../functions/node_modules/firebase-admin");
 const adminApp = admin.initializeApp({ projectId: "channel-activity-customer" }, "p0-admin");
 
 await signInAnonymously(auth);
+const requestBookingEmailOtp = httpsCallable(functions, "requestBookingEmailOtp");
+const listMyBookingsByEmailOtp = httpsCallable(functions, "listMyBookingsByEmailOtp");
+await assert.rejects(requestBookingEmailOtp({ email: "invalid", phoneLastFour: "5678" }));
+await assert.rejects(listMyBookingsByEmailOtp({ emailAccessToken: "forged" }));
+console.log("ok - email OTP rejects malformed requests and forged sessions");
 const createBooking = httpsCallable(functions, "createBooking");
 const created = await createBooking({
   payload: {
@@ -35,22 +41,36 @@ assert.ok(bookingId);
 assert.ok(created.data.claimToken);
 
 const booking = await getDoc(doc(db, "bookings", bookingId));
+const emailAccessToken = "emulator-email-access-token";
+const ownerUid = auth.currentUser.uid;
+await signOut(auth);
+await signInAnonymously(auth);
+assert.notEqual(auth.currentUser.uid, ownerUid);
+await admin.firestore(adminApp).collection("bookingEmailAccessSessions").add({
+  tokenHash: createHash("sha256").update(emailAccessToken).digest("base64url"),
+  bookingIds: [bookingId],
+  requesterUid: auth.currentUser.uid,
+  expiresAt: new Date(Date.now() + 30 * 60 * 1000),
+});
+const verifiedBookings = await listMyBookingsByEmailOtp({ emailAccessToken });
+assert.ok(verifiedBookings.data.bookings.some((entry) => entry.bookingId === bookingId));
+console.log("ok - verified email session lists only its booking");
 assert.equal(booking.data().customerName, "P0 Test");
-assert.equal(booking.data().ownerUid, auth.currentUser.uid);
+assert.equal(booking.data().ownerUid, ownerUid);
 await assert.rejects(setDoc(doc(db, "bookings", bookingId), { ownerUid: auth.currentUser.uid, customerName: "forged" }));
 
 const saveQuestionnaire = httpsCallable(functions, "saveMyQuestionnaireResponse");
-const questionnaire = await saveQuestionnaire({ bookingId, questionnaireId: "general-health", answers: { q1: "answer", q2: ["a", "b"] } });
+const questionnaire = await saveQuestionnaire({ bookingId, questionnaireId: "general-health", answers: { q1: "answer", q2: ["a", "b"] }, emailAccessToken });
 assert.equal(questionnaire.data.responseId, `${bookingId}_general-health`);
 
 const requestChange = httpsCallable(functions, "requestBookingChange");
-const changed = await requestChange({ change: { bookingId, requestedAppointmentDate: "2099-01-02", notes: "reschedule" } });
+const changed = await requestChange({ change: { bookingId, requestedAppointmentDate: "2099-01-02", notes: "reschedule", emailAccessToken } });
 assert.ok(changed.data.requestId);
 
 const cancelBooking = httpsCallable(functions, "cancelBooking");
-const cancelled = await cancelBooking({ bookingId });
+const cancelled = await cancelBooking({ bookingId, emailAccessToken });
 assert.equal(cancelled.data.cancelled, true);
-const afterCancel = await getDoc(doc(db, "bookings", bookingId));
+const afterCancel = await admin.firestore(adminApp).doc("bookings/" + bookingId).get();
 assert.equal(afterCancel.data().status, "CANCELLED");
 const staffEmail = "csv-staff@example.com";
 await signOut(auth);

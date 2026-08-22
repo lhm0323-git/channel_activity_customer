@@ -18,7 +18,83 @@
                                                                             },
                                                         "entryPoint":  "signInWithHospitalAccount"
                                                     },
-                      "createBooking":  {
+                      "requestBookingEmailOtp":  {
+                                                        "availableMemoryMb":  null,
+                                                        "timeoutSeconds":  null,
+                                                        "minInstances":  null,
+                                                        "maxInstances":  null,
+                                                        "ingressSettings":  null,
+                                                        "concurrency":  null,
+                                                        "serviceAccountEmail":  null,
+                                                        "vpc":  null,
+                                                        "platform":  "gcfv2",
+                                                        "labels":  {
+
+                                                                   },
+                                                        "callableTrigger":  {
+
+                                                                            },
+                                                        "entryPoint":  "requestBookingEmailOtp",
+                                                        "secretEnvironmentVariables":  [
+                                                                                           {
+                                                                                               "key":  "MAILER_ENCRYPTION_KEY"
+                                                                                           }
+                                                                                       ]
+                                                    },
+                      "verifyBookingEmailOtp":  {
+                                                       "availableMemoryMb":  null,
+                                                       "timeoutSeconds":  null,
+                                                       "minInstances":  null,
+                                                       "maxInstances":  null,
+                                                       "ingressSettings":  null,
+                                                       "concurrency":  null,
+                                                       "serviceAccountEmail":  null,
+                                                       "vpc":  null,
+                                                       "platform":  "gcfv2",
+                                                       "labels":  {
+
+                                                                  },
+                                                       "callableTrigger":  {
+
+                                                                           },
+                                                       "entryPoint":  "verifyBookingEmailOtp"
+                                                   },
+                      "listMyBookingsByEmailOtp":  {
+                                                           "availableMemoryMb":  null,
+                                                           "timeoutSeconds":  null,
+                                                           "minInstances":  null,
+                                                           "maxInstances":  null,
+                                                           "ingressSettings":  null,
+                                                           "concurrency":  null,
+                                                           "serviceAccountEmail":  null,
+                                                           "vpc":  null,
+                                                           "platform":  "gcfv2",
+                                                           "labels":  {
+
+                                                                      },
+                                                           "callableTrigger":  {
+
+                                                                               },
+                                                           "entryPoint":  "listMyBookingsByEmailOtp"
+                                                       },
+                      "getMyQuestionnaireResponseByEmailOtp":  {
+                                                                  "availableMemoryMb":  null,
+                                                                  "timeoutSeconds":  null,
+                                                                  "minInstances":  null,
+                                                                  "maxInstances":  null,
+                                                                  "ingressSettings":  null,
+                                                                  "concurrency":  null,
+                                                                  "serviceAccountEmail":  null,
+                                                                  "vpc":  null,
+                                                                  "platform":  "gcfv2",
+                                                                  "labels":  {
+
+                                                                             },
+                                                                  "callableTrigger":  {
+
+                                                                                      },
+                                                                  "entryPoint":  "getMyQuestionnaireResponseByEmailOtp"
+                                                              },                      "createBooking":  {
                                             "availableMemoryMb":  null,
                                             "timeoutSeconds":  null,
                                             "minInstances":  null,
@@ -57,6 +133,9 @@
                                             "secretEnvironmentVariables":  [
                                                                                {
                                                                                    "key":  "LINE_CHANNEL_ACCESS_TOKEN"
+                                                                               },
+                                                                               {
+                                                                                   "key":  "MAILER_ENCRYPTION_KEY"
                                                                                }
                                                                            ],
                                             "labels":  {
@@ -278,7 +357,10 @@
                                                "secretEnvironmentVariables":  [
                                                                                   {
                                                                                       "key":  "LINE_CHANNEL_ACCESS_TOKEN"
-                                                                                  }
+                                                                                  },
+                                                                               {
+                                                                                   "key":  "MAILER_ENCRYPTION_KEY"
+                                                                               }
                                                                               ],
                                                "labels":  {
 
@@ -301,7 +383,10 @@
                                                 "secretEnvironmentVariables":  [
                                                                                    {
                                                                                        "key":  "LINE_CHANNEL_ACCESS_TOKEN"
-                                                                                   }
+                                                                                   },
+                                                                               {
+                                                                                   "key":  "MAILER_ENCRYPTION_KEY"
+                                                                               }
                                                                                ],
                                                 "labels":  {
 
@@ -335,7 +420,10 @@
                                                    "secretEnvironmentVariables":  [
                                                                                       {
                                                                                           "key":  "LINE_CHANNEL_ACCESS_TOKEN"
-                                                                                      }
+                                                                                      },
+                                                                               {
+                                                                                   "key":  "MAILER_ENCRYPTION_KEY"
+                                                                               }
                                                                                   ]
                                                },
                       "approveBookingChangeAsStaff":  {
@@ -358,7 +446,10 @@
                                                           "secretEnvironmentVariables":  [
                                                                                              {
                                                                                                  "key":  "LINE_CHANNEL_ACCESS_TOKEN"
-                                                                                             }
+                                                                                             },
+                                                                               {
+                                                                                   "key":  "MAILER_ENCRYPTION_KEY"
+                                                                               }
                                                                                          ]
                                                       },
                       "checkInBookingAsStaff":  {

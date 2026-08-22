@@ -83,6 +83,10 @@ import {
   listManagedItems,
   listManagedQuestionnaires,
   listMyBookings,
+  listMyBookingsByEmailOtp,
+  requestBookingEmailOtp,
+  verifyBookingEmailOtp,
+  getMyQuestionnaireResponseByEmailOtp,
   listPackageQuestionnaireRules,
   listStaffUsers,
   markChecklistPrinted,
@@ -623,6 +627,9 @@ const App = () => {
   const [myBookings, setMyBookings] = useState([]);
   const [reportBookings, setReportBookings] = useState([]);
   const [myBookingStatus, setMyBookingStatus] = useState("");
+  const [emailOtpForm, setEmailOtpForm] = useState({ email: "", phoneLastFour: "", code: "" });
+  const [emailOtpChallengeId, setEmailOtpChallengeId] = useState("");
+  const [emailAccessToken, setEmailAccessToken] = useState("");
   const [ackHandled, setAckHandled] = useState(false);
   const [changeDates, setChangeDates] = useState({});
   const [changeNotes, setChangeNotes] = useState({});
@@ -1559,11 +1566,11 @@ ${selectedItems
         url.searchParams.delete("liff.state");
         window.history.replaceState({}, "", url);
       }
-      const bookings = await listMyBookings(lineProfile?.accessToken);
+      const bookings = emailAccessToken ? await listMyBookingsByEmailOtp(emailAccessToken) : await listMyBookings(lineProfile?.accessToken);
       const activeBookings = upcomingBookings(bookings);
       setMyBookings(activeBookings);
       setReportBookings(bookings.filter((booking) => booking.status !== "CANCELLED"));
-      const browserHint = lineProfile ? "" : (lang === "en" ? ". Open from the LINE official account to view LINE bookings." : "。若預約由 LINE 建立，請從官方帳號開啟本頁查詢。");
+      const browserHint = lineProfile || emailAccessToken ? "" : (lang === "en" ? ". Open from the LINE official account or verify Email to view bookings." : "。若預約由 LINE 建立，請從官方帳號開啟本頁；無 LINE 時請使用 Email 驗證。");
       setMyBookingStatus(`${lang === "en" ? "Loaded" : "\u5df2\u8f09\u5165"} ${activeBookings.length} ${lang === "en" ? "booking(s)" : "\u7b46\u9810\u7d04"}${browserHint}`);
     } catch (error) {
       setMyBookingStatus(`\u8b80\u53d6\u5931\u6557\uff1a${error.message}`);
@@ -1574,8 +1581,25 @@ ${selectedItems
     if (["my-bookings", "checkin", "prep", "followup"].includes(publicView)) {
       handleLoadMyBookings();
     }
-  }, [publicView, lineProfile]);
+  }, [publicView, lineProfile, emailAccessToken]);
 
+  const handleEmailOtp = async () => {
+    try {
+      if (!emailOtpChallengeId) {
+        const result = await requestBookingEmailOtp(emailOtpForm.email, emailOtpForm.phoneLastFour);
+        setEmailOtpChallengeId(result.challengeId);
+        setMyBookingStatus(lang === "en" ? "If the details match, a verification code was sent." : "若資料相符，驗證碼已寄至您的 Email。");
+        return;
+      }
+      const result = await verifyBookingEmailOtp(emailOtpChallengeId, emailOtpForm.code);
+      setEmailAccessToken(result.emailAccessToken);
+      setEmailOtpChallengeId("");
+      setEmailOtpForm((current) => ({ ...current, code: "" }));
+      setMyBookingStatus(lang === "en" ? "Email verified." : "Email 驗證成功。");
+    } catch {
+      setMyBookingStatus(lang === "en" ? "Verification failed." : "驗證失敗，請重新確認資料或申請新的驗證碼。");
+    }
+  };
   const handleAcknowledgeD1Notice = async (bookingId, ackToken) => {
     try {
       await acknowledgeD1Notice(bookingId, ackToken);
@@ -1611,7 +1635,7 @@ ${selectedItems
         requestedAppointmentDate,
         notes: changeNotes[booking.bookingId] || "",
         status: "pending",
-      });
+      }, emailAccessToken);
       setMyBookingStatus(result.localOnly ? "\u5df2\u66ab\u5b58\u6539\u671f\u7533\u8acb" : "\u5df2\u9001\u51fa\u6539\u671f\u7533\u8acb\uff0c\u8acb\u7b49\u5019\u5065\u6aa2\u4e2d\u5fc3\u78ba\u8a8d");
     } catch (error) {
       setMyBookingStatus(lang === "en" ? `Send failed: ${error.message}` : `\u9001\u51fa\u5931\u6557\uff1a${error.message}`);
@@ -1623,7 +1647,7 @@ ${selectedItems
     const ok = window.confirm(lang === "en" ? "Cancel this booking?" : "\u78ba\u5b9a\u53d6\u6d88\u9019\u7b46\u9810\u7d04\uff1f");
     if (!ok) return;
     try {
-      const result = await cancelBooking(booking.bookingId);
+      const result = await cancelBooking(booking.bookingId, emailAccessToken);
       const notice = result?.cancelNoticeStatus;
       setMyBookingStatus(result.localOnly ? "\u5df2\u53d6\u6d88\u672c\u6a5f\u66ab\u5b58\u9810\u7d04" : notice === "SENT" ? "\u9810\u7d04\u5df2\u53d6\u6d88\uff0c\u5df2\u767c\u9001 LINE \u901a\u77e5" : notice === "FAILED" ? "\u9810\u7d04\u5df2\u53d6\u6d88\uff0cLINE \u901a\u77e5\u767c\u9001\u5931\u6557" : "\u5df2\u53d6\u6d88\u9810\u7d04");
       handleLoadMyBookings();
@@ -1644,7 +1668,9 @@ ${selectedItems
       const schema = getQuestionnaireById(qId, customQuestionnaires);
       const customerId = booking.customerId || booking.ownerUid || booking.customerPhone || booking.idNumber || "";
       setMyBookingStatus(lang === "en" ? "Loading questionnaire..." : "讀取問卷紀錄中...");
-      const lastResp = await getLastCustomerQuestionnaireResponse(customerId, qId, booking.bookingId);
+      const lastResp = emailAccessToken
+        ? await getMyQuestionnaireResponseByEmailOtp(booking.bookingId, qId, emailAccessToken)
+        : await getLastCustomerQuestionnaireResponse(customerId, qId, booking.bookingId);
       const isCurrentBookingResponse = lastResp?.bookingId === booking.bookingId;
       const initialAnswers = mergePreviousAnswers(schema, lastResp?.answers, { carryForwardOnly: !isCurrentBookingResponse });
       const hasCarriedAnswers = Object.values(initialAnswers).some((value) => Array.isArray(value) ? value.length > 0 : value !== "" && value !== null && value !== undefined);
@@ -2923,6 +2949,19 @@ ${selectedItems
         </div>
         <button onClick={handleLoadMyBookings} className="rounded-md bg-slate-900 px-4 py-3 text-sm font-bold text-white">{lang === "en" ? "Find my bookings" : "\u67e5\u8a62\u6211\u7684\u9810\u7d04"}</button>
       </div>
+      {!lineProfile && !emailAccessToken && (
+        <div className="mt-4 rounded-md border border-indigo-200 bg-indigo-50 p-3">
+          <div className="text-sm font-bold text-slate-800">Email 驗證查詢</div>
+          <p className="mt-1 text-xs text-slate-600">無法使用 LINE 時，輸入預約 Email 與手機末四碼即可取得驗證碼。</p>
+          <div className="mt-3 grid gap-2 sm:grid-cols-3">
+            <input type="email" value={emailOtpForm.email} onChange={(e) => setEmailOtpForm((current) => ({ ...current, email: e.target.value }))} placeholder="預約 Email" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
+            <input inputMode="numeric" maxLength={4} value={emailOtpForm.phoneLastFour} onChange={(e) => setEmailOtpForm((current) => ({ ...current, phoneLastFour: e.target.value.replace(/\D/g, "").slice(-4) }))} placeholder="手機末四碼" className="rounded-md border border-slate-300 px-3 py-2 text-sm" />
+            {emailOtpChallengeId ? <input inputMode="numeric" maxLength={6} value={emailOtpForm.code} onChange={(e) => setEmailOtpForm((current) => ({ ...current, code: e.target.value.replace(/\D/g, "").slice(-6) }))} placeholder="6 位驗證碼" className="rounded-md border border-slate-300 px-3 py-2 text-sm" /> : <div className="self-center text-xs text-slate-500">驗證碼有效 10 分鐘</div>}
+          </div>
+          <button onClick={handleEmailOtp} className="mt-3 rounded-md bg-indigo-700 px-4 py-2 text-sm font-bold text-white">{emailOtpChallengeId ? "驗證並查詢" : "寄送驗證碼"}</button>
+        </div>
+      )}
+      {emailAccessToken && <p className="mt-3 text-xs text-emerald-700">Email 已驗證；本次瀏覽可查詢預約。重新整理頁面後需重新驗證。</p>}
       {myBookingStatus && <div className="mt-3 text-xs text-slate-500">{myBookingStatus}</div>}
       {myBookings.length > 0 && (
         <div className="mt-4 space-y-3">
@@ -3259,6 +3298,7 @@ ${selectedItems
             customerId: booking.customerId || booking.ownerUid || booking.customerPhone || booking.idNumber,
             questionnaireId: schema.id,
             answers,
+            emailAccessToken,
           });
           setActiveQuestionnaireModal(null);
           setMyBookingStatus(lang === "en" ? "Questionnaire saved!" : "健康問卷已成功儲存！");

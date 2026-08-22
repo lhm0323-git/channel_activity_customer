@@ -244,17 +244,42 @@ export async function listMyBookings(lineAccessToken = "") {
   return sortBookings(snapshot.docs.map((docSnap) => ({ bookingId: docSnap.id, ...docSnap.data() })));
 }
 
+export async function requestBookingEmailOtp(email, phoneLastFour) {
+  await ensurePublicUser();
+  if (!functions) throw new Error("Booking service is unavailable");
+  const result = await httpsCallable(functions, "requestBookingEmailOtp")({ email, phoneLastFour });
+  return result.data;
+}
+
+export async function verifyBookingEmailOtp(challengeId, code) {
+  await ensurePublicUser();
+  if (!functions) throw new Error("Booking service is unavailable");
+  const result = await httpsCallable(functions, "verifyBookingEmailOtp")({ challengeId, code });
+  return result.data;
+}
+
+export async function listMyBookingsByEmailOtp(emailAccessToken) {
+  await ensurePublicUser();
+  if (!functions) throw new Error("Booking service is unavailable");
+  const result = await httpsCallable(functions, "listMyBookingsByEmailOtp")({ emailAccessToken });
+  return sortBookings(result.data?.bookings || []);
+}export async function getMyQuestionnaireResponseByEmailOtp(bookingId, questionnaireId, emailAccessToken) {
+  await ensurePublicUser();
+  if (!functions) throw new Error("Booking service is unavailable");
+  const result = await httpsCallable(functions, "getMyQuestionnaireResponseByEmailOtp")({ bookingId, questionnaireId, emailAccessToken });
+  return result.data?.response || null;
+}
 export async function claimBookingWithLine(bookingId, claimToken, accessToken) {
   if (!db || !functions) throw new Error("LINE booking claim is unavailable");
   await ensurePublicUser();
   return httpsCallable(functions, "claimBookingWithLine")({ bookingId, claimToken, accessToken });
 }
 
-export async function requestBookingChange(change) {
+export async function requestBookingChange(change, emailAccessToken = "") {
   if (!db) return { localOnly: true };
   await ensurePublicUser();
   if (!functions) throw new Error("Booking service is unavailable");
-  const result = await httpsCallable(functions, "requestBookingChange")({ change });
+  const result = await httpsCallable(functions, "requestBookingChange")({ change: { ...change, emailAccessToken } });
   return { ...result.data, localOnly: false };
 }
 
@@ -302,7 +327,7 @@ export async function updateBooking(bookingId, fields) {
   return { ...result.data, localOnly: false };
 }
 
-export async function cancelBooking(bookingId) {
+export async function cancelBooking(bookingId, emailAccessToken = "") {
   if (!db) {
     const saved = JSON.parse(localStorage.getItem("cac_local_bookings") || "[]");
     const next = saved.map((booking) =>
@@ -315,7 +340,7 @@ export async function cancelBooking(bookingId) {
   }
   await ensurePublicUser();
   if (!functions) throw new Error("Booking service is unavailable");
-  const result = await httpsCallable(functions, "cancelBooking")({ bookingId });
+  const result = await httpsCallable(functions, "cancelBooking")({ bookingId, emailAccessToken });
   return { ...result.data, localOnly: false };
 }
 export async function configureGmailMailer(settings) {
@@ -597,7 +622,7 @@ export async function saveBookingQuestionnaireResponseAsStaff({ bookingId, quest
   return { ...result.data, localOnly: false };
 }
 
-export async function saveCustomerQuestionnaireResponse({ bookingId, customerId, questionnaireId, answers }) {
+export async function saveCustomerQuestionnaireResponse({ bookingId, customerId, questionnaireId, answers, emailAccessToken = "" }) {
   if (!bookingId || !questionnaireId) throw new Error("Booking ID and questionnaire ID are required");
   if (!db) {
     const saved = JSON.parse(localStorage.getItem("cac_questionnaire_responses") || "[]");
@@ -608,7 +633,7 @@ export async function saveCustomerQuestionnaireResponse({ bookingId, customerId,
   }
   await ensurePublicUser();
   if (!functions) throw new Error("Questionnaire service is unavailable");
-  const result = await httpsCallable(functions, "saveMyQuestionnaireResponse")({ bookingId, questionnaireId, answers: answers || {} });
+  const result = await httpsCallable(functions, "saveMyQuestionnaireResponse")({ bookingId, questionnaireId, answers: answers || {}, emailAccessToken });
   return { ...result.data, localOnly: false };
 }
 

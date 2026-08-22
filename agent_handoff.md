@@ -26,6 +26,13 @@ This file is only the current takeover state. Historical entries are in
 - Deployment requires `functions/functions.yaml` to grant `LINE_CHANNEL_ACCESS_TOKEN` to all three Functions; source annotations alone are overridden by that file.
 - Added `functions/.env.channel-activity-customer` locally for `HOSPITAL_TOKEN_API_URL`; it is environment configuration and must not be committed.
 
+## Email/OTP milestone (prepared 2026-08-22)
+
+- Public 「我的預約」 now supports Email＋手機末四碼 OTP when LINE is unavailable; the memory-only token expires in 30 minutes, while OTP expires in 10 minutes.
+- Functions keep LINE priority: only bookings without LINE use Gmail for booking, reschedule, cancellation, and D-1 notices. `functions/functions.yaml` must declare `MAILER_ENCRYPTION_KEY` for every sender.
+- Passed: `npm test`, `npm run build`, release-style guard, and `npm run test:functions` (includes forged-token rejection plus cross-browser verified Email session for query, questionnaire, reschedule, and cancellation).
+- Pending explicit authorization: task-only commit/push and production deployment of Hosting plus the listed Functions.
+
 ## Verification on 2026-08-20
 
 - Passed: `cd cac-liff-app; npm test`.
