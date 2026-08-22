@@ -33,7 +33,7 @@ This file is only the current takeover state. Historical entries are in
 - Passed: `npm test`, `npm run build`, release-style guard, and `npm run test:functions` (includes forged-token rejection plus cross-browser verified Email session for query, questionnaire, reschedule, and cancellation).
 - Deployed 2026-08-22 08:31 Asia/Taipei: Hosting version `64da06de8fcb5fa4` and the 12 Email/OTP or notification Functions are ACTIVE; commit `8bf83b6` is pushed to `security-p0-staging`.
 
-- Follow-up 2026-08-22: MyBookingsPanel is rendered directly within App, preventing Email/OTP input focus loss caused by nested-component remounting; Hosting deployment follows its standalone commit.
+- Follow-up 2026-08-22: MyBookingsPanel is rendered directly within App, preventing Email/OTP input focus loss caused by nested-component remounting; Hosting version c3cb26e0169de3fb was released at 08:44 Asia/Taipei.
 
 ## Verification on 2026-08-20
 
