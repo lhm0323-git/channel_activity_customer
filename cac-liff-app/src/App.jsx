@@ -3004,7 +3004,7 @@ ${selectedItems
         <AddonItemsView />
       ) : publicView === "my-bookings" || publicView === "checkin" ? (
         <section className="mx-auto w-full max-w-6xl px-4 py-6 lg:px-6 space-y-5 flex-1 flex flex-col min-h-0">
-          <MyBookingsPanel />
+          {MyBookingsPanel()}
         </section>
       ) : ["prep", "followup", "contact"].includes(publicView) ? (
         <section className="mx-auto w-full max-w-6xl px-4 py-6 lg:px-6 space-y-5">
