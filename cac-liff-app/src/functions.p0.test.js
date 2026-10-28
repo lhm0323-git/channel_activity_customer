@@ -97,6 +97,26 @@ const importedBooking = await getDoc(doc(db, "bookings", imported.data.bookingId
 assert.equal(importedBooking.data().customerEmail, "");
 assert.equal(importedBooking.data().notificationChannel, "NONE");
 console.log("ok - active staff CSV import accepts blank Email and LINE ID");
+const confirmBooking = httpsCallable(functions, "confirmBookingWithSerial");
+const confirmed = await confirmBooking({ bookingId: imported.data.bookingId });
+assert.ok(confirmed.data.checkInSerial);
+assert.equal(confirmed.data.confirmationNoticeStatus, "NOT_CONFIGURED");
+const confirmedSnap = await admin.firestore(adminApp).doc("bookings/" + imported.data.bookingId).get();
+assert.equal(confirmedSnap.data().status, "CONFIRMED");
+assert.equal(confirmedSnap.data().confirmationNoticeStatus, "NOT_CONFIGURED");
+assert.equal(confirmedSnap.data().d1NoticeSentAt, undefined);
+const confirmedAgain = await confirmBooking({ bookingId: imported.data.bookingId });
+assert.equal(confirmedAgain.data.checkInSerial, confirmed.data.checkInSerial);
+assert.equal(confirmedAgain.data.confirmationNoticeStatus, "ALREADY_CONFIRMED");
+const updateBookingAsStaff = httpsCallable(functions, "updateBookingAsStaff");
+await updateBookingAsStaff({ bookingId: imported.data.bookingId, fields: { appointmentDate: "2099-01-05" } });
+const rescheduledSnap = await admin.firestore(adminApp).doc("bookings/" + imported.data.bookingId).get();
+assert.equal(rescheduledSnap.data().status, "BOOKED");
+assert.equal(rescheduledSnap.data().confirmationNoticeStatus, null);
+const reconfirmed = await confirmBooking({ bookingId: imported.data.bookingId });
+assert.notEqual(reconfirmed.data.checkInSerial, confirmed.data.checkInSerial);
+assert.equal(reconfirmed.data.confirmationNoticeStatus, "NOT_CONFIGURED");
+console.log("ok - confirmation records notification result without consuming D-1 reminder");
 
 await admin.firestore(adminApp).doc("staffUsers/ptch:07911").set({ empid: "07911", active: true, role: "STAFF" });
 await signOut(auth);

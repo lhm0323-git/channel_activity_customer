@@ -7,6 +7,7 @@ const { defineSecret, defineString } = require("firebase-functions/params");
 const logger = require("firebase-functions/logger");
 const { hospitalStaffKey, validateHospitalTokenResponse } = require("./hospital-auth.cjs");
 const { normalizeEmail, phoneLastFour, randomOtp, digest, verifyDigest, randomAccessToken } = require("./email-otp.cjs");
+const { buildConfirmationNotice } = require("./confirmation-notice.cjs");
 
 admin.initializeApp();
 
@@ -290,6 +291,25 @@ async function sendD1Notice(doc, actor = { role: "SYSTEM" }) {
   const error = "Booking has no LINE user ID or email address";
   await markD1NoticeFailed(doc, error);
   throw new HttpsError("failed-precondition", error);
+}
+
+async function sendConfirmationNotice(bookingRef, booking) {
+  const message = buildConfirmationNotice(booking);
+  const channel = booking.lineUserId ? "LINE" : booking.customerEmail || booking.email ? "EMAIL" : "NONE";
+  if (channel === "NONE") {
+    await bookingRef.update({ confirmationNoticeStatus: "NOT_CONFIGURED", updatedAt: FieldValue.serverTimestamp() });
+    return "NOT_CONFIGURED";
+  }
+  try {
+    if (channel === "LINE") await pushLineMessage(lineChannelAccessToken.value(), booking.lineUserId, { type: "text", text: message });
+    else await sendGmailMessage(await getMailerSettings(true), normalizeEmail(booking.customerEmail || booking.email), "屏基健檢中心：預約確認與來檢須知", message);
+    await bookingRef.update({ confirmationNoticeStatus: "SENT", confirmationNoticeChannel: channel, confirmationNoticeSentAt: FieldValue.serverTimestamp(), confirmationNoticeError: null, updatedAt: FieldValue.serverTimestamp() });
+    return channel;
+  } catch (error) {
+    logger.error("Confirmation notice failed", { bookingId: bookingRef.id, channel, error: String(error?.message || error) });
+    await bookingRef.update({ confirmationNoticeStatus: "FAILED", confirmationNoticeChannel: channel, confirmationNoticeError: String(error?.message || error).slice(0, 300), updatedAt: FieldValue.serverTimestamp() });
+    return "FAILED";
+  }
 }
 
 
@@ -1058,7 +1078,7 @@ exports.updateBookingAsStaff = onCall({ invoker: "public", secrets: [lineChannel
     const dateChanged = patch.appointmentDate && patch.appointmentDate !== booking.appointmentDate;
     const nextPatch = {
       ...patch,
-      ...(dateChanged ? { status: "BOOKED", checkInSerial: null, checkInSequence: null, d1NoticeSentAt: null, d1AcknowledgedAt: null, d1NoticeStatus: null } : {}),
+      ...(dateChanged ? { status: "BOOKED", checkInSerial: null, checkInSequence: null, confirmationNoticeStatus: null, confirmationNoticeSentAt: null, confirmationNoticeError: null, d1NoticeSentAt: null, d1AcknowledgedAt: null, d1NoticeStatus: null } : {}),
       updatedAt: FieldValue.serverTimestamp(),
     };
     if (dateChanged) changed = { booking: { ...booking, ...nextPatch }, previousDate: booking.appointmentDate || "" };
@@ -1089,7 +1109,7 @@ exports.approveBookingChangeAsStaff = onCall({ secrets: [lineChannelAccessToken,
     const booking = bookingSnap.data();
     if (change.status !== "pending") throw new HttpsError("failed-precondition", "Change request is no longer pending");
     if (!validDate(change.requestedAppointmentDate)) throw new HttpsError("invalid-argument", "Invalid requested appointment date");
-    const patch = { appointmentDate: change.requestedAppointmentDate, status: "BOOKED", checkInSerial: null, checkInSequence: null, d1NoticeSentAt: null, d1AcknowledgedAt: null, d1NoticeStatus: null, updatedAt: FieldValue.serverTimestamp() };
+    const patch = { appointmentDate: change.requestedAppointmentDate, status: "BOOKED", checkInSerial: null, checkInSequence: null, confirmationNoticeStatus: null, confirmationNoticeSentAt: null, confirmationNoticeError: null, d1NoticeSentAt: null, d1AcknowledgedAt: null, d1NoticeStatus: null, updatedAt: FieldValue.serverTimestamp() };
     changed = { booking: { ...booking, ...patch }, previousDate: booking.appointmentDate || "" }; changedRef = bookingRef;
     transaction.update(bookingRef, patch);
     transaction.update(changeRef, { status: "approved", approvedAt: FieldValue.serverTimestamp(), approvedBy: actor.email, updatedAt: FieldValue.serverTimestamp() });
@@ -1119,7 +1139,7 @@ function makeCheckInSerial(date, sequence) {
   return String(date || "").slice(5).replace("-", "") + "-" + String(sequence).padStart(3, "0");
 }
 
-exports.confirmBookingWithSerial = onCall(async (request) => {
+exports.confirmBookingWithSerial = onCall({ secrets: [lineChannelAccessToken, mailerEncryptionKey] }, async (request) => {
   const actor = await assertStaff(request);
   const bookingId = String(request.data && request.data.bookingId || "").trim();
   if (!bookingId) throw new HttpsError("invalid-argument", "bookingId is required");
@@ -1131,18 +1151,22 @@ exports.confirmBookingWithSerial = onCall(async (request) => {
     const booking = bookingSnap.data();
     if (booking.status === "CANCELLED") throw new HttpsError("failed-precondition", "Cancelled bookings cannot be confirmed");
     if (!/^\d{4}-\d{2}-\d{2}$/.test(booking.appointmentDate || "")) throw new HttpsError("failed-precondition", "Appointment date is required");
-    if (booking.status === "CONFIRMED" && booking.checkInSerial) return { checkInSerial: booking.checkInSerial };
+    if (booking.status === "CONFIRMED" && booking.checkInSerial) return { checkInSerial: booking.checkInSerial, alreadyConfirmed: true };
     const counterRef = admin.firestore().doc("dailyCheckInCounters/" + booking.appointmentDate);
     const counterSnap = await transaction.get(counterRef);
     const sequence = Number(counterSnap.exists ? counterSnap.data().nextSerial : 1) || 1;
     const checkInSerial = makeCheckInSerial(booking.appointmentDate, sequence);
     transaction.set(counterRef, { nextSerial: sequence + 1, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
-    const patch = { status: "CONFIRMED", confirmedAt: FieldValue.serverTimestamp(), checkInSerial, checkInSequence: sequence, updatedAt: FieldValue.serverTimestamp() };
+    const patch = { status: "CONFIRMED", confirmedAt: FieldValue.serverTimestamp(), checkInSerial, checkInSequence: sequence, confirmationNoticeStatus: "PENDING", confirmationNoticeSentAt: null, confirmationNoticeError: null, updatedAt: FieldValue.serverTimestamp() };
     transaction.update(bookingRef, patch);
     writeBookingAudit(transaction, db, { action: "CONFIRM", bookingId, actor, before: booking, after: { ...booking, ...patch } });
     return { checkInSerial };
   });
-  return result;
+  if (result.alreadyConfirmed) return { checkInSerial: result.checkInSerial, confirmationNoticeStatus: "ALREADY_CONFIRMED" };
+  const confirmedBooking = (await bookingRef.get()).data();
+  if (confirmedBooking.status !== "CONFIRMED" || confirmedBooking.checkInSerial !== result.checkInSerial) return { checkInSerial: result.checkInSerial, confirmationNoticeStatus: "SUPERSEDED" };
+  const notification = await sendConfirmationNotice(bookingRef, confirmedBooking);
+  return { checkInSerial: result.checkInSerial, confirmationNoticeStatus: notification };
 });
 exports.configureGmailMailer = onCall({ secrets: [mailerEncryptionKey] }, async (request) => {
   const actor = await assertAdmin(request);

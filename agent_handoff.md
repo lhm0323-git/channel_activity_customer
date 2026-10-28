@@ -35,6 +35,13 @@ This file is only the current takeover state. Historical entries are in
 
 - Follow-up 2026-08-22: MyBookingsPanel is rendered directly within App, preventing Email/OTP input focus loss caused by nested-component remounting; Hosting version c3cb26e0169de3fb was released at 08:44 Asia/Taipei.
 
+## Confirmation notice (2026-10-28)
+
+- `confirmBookingWithSerial` now sends a LINE notice with the check-in serial and package-specific visit instructions immediately after first confirmation; Email is used only when no LINE ID is present. The backend records `confirmationNoticeStatus` independently of D-1 fields, so the 09:00 D-1 scheduler can remind again.
+- `functions/confirmation-notice.cjs` mirrors the public `getVisitInstructions` Chinese text; `src/confirmation-notice.test.cjs` checks their parity. Update both when instructions change.
+- Deploy the targeted `confirmBookingWithSerial`, `updateBookingAsStaff`, and `approveBookingChangeAsStaff` Functions for this change. Existing local `src/App.jsx` and `src/components/ContactInfoPanel.jsx` edits predate this task and must not be staged or included in Hosting deployment.
+- `npm test` and the Auth/Firestore/Functions emulator integration test passed. The three Functions deployed successfully to staging and production on 2026-10-28; no Hosting release was made. A real LINE delivery still needs a controlled test booking with a bound LINE ID.
+
 ## Verification on 2026-08-20
 
 - Passed: `cd cac-liff-app; npm test`.

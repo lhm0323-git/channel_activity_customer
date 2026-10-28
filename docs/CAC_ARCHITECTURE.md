@@ -138,7 +138,8 @@ sequenceDiagram
   U->>W: 後台確認
   W->>F: confirmBookingWithSerial
   F->>D: 寫入報到序號
-  F-->>N: D-1 09:00 傳送提醒
+  F-->>N: 首次確認後立即送出報到序號與來檢須知
+  F-->>N: D-1 09:00 再次提醒
   N-->>F: 民眾回覆已收到
   F->>D: 寫入已回覆時間
 ```
@@ -147,6 +148,7 @@ Email 現況需區分：
 
 - Email/OTP「我的預約」：`requestBookingEmailOtp`、`verifyBookingEmailOtp`、`listMyBookingsByEmailOtp` 與 `getMyQuestionnaireResponseByEmailOtp` 在 Functions 信任邊界內執行。以 Email＋手機末四碼核對；驗證碼 10 分鐘、session 30 分鐘且綁定當前匿名登入身分，重整頁面後不保留 token。
 - 通知：有 LINE ID 者只走 LINE；沒有 LINE 且有有效 Email 者走 Gmail API。預約成功、改期、取消與 D-1 都由 Functions 直接送信，不使用 `mail` 佇列。
+- 後台首次確認由 `confirmBookingWithSerial` 指派序號後送出來檢須知；結果記在 `confirmationNoticeStatus`／`confirmationNoticeSentAt`，不占用 `d1NoticeSentAt`。重複確認不重送；改期重新確認會產生新序號及新通知。
 
 ## 6. Firestore 資料分區
 

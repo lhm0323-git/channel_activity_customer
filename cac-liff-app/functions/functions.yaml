@@ -486,6 +486,14 @@
                                                        "callableTrigger":  {
 
                                                                            },
+                                                       "secretEnvironmentVariables":  [
+                                                                                          {
+                                                                                              "key":  "LINE_CHANNEL_ACCESS_TOKEN"
+                                                                                          },
+                                                                                          {
+                                                                                              "key":  "MAILER_ENCRYPTION_KEY"
+                                                                                          }
+                                                                                      ],
                                                        "entryPoint":  "confirmBookingWithSerial"
                                                    },
                       "configureGmailMailer":  {
