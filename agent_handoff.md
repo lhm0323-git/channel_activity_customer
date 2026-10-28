@@ -8,7 +8,7 @@ This file is only the current takeover state. Historical entries are in
 - Repo: `https://github.com/lhm0323-git/channel_activity_customer`
 - Local root: `D:\Users\xray\.gemini\antigravity\scratch\Channel–Activity–Customer`
 - Branch: `security-p0-staging`, tracking `origin/security-p0-staging`
-- Last product/deployment commits: `cd13af4 fix: load release styles before app render`, `4e630ef fix: simplify batch booking actions`, `362a2ba fix: declare batch claim email function`
+- Latest product commit: `41af494 feat: notify patients when bookings are confirmed`.
 - Current product plan: `健檢中心三層數位系統 Implementation Plan v2.2（2026 下半年）.md` (2026-08-19).
 - Production Hosting was redeployed on 2026-08-21 after release-style recovery; `index.html` now loads Tailwind before the application module.
 
@@ -39,8 +39,8 @@ This file is only the current takeover state. Historical entries are in
 
 - `confirmBookingWithSerial` now sends a LINE notice with the check-in serial and package-specific visit instructions immediately after first confirmation; Email is used only when no LINE ID is present. The backend records `confirmationNoticeStatus` independently of D-1 fields, so the 09:00 D-1 scheduler can remind again.
 - `functions/confirmation-notice.cjs` mirrors the public `getVisitInstructions` Chinese text; `src/confirmation-notice.test.cjs` checks their parity. Update both when instructions change.
-- Deploy the targeted `confirmBookingWithSerial`, `updateBookingAsStaff`, and `approveBookingChangeAsStaff` Functions for this change. Existing local `src/App.jsx` and `src/components/ContactInfoPanel.jsx` edits predate this task and must not be staged or included in Hosting deployment.
-- `npm test` and the Auth/Firestore/Functions emulator integration test passed. The three Functions deployed successfully to staging and production on 2026-10-28; no Hosting release was made. A real LINE delivery still needs a controlled test booking with a bound LINE ID.
+- The targeted `confirmBookingWithSerial`, `updateBookingAsStaff`, and `approveBookingChangeAsStaff` Functions were deployed. Existing local `src/App.jsx` and `src/components/ContactInfoPanel.jsx` edits predate this task and remain uncommitted; they were not included in Hosting deployment.
+- `npm test` and the Auth/Firestore/Functions emulator integration test passed. The three Functions deployed successfully to staging and production on 2026-10-28; no Hosting release was made. The user confirmed successful acceptance of actual LINE delivery on 2026-10-28. Next action: handle the two unrelated frontend edits as a separate, verified slice.
 
 ## Verification on 2026-08-20
 
